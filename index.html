@@ -336,7 +336,7 @@ const USERS = {
     password: 'pharma123',
     role: 'pharmacien',
     name: 'Pharmacien',
-    allowedTabs: ['pharmacie', 'stats', 'programme', 'preparation']
+    allowedTabs: ['pharmacie', 'stats', 'preparation']
   },
   admin: {
     password: 'admin123',
@@ -353,16 +353,25 @@ function checkAuth() {
   
   if (savedUser) {
     currentUser = JSON.parse(savedUser);
-    applyUserPermissions();
-    const logoutBtn = document.getElementById('logout-button');
-    if (logoutBtn) logoutBtn.style.display = 'block';
-    applyReadOnlyMode();
+    console.log('Session restaurée:', currentUser);
+    
+    // Cacher login
     document.getElementById('login-screen').style.display = 'none';
-    // // Badge utilisateur supprimé
-    // document.getElementById('user-name-display').textContent = currentUser.name + ' (' + currentUser.role + ')';
+    
+    // Afficher bouton déconnexion
+    const logoutBtn = document.getElementById('logout-button');
+    if (logoutBtn) {
+      logoutBtn.style.display = 'block';
+      console.log('✓ Bouton déconnexion affiché (session)');
+    }
+    
+    // Appliquer permissions
+    console.log('Appel applyUserPermissions (session)...');
+    applyUserPermissions();
+    applyReadOnlyMode();
   } else {
     document.getElementById('login-screen').style.display = 'flex';
-    // Badge utilisateur supprimé
+    console.log('Aucune session - affichage login');
   }
 }
 
@@ -378,10 +387,7 @@ function handleLogin(event) {
     const errorDiv = document.getElementById('login-error');
     errorDiv.textContent = '❌ Nom d\'utilisateur ou mot de passe incorrect';
     errorDiv.style.display = 'block';
-    
-    // Effacer le mot de passe
     document.getElementById('login-password').value = '';
-    
     return false;
   }
   
@@ -393,34 +399,42 @@ function handleLogin(event) {
     allowedTabs: user.allowedTabs
   };
   
+  console.log('Connexion réussie:', currentUser);
+  
   localStorage.setItem('chncak_currentUser', JSON.stringify(currentUser));
   
-  // Afficher le bouton déconnexion
-  const logoutBtn = document.getElementById('logout-button');
-  if (logoutBtn) logoutBtn.style.display = 'block';
-  
+  // Cacher écran login
   document.getElementById('login-screen').style.display = 'none';
-  // // Badge utilisateur supprimé
-  // document.getElementById('user-name-display').textContent = currentUser.name + ' (' + currentUser.role + ')';
   
-  applyUserPermissions();
-  applyReadOnlyMode();
-  
-  // Aller sur le premier onglet autorisé
-  const firstTab = currentUser.allowedTabs[0];
-  const tabButton = Array.from(document.querySelectorAll('.tab-btn')).find(btn => 
-    btn.getAttribute('onclick')?.includes(firstTab)
-  );
-  
-  if (tabButton) {
-    tabButton.click();
+  // Afficher bouton déconnexion
+  const logoutBtn = document.getElementById('logout-button');
+  if (logoutBtn) {
+    logoutBtn.style.display = 'block';
+    console.log('✓ Bouton déconnexion affiché');
+  } else {
+    console.error('✗ Bouton déconnexion non trouvé !');
   }
+  
+  // Appliquer les permissions
+  console.log('Appel applyUserPermissions...');
+  applyUserPermissions();
+  
+  // Mode lecture seule si pharmacien
+  applyReadOnlyMode();
   
   return false;
 }
 
 function applyUserPermissions() {
-  if (!currentUser) return;
+  console.log('=== applyUserPermissions appelé ===');
+  console.log('currentUser:', currentUser);
+  
+  if (!currentUser) {
+    console.log('currentUser est null - abandon');
+    return;
+  }
+  
+  console.log('allowedTabs:', currentUser.allowedTabs);
   
   // Masquer/afficher les onglets selon les permissions
   const allTabs = document.querySelectorAll('.tab-btn');
