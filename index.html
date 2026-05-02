@@ -268,6 +268,17 @@ body.dark-mode .med-item{background:#1E2530;border-color:#2E3A4A}
       <h1 style="color:#0B5E3C;font-size:28px;margin:0 0 10px 0;">🏥 ChimioPro</h1>
       <p style="color:#666;font-size:14px;margin:0;">CHNCAK Touba - Authentification</p>
     </div>
+
+<!-- Bouton Déconnexion -->
+<div id="logout-button" style="position:fixed;top:15px;right:15px;z-index:999;">
+  <button onclick="logout()" 
+          style="background:#E74C3C;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(231,76,60,0.3);transition:all 0.3s;"
+          onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(231,76,60,0.4)'"
+          onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(231,76,60,0.3)'">
+    🚪 Déconnexion
+  </button>
+</div>
+
     
     <div id="login-error" style="display:none;background:#FDEAEA;color:#E74C3C;padding:12px;border-radius:6px;margin-bottom:20px;font-size:13px;"></div>
     
@@ -293,9 +304,13 @@ body.dark-mode .med-item{background:#1E2530;border-color:#2E3A4A}
     </form>
     
     <div style="margin-top:25px;padding-top:20px;border-top:1px solid #eee;">
-      <p style="color:#666;font-size:12px;margin:0 0 10px 0;font-weight:600;">Comptes de démonstration :</p>
-      <div style="font-size:11px;color:#888;line-height:1.6;">
-        <div><strong>Médecin :</strong> medecin / medecin123</div>
+      <p style="color:#0B5E3C;font-size:13px;margin:0 0 8px 0;font-weight:700;">📧 Contact</p>
+      <div style="font-size:12px;color:#555;line-height:1.8;">
+        <div><strong>Email :</strong> onco.chn.cak@gmail.com</div>
+        <div><strong>Tél :</strong> 00 221 77 419 08 05</div>
+        <div style="margin-top:8px;color:#666;font-size:11px;">Service Oncologie - Radiothérapie<br>CHNCAK TOUBA</div>
+      </div>
+    </div>
         <div><strong>Pharmacien :</strong> pharmacien / pharma123</div>
         <div><strong>Admin :</strong> admin / admin123</div>
       </div>
@@ -303,10 +318,7 @@ body.dark-mode .med-item{background:#1E2530;border-color:#2E3A4A}
   </div>
 </div>
 
-<div id="user-info" style="position:fixed;top:10px;right:10px;background:white;padding:8px 16px;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,0.1);z-index:1000;display:none;font-size:12px;">
-  <span id="user-name-display" style="color:#0B5E3C;font-weight:600;margin-right:12px;"></span>
-  <button onclick="logout()" style="background:#E74C3C;color:white;border:none;padding:4px 12px;border-radius:12px;cursor:pointer;font-size:11px;">Déconnexion</button>
-</div>
+
 
 <script>
 // ════════════════════════════════════════════════════════════
@@ -324,7 +336,7 @@ const USERS = {
     password: 'pharma123',
     role: 'pharmacien',
     name: 'Pharmacien',
-    allowedTabs: ['pharmacie']
+    allowedTabs: ['pharmacie', 'stats', 'programme']
   },
   admin: {
     password: 'admin123',
@@ -342,12 +354,13 @@ function checkAuth() {
   if (savedUser) {
     currentUser = JSON.parse(savedUser);
     applyUserPermissions();
+    applyReadOnlyMode();
     document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('user-info').style.display = 'block';
-    document.getElementById('user-name-display').textContent = currentUser.name + ' (' + currentUser.role + ')';
+    // // Badge utilisateur supprimé
+    // document.getElementById('user-name-display').textContent = currentUser.name + ' (' + currentUser.role + ')';
   } else {
     document.getElementById('login-screen').style.display = 'flex';
-    document.getElementById('user-info').style.display = 'none';
+    // Badge utilisateur supprimé
   }
 }
 
@@ -381,10 +394,11 @@ function handleLogin(event) {
   localStorage.setItem('chncak_currentUser', JSON.stringify(currentUser));
   
   document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('user-info').style.display = 'block';
-  document.getElementById('user-name-display').textContent = currentUser.name + ' (' + currentUser.role + ')';
+  // // Badge utilisateur supprimé
+  // document.getElementById('user-name-display').textContent = currentUser.name + ' (' + currentUser.role + ')';
   
   applyUserPermissions();
+  applyReadOnlyMode();
   
   // Aller sur le premier onglet autorisé
   const firstTab = currentUser.allowedTabs[0];
@@ -429,6 +443,54 @@ function applyUserPermissions() {
     }, 500);
   }
 }
+
+
+// Appliquer mode lecture seule pour pharmacien
+function applyReadOnlyMode() {
+  if (!currentUser || currentUser.role !== 'pharmacien') return;
+  
+  // Désactiver tous les boutons dans Stats et Programme SAUF impression
+  const statsPage = document.getElementById('page-stats');
+  const programmePage = document.getElementById('page-programme');
+  
+  [statsPage, programmePage].forEach(page => {
+    if (!page) return;
+    
+    // Désactiver tous les boutons sauf navigation ET impression
+    const buttons = page.querySelectorAll('button');
+    buttons.forEach(btn => {
+      const onclick = btn.getAttribute('onclick');
+      if (!onclick) return;
+      
+      // Garder actifs : boutons de navigation et boutons d'impression
+      const isNavigation = onclick.includes('showPage');
+      const isPrint = onclick.includes('print') || onclick.includes('Print') || 
+                      onclick.includes('imprimer') || onclick.includes('Imprimer');
+      
+      if (!isNavigation && !isPrint) {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+        btn.title = 'Accès en lecture seule';
+      }
+    });
+    
+    // Désactiver tous les inputs sauf ceux liés à l'impression
+    const inputs = page.querySelectorAll('input:not([type="date"]), select:not(.print-select), textarea');
+    inputs.forEach(input => {
+      // Ne pas désactiver les inputs dans les zones d'impression
+      const inPrintZone = input.closest('.print-controls') || 
+                          input.closest('[class*="print"]') ||
+                          input.id?.includes('print');
+      
+      if (!inPrintZone) {
+        input.disabled = true;
+        input.style.opacity = '0.7';
+      }
+    });
+  });
+}
+
 
 function logout() {
   if (confirm('Voulez-vous vraiment vous déconnecter ?')) {
@@ -1049,7 +1111,19 @@ window.addEventListener('DOMContentLoaded', checkAuth);
 <!-- ===== PAGE : PROGRAMME ===== -->
 <!-- ===== PAGE : PATIENTS ===== -->
 <div id="page-patients" class="page">
-  <div style="max-width:900px;margin:0 auto">
+  
+  <div style="margin:15px 0;padding:15px;background:#f8f9fa;border-radius:8px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="font-size:14px;color:#666;">
+      <strong>Gestion des patients</strong> — Ajoutez et gérez vos patients
+    </div>
+    <button onclick="showAddPatientModal()" 
+            style="background:linear-gradient(135deg,#0B5E3C,#16a085);color:white;border:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(11,94,60,0.3);transition:all 0.3s;"
+            onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(11,94,60,0.4)'"
+            onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(11,94,60,0.3)'">
+      ➕ Ajouter un patient
+    </button>
+  </div>
+<div style="max-width:900px;margin:0 auto">
 
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
@@ -6696,56 +6770,43 @@ function getHistorique() {
   return JSON.parse(localStorage.getItem('chncak_historique') || '[]');
 }
 
-function renderArchive() {
+function renderArchive(){
+  const list = document.getElementById('archive-list');
+  if(!list) return;
+  
   const patients = getPatients();
-  const hist = getHistorique();
+  const terminated = patients.filter(p => p.statut === 'Terminé' || p.statut === 'termine');
   
-  const archive = patients.filter(p => p.statut === 'Terminé').map(p => {
-    const cures = hist.filter(h => (h.prenom === p.prenom && h.nom === p.nom) || h.dossier === p.dossier);
-    return {
-      ...p,
-      nbCures: cures.length,
-      protocoles: [...new Set(cures.map(h => h.protoName))]
-    };
-  });
-  
-  const search = (document.getElementById('archive-search') || {value: ''}).value.toLowerCase();
-  const filtered = search ? archive.filter(p => (p.prenom + p.nom + p.dossier).toLowerCase().includes(search)) : archive;
-  
-  document.getElementById('archive-stats').innerHTML = `
-    <div style="text-align:center"><div style="font-size:20px;font-weight:700">${archive.length}</div><div style="font-size:10px;color:#888">TOTAL</div></div>
-    <div style="text-align:center"><div style="font-size:20px;font-weight:700">${filtered.length}</div><div style="font-size:10px;color:#888">FILTRÉS</div></div>
-    <div style="text-align:center"><div style="font-size:20px;font-weight:700">${archive.filter(a => a.nbCures >= 6).length}</div><div style="font-size:10px;color:#888">≥6 CURES</div></div>
-    <div style="text-align:center"><div style="font-size:20px;font-weight:700">${archive.reduce((s, a) => s + a.nbCures, 0)}</div><div style="font-size:10px;color:#888">TOTAL CURES</div></div>
-  `;
-  
-  if (!filtered.length) {
-    document.getElementById('archive-list').innerHTML = '<div style="text-align:center;padding:40px;color:#888"><div style="font-size:48px">📦</div><div>Aucun patient archivé</div></div>';
+  if(terminated.length === 0){
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:#999;"><p style="font-size:16px;">📦 Aucun patient archivé</p><p style="font-size:13px;margin-top:8px;">Les patients marqués comme "Traité" apparaîtront ici</p></div>';
     return;
   }
   
-  document.getElementById('archive-list').innerHTML = `
-    <table style="width:100%;border-collapse:collapse">
-      <thead>
-        <tr style="background:#8B1A1A;color:white">
-          <th style="padding:10px;text-align:left">Dossier</th>
-          <th style="padding:10px;text-align:left">Patient</th>
-          <th style="padding:10px;text-align:left">Protocoles</th>
-          <th style="padding:10px;text-align:center">Cures</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${filtered.map(p => `
-          <tr style="border-bottom:1px solid #eee">
-            <td style="padding:10px">${p.dossier || '—'}</td>
-            <td style="padding:10px;font-weight:600">${p.prenom} ${p.nom}</td>
-            <td style="padding:10px;font-size:11px">${p.protocoles.join(', ') || '—'}</td>
-            <td style="padding:10px;text-align:center;font-weight:700">${p.nbCures}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
+  list.innerHTML = terminated.map(p=>{
+    const hist = getHistorique().filter(h=>h.dossier===p.dossier);
+    const cures = hist.length;
+    const lastCure = hist.length > 0 ? hist[hist.length-1].date : 'N/A';
+    
+    return `
+      <div style="background:white;border:1px solid #e0e0e0;border-radius:8px;padding:16px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:start;">
+          <div>
+            <h3 style="margin:0 0 8px 0;color:#0B5E3C;font-size:16px;">${p.prenom} ${p.nom}</h3>
+            <div style="font-size:13px;color:#666;line-height:1.6;">
+              <div><strong>Dossier:</strong> ${p.dossier}</div>
+              <div><strong>Protocole:</strong> ${p.protocole || 'Non défini'}</div>
+              <div><strong>Cures effectuées:</strong> ${cures}</div>
+              <div><strong>Dernière cure:</strong> ${lastCure}</div>
+              ${p.dateFin ? '<div><strong>Date fin:</strong> '+new Date(p.dateFin).toLocaleDateString('fr-FR')+'</div>' : ''}
+            </div>
+          </div>
+          <div style="background:#E4F5ED;color:#0B5E3C;padding:6px 12px;border-radius:12px;font-size:12px;font-weight:600;">
+            ✓ Terminé
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 
@@ -6755,36 +6816,61 @@ function renderArchive() {
 // ══════════════════════════════════════════════════════════════
 
 function setStatut(patientId, newStatut) {
-  const patients = getPatients();
-  const idx = patients.findIndex(p => p.id === patientId);
+  // Version simplifiée et robuste
+  const patients = JSON.parse(localStorage.getItem('chncak_patients') || '[]');
+  const idx = patients.findIndex(p => p && p.id === patientId);
   
   if (idx === -1) {
     alert('Patient non trouvé');
     return;
   }
   
-  // Mettre à jour le statut
+  // Modifier le patient
   patients[idx].statut = newStatut;
   
-  // Si statut = Terminé, ajouter date de fin
   if (newStatut === 'Terminé') {
     patients[idx].dateFin = new Date().toISOString();
+    
+    // Calculer prochain RDV
+    const proto = patients[idx].protocole;
+    if (proto) {
+      // Tableau des rythmes
+      const rythmes = {
+        'folfox4': 14,
+        'ec100': 21,
+        'folfiri': 14,
+        'xeloda': 21,
+        'xelox': 21,
+        'folfoxiri': 14,
+        'gemox': 14,
+        'carbo_taxol': 21,
+        'ac': 21,
+        'tac': 21,
+        'tcf': 21,
+        'tem': 28,
+        'bep': 21,
+        'mvac': 28,
+        'gc': 21,
+        'xeliri': 21,
+        'herceptin': 21,
+        'avastin_zometa': 28,
+        'gem_avastin': 21
+      };
+      
+      const jours = rythmes[proto] || 21; // Par défaut J21
+      const nextDate = new Date();
+      nextDate.setDate(nextDate.getDate() + jours);
+      patients[idx].prochainRdv = nextDate.toISOString().split('T')[0];
+    }
   }
   
   // Sauvegarder
   localStorage.setItem('chncak_patients', JSON.stringify(patients));
   
-  // Message
-  if (newStatut === 'Terminé') {
-    alert('✅ Patient marqué comme traité et archivé');
-  } else {
-    alert('✅ Statut modifié : ' + newStatut);
-  }
-  
-  // Rafraîchir l'affichage
-  if (typeof renderPatients !== 'undefined') {
-    renderPatients();
-  }
+  // Rafraîchir affichages
+  if (typeof renderPatients === 'function') renderPatients();
+  if (typeof renderProgramme === 'function') renderProgramme();
+  if (typeof renderArchive === 'function') renderArchive();
 }
 
 </script>
@@ -7237,6 +7323,17 @@ function saveNewProtocole() {
     console.log('Erreur chargement protocoles personnalisés:', e);
   }
 })();
+
+
+
+// Fonction pour ajouter un patient
+function showAddPatientModal() {
+  alert('📋 Fonction d\'ajout de patient\n\n' +
+        'Pour ajouter un patient, utilisez :\n' +
+        '• Le bouton d\'importation Excel\n' +
+        '• Ou contactez l\'administrateur\n\n' +
+        'Cette fonctionnalité sera améliorée prochainement.');
+}
 
 </script>
 
