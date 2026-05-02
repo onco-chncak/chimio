@@ -270,7 +270,7 @@ body.dark-mode .med-item{background:#1E2530;border-color:#2E3A4A}
     </div>
 
 <!-- Bouton Déconnexion -->
-<div id="logout-button" style="position:fixed;top:15px;right:15px;z-index:999;">
+<div id="logout-button" style="position:fixed;top:15px;right:15px;z-index:999;display:none;">
   <button onclick="logout()" 
           style="background:#E74C3C;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(231,76,60,0.3);transition:all 0.3s;"
           onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(231,76,60,0.4)'"
@@ -336,7 +336,7 @@ const USERS = {
     password: 'pharma123',
     role: 'pharmacien',
     name: 'Pharmacien',
-    allowedTabs: ['pharmacie', 'stats', 'programme']
+    allowedTabs: ['pharmacie', 'stats', 'programme', 'preparation']
   },
   admin: {
     password: 'admin123',
@@ -354,6 +354,8 @@ function checkAuth() {
   if (savedUser) {
     currentUser = JSON.parse(savedUser);
     applyUserPermissions();
+    const logoutBtn = document.getElementById('logout-button');
+    if (logoutBtn) logoutBtn.style.display = 'block';
     applyReadOnlyMode();
     document.getElementById('login-screen').style.display = 'none';
     // // Badge utilisateur supprimé
@@ -392,6 +394,10 @@ function handleLogin(event) {
   };
   
   localStorage.setItem('chncak_currentUser', JSON.stringify(currentUser));
+  
+  // Afficher le bouton déconnexion
+  const logoutBtn = document.getElementById('logout-button');
+  if (logoutBtn) logoutBtn.style.display = 'block';
   
   document.getElementById('login-screen').style.display = 'none';
   // // Badge utilisateur supprimé
@@ -453,7 +459,7 @@ function applyReadOnlyMode() {
   const statsPage = document.getElementById('page-stats');
   const programmePage = document.getElementById('page-programme');
   
-  [statsPage, programmePage].forEach(page => {
+  [statsPage, programmePage, document.getElementById('page-preparation')].forEach(page => {
     if (!page) return;
     
     // Désactiver tous les boutons sauf navigation ET impression
@@ -545,15 +551,7 @@ window.addEventListener('DOMContentLoaded', checkAuth);
 
 <!-- ===== PAGE : PROTOCOLE ===== -->
 <div id="page-protocole" class="page active">
-  <div style="margin:20px 0;text-align:center;padding:15px;background:#f8f9fa;border-radius:8px;">
-    <button onclick="showAddProtocolModal()" 
-            style="background:linear-gradient(135deg,#0B5E3C,#16a085);color:white;border:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(11,94,60,0.3);transition:all 0.3s;"
-            onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(11,94,60,0.4)'"
-            onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 12px rgba(11,94,60,0.3)'">
-      ➕ Ajouter un nouveau protocole
-    </button>
-    <p style="margin:10px 0 0 0;font-size:12px;color:#666;">Créez votre propre protocole personnalisé</p>
-  </div>
+  
 
 
   <!-- PATIENT -->
@@ -6816,7 +6814,6 @@ function renderArchive(){
 // ══════════════════════════════════════════════════════════════
 
 function setStatut(patientId, newStatut) {
-  // Version simplifiée et robuste
   const patients = JSON.parse(localStorage.getItem('chncak_patients') || '[]');
   const idx = patients.findIndex(p => p && p.id === patientId);
   
@@ -6828,40 +6825,23 @@ function setStatut(patientId, newStatut) {
   // Modifier le patient
   patients[idx].statut = newStatut;
   
-  if (newStatut === 'Terminé') {
-    patients[idx].dateFin = new Date().toISOString();
+  // TOUJOURS archiver quand on sauvegarde
+  patients[idx].dateFin = new Date().toISOString();
+  
+  // Calculer prochain RDV
+  const proto = patients[idx].protocole;
+  if (proto) {
+    const rythmes = {
+      'folfox4': 14, 'ec100': 21, 'folfiri': 14, 'xeloda': 21, 'xelox': 21,
+      'folfoxiri': 14, 'gemox': 14, 'carbo_taxol': 21, 'ac': 21, 'tac': 21,
+      'tcf': 21, 'tem': 28, 'bep': 21, 'mvac': 28, 'gc': 21, 'xeliri': 21,
+      'herceptin': 21, 'avastin_zometa': 28, 'gem_avastin': 21
+    };
     
-    // Calculer prochain RDV
-    const proto = patients[idx].protocole;
-    if (proto) {
-      // Tableau des rythmes
-      const rythmes = {
-        'folfox4': 14,
-        'ec100': 21,
-        'folfiri': 14,
-        'xeloda': 21,
-        'xelox': 21,
-        'folfoxiri': 14,
-        'gemox': 14,
-        'carbo_taxol': 21,
-        'ac': 21,
-        'tac': 21,
-        'tcf': 21,
-        'tem': 28,
-        'bep': 21,
-        'mvac': 28,
-        'gc': 21,
-        'xeliri': 21,
-        'herceptin': 21,
-        'avastin_zometa': 28,
-        'gem_avastin': 21
-      };
-      
-      const jours = rythmes[proto] || 21; // Par défaut J21
-      const nextDate = new Date();
-      nextDate.setDate(nextDate.getDate() + jours);
-      patients[idx].prochainRdv = nextDate.toISOString().split('T')[0];
-    }
+    const jours = rythmes[proto] || 21;
+    const nextDate = new Date();
+    nextDate.setDate(nextDate.getDate() + jours);
+    patients[idx].prochainRdv = nextDate.toISOString().split('T')[0];
   }
   
   // Sauvegarder
@@ -6869,6 +6849,7 @@ function setStatut(patientId, newStatut) {
   
   // Rafraîchir affichages
   if (typeof renderPatients === 'function') renderPatients();
+  if (typeof renderPatientsList === 'function') renderPatientsList();
   if (typeof renderProgramme === 'function') renderProgramme();
   if (typeof renderArchive === 'function') renderArchive();
 }
