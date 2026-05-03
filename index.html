@@ -6534,11 +6534,11 @@ updateProgress();
 // ══════════════════════════════════════════════════════════════
 
 function getOkChimio() {
-  return JSON.parse(localStorage.getItem('chncak_okchimio') || '[]');
+  return JSON.parse(localStorage.getItem('chncak_protocols') || '[]');
 }
 
 function saveOkChimio(data) {
-  localStorage.setItem('chncak_okchimio', JSON.stringify(data));
+  localStorage.setItem('chncak_protocols', JSON.stringify(data));
 }
 
 function renderOkChimio() {
