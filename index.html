@@ -3955,7 +3955,7 @@ function renderProgramme() {
   const el = document.getElementById('programme-content');
   if (!el) return;
   
-  const patients = getPatients();
+  const patients = JSON.parse(localStorage.getItem('chncak_patients') || '[]');
   
   // Patients avec RDV (y compris les patients traités avec prochainRdv)
   const avecRdv = patients.filter(p => p.prochainRdv);
@@ -3990,9 +3990,12 @@ function renderProgramme() {
         ${rdvDate.toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}
       </td>
       <td style="padding:10px 12px;font-size:11px">
-        <span style="background:${p.statut==='Terminé'?'var(--gray-light)':'var(--green-pale)'};color:${p.statut==='Terminé'?'var(--gray-mid)':'var(--green)'};padding:3px 8px;border-radius:4px;font-weight:600">
-          ${p.statut==='Terminé'?'✓ Terminé':'● En cours'}
+        <span style="background:${p.statut==='Terminé' || p.statut==='Traité'?'var(--gray-light)':'var(--green-pale)'};color:${p.statut==='Terminé' || p.statut==='Traité'?'var(--gray-mid)':'var(--green)'};padding:3px 8px;border-radius:4px;font-weight:600">
+          ${p.statut==='Terminé' || p.statut==='Traité'?'✓ Terminé':'● En cours'}
         </span>
+      </td>
+      <td style="padding:10px 12px;text-align:center">
+        ${p.statut !== 'Terminé' && p.statut !== 'Traité' ? `<button onclick="setStatut('${p.id}', 'Traité')" style="background:#27AE60;color:white;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">✓ Traité</button>` : '—'}
       </td>
     </tr>`;
   }).join('');
@@ -5107,7 +5110,7 @@ function validateStockFromRdv(id){
   saveCatalog();
 
   // ── Auto-add/update patient dans la liste Patients ──
-  const patients = getPatients();
+  const patients = JSON.parse(localStorage.getItem('chncak_patients') || '[]');
   const pIdx = patients.findIndex(p=>
     (p.dossier&&p.dossier===rdv.dossier&&rdv.dossier)||(p.prenom===rdv.prenom&&p.nom===rdv.nom)
   );
@@ -6638,7 +6641,7 @@ function renderArchive(){
   const list = document.getElementById('archive-list');
   if(!list) return;
   
-  const patients = getPatients();
+  const patients = JSON.parse(localStorage.getItem('chncak_patients') || '[]');
   const terminated = patients.filter(p => p.statut === 'Terminé' || p.statut === 'termine');
   
   if(terminated.length === 0){
@@ -6679,45 +6682,50 @@ function renderArchive(){
 // FONCTION CHANGER STATUT PATIENT
 // ══════════════════════════════════════════════════════════════
 
-function setStatut(patientId, newStatut) {
+function setStatut(patientId, statut) {
   const patients = JSON.parse(localStorage.getItem('chncak_patients') || '[]');
-  const idx = patients.findIndex(p => p && p.id === patientId);
+  const idx = patients.findIndex(p => p.id === patientId);
   
   if (idx === -1) {
     alert('Patient non trouvé');
     return;
   }
   
-  // Modifier le patient
-  patients[idx].statut = newStatut;
+  patients[idx].statut = statut;
   
-  // TOUJOURS archiver quand on sauvegarde
-  patients[idx].dateFin = new Date().toISOString();
-  
-  // Calculer prochain RDV
-  const proto = patients[idx].protocole;
-  if (proto) {
-    const rythmes = {
-      'folfox4': 14, 'ec100': 21, 'folfiri': 14, 'xeloda': 21, 'xelox': 21,
-      'folfoxiri': 14, 'gemox': 14, 'carbo_taxol': 21, 'ac': 21, 'tac': 21,
-      'tcf': 21, 'tem': 28, 'bep': 21, 'mvac': 28, 'gc': 21, 'xeliri': 21,
-      'herceptin': 21, 'avastin_zometa': 28, 'gem_avastin': 21
-    };
+  if (statut === 'Traité') {
+    // Marquer date de fin
+    patients[idx].dateFin = new Date().toISOString();
     
-    const jours = rythmes[proto] || 21;
-    const nextDate = new Date();
-    nextDate.setDate(nextDate.getDate() + jours);
-    patients[idx].prochainRdv = nextDate.toISOString().split('T')[0];
+    // Calculer prochain RDV selon protocole
+    const proto = (patients[idx].protocole || '').toUpperCase();
+    let joursRdv = 21; // Par défaut 3 semaines
+    
+    if (proto.includes('FOLFOX') || proto.includes('FOLFIRI') || proto.includes('GEMOX')) {
+      joursRdv = 14; // 2 semaines
+    } else if (proto.includes('EC') || proto.includes('XELODA')) {
+      joursRdv = 21; // 3 semaines
+    } else if (proto.includes('TEM') || proto.includes('MVAC')) {
+      joursRdv = 28; // 4 semaines
+    }
+    
+    // Calculer date
+    const nextRdv = new Date();
+    nextRdv.setDate(nextRdv.getDate() + joursRdv);
+    patients[idx].prochainRdv = nextRdv.toISOString().split('T')[0];
+    
+    console.log(`✓ Patient ${patients[idx].nom} traité - Prochain RDV: ${patients[idx].prochainRdv}`);
   }
   
   // Sauvegarder
   localStorage.setItem('chncak_patients', JSON.stringify(patients));
   
   // Rafraîchir affichages
-  if (typeof renderPatients === 'function') renderPatients();
-  if (typeof renderPatientsList === 'function') renderPatientsList();
   if (typeof renderProgramme === 'function') renderProgramme();
   if (typeof renderArchive === 'function') renderArchive();
+  if (typeof renderPatients === 'function') renderPatients();
+  
+  alert(`✅ Statut mis à jour: ${statut}`);
 }
 
 </script>
@@ -7381,45 +7389,70 @@ function previewProtocol(protocolId) {
 
 // Fonction pour sauvegarder un protocole dans OK Chimio
 function saveProtocol() {
-  // Récupérer données du formulaire
-  const patientName = document.getElementById('patient-name')?.value;
-  const dossier = document.getElementById('dossier')?.value;
-  const protocolSelect = document.getElementById('protocol-select')?.value;
-  const cureNumber = document.getElementById('cure-number')?.value;
-  const dateProto = document.getElementById('date-protocole')?.value;
-  const surface = document.getElementById('surface')?.value;
-  const poids = document.getElementById('poids')?.value;
+  // Récupérer données du formulaire (vrais IDs)
+  const nom = document.getElementById('nom')?.value || '';
+  const prenom = document.getElementById('prenom')?.value || '';
+  const dossier = document.getElementById('dossier')?.value || '';
+  const poids = document.getElementById('poids')?.value || '';
+  const taille = document.getElementById('taille')?.value || '';
+  const dateProto = document.getElementById('date-protocole')?.value || '';
   
-  if (!patientName || !dossier || !protocolSelect) {
-    alert('❌ Veuillez remplir au minimum: Patient, Dossier et Protocole');
+  // Protocole sélectionné (chercher dans différents endroits possibles)
+  let protocolName = '';
+  const protoSelect = document.getElementById('protocol-select') || 
+                      document.getElementById('ligne-traitement') ||
+                      document.querySelector('[name="protocole"]');
+  
+  if (protoSelect) {
+    protocolName = protoSelect.value || protoSelect.textContent || '';
+  }
+  
+  // Nom complet patient
+  const patientName = (prenom + ' ' + nom).trim();
+  
+  // Validation
+  if (!patientName || !dossier) {
+    alert('❌ Veuillez remplir au minimum: Nom/Prénom et Dossier');
     return;
+  }
+  
+  // Calculer surface corporelle si poids et taille disponibles
+  let surface = 0;
+  if (poids && taille) {
+    const p = parseFloat(poids);
+    const t = parseFloat(taille) / 100; // cm → m
+    surface = Math.sqrt((p * t) / 3600);
+    surface = Math.round(surface * 100) / 100; // 2 décimales
   }
   
   // Créer objet protocole
   const newProtocol = {
     id: 'proto_' + Date.now(),
     patientName: patientName,
+    nom: nom,
+    prenom: prenom,
     dossier: dossier,
-    protocolName: protocolSelect,
-    cureNumber: cureNumber || '1',
+    protocolName: protocolName || 'À définir',
+    cureNumber: '1',
     date: dateProto || new Date().toISOString().split('T')[0],
-    surface: parseFloat(surface) || 0,
+    surface: surface,
     poids: parseFloat(poids) || 0,
+    taille: parseFloat(taille) || 0,
     medicaments: [],
     statut: 'en_attente',
     dateCreation: new Date().toISOString()
   };
   
-  // Sauvegarder
+  // Sauvegarder dans localStorage
   const protocols = JSON.parse(localStorage.getItem('chncak_protocols') || '[]');
   protocols.push(newProtocol);
   localStorage.setItem('chncak_protocols', JSON.stringify(protocols));
   
   console.log('✓ Protocole sauvegardé:', newProtocol);
   
-  alert('✅ Protocole sauvegardé avec succès !\n\nIl apparaît maintenant dans OK Chimio.');
+  alert('✅ Protocole sauvegardé avec succès !\n\nPatient: ' + patientName + '\nDossier: ' + dossier + '\n\nIl apparaît maintenant dans OK Chimio.');
   
-  // Rafraîchir OK Chimio
+  // Rafraîchir OK Chimio si la fonction existe
   if (typeof renderOkChimio === 'function') {
     renderOkChimio();
   }
