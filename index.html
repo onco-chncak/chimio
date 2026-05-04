@@ -359,7 +359,8 @@ function checkAuth() {
   
   if (savedUser) {
     currentUser = JSON.parse(savedUser);
-        
+    console.log('Session restaurée:', currentUser);
+    
     // Cacher login
     document.getElementById('login-screen').style.display = 'none';
     
@@ -367,17 +368,18 @@ function checkAuth() {
     const logoutBtn = document.getElementById('logout-button');
     if (logoutBtn) {
       logoutBtn.style.display = 'block';
-      ');
+      console.log('✓ Bouton déconnexion affiché (session)');
       createLogoutButton();
     }
     
     // Appliquer permissions
-    ...');
+    console.log('Appel applyUserPermissions (session)...');
     applyUserPermissions();
     applyReadOnlyMode();
   } else {
     document.getElementById('login-screen').style.display = 'flex';
-      }
+    console.log('Aucune session - affichage login');
+  }
 }
 
 function handleLogin(event) {
@@ -404,7 +406,8 @@ function handleLogin(event) {
     allowedTabs: user.allowedTabs
   };
   
-    
+  console.log('Connexion réussie:', currentUser);
+  
   localStorage.setItem('chncak_currentUser', JSON.stringify(currentUser));
   
   // Cacher écran login
@@ -414,13 +417,15 @@ function handleLogin(event) {
   logoutBtn = document.getElementById('logout-button');
   if (logoutBtn) {
     logoutBtn.style.display = 'block';
-        createLogoutButton();
+    console.log('✓ Bouton déconnexion affiché');
+    createLogoutButton();
   } else {
     console.error('✗ Bouton logout-button non trouvé !');
   }
   
   // Appliquer les permissions
-    applyUserPermissions();
+  console.log('Appel applyUserPermissions...');
+  applyUserPermissions();
   
   // Mode lecture seule si pharmacien
   applyReadOnlyMode();
@@ -429,12 +434,16 @@ function handleLogin(event) {
 }
 
 function applyUserPermissions() {
-      
+  console.log('=== applyUserPermissions appelé ===');
+  console.log('currentUser:', currentUser);
+  
   if (!currentUser) {
-        return;
+    console.log('currentUser est null - abandon');
+    return;
   }
   
-    
+  console.log('allowedTabs:', currentUser.allowedTabs);
+  
   // Masquer/afficher les onglets selon les permissions
   const allTabs = document.querySelectorAll('.tab-btn');
   
@@ -452,7 +461,8 @@ function applyUserPermissions() {
       tab.style.display = '';
     } else {
       tab.style.display = 'none';
-          }
+      console.log('Onglet masqué:', tabId);
+    }
   });
   
   // Message de bienvenue
@@ -1102,8 +1112,10 @@ window.addEventListener('DOMContentLoaded', checkAuth);
 <div id="page-stats" class="page">
   <div style="max-width:820px;margin:0 auto">
 
-    <!-- Header Stats -->
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <!-- Header avec sélecteur période + bouton imprimer -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <h2 style="font-size:15px;font-weight:600;color:var(--blue);margin:0">📊 Statistiques du Service</h2>
       <div style="display:flex;gap:8px">
         <button onclick="printStats()" style="background:#0A3D7A;color:white;border:none;padding:10px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">🖨 Imprimer</button>
@@ -2249,7 +2261,7 @@ function populateMedecinSelect(){
   
   sel.innerHTML='<option value="">— Choisir un médecin —</option>'+
     medecins.map(m => {
-      const fullName = `Dr ${m.prenom || ''} ${m.nom || ''}`.trim();
+      const fullName = `Dr ${m.prenom} ${m.nom}`;
       const display = `${fullName}${m.specialite ? ' (' + m.specialite + ')' : ''}`;
       return `<option value="${fullName}"${cur===fullName?' selected':''}>${display}</option>`;
     }).join('');
@@ -2389,7 +2401,8 @@ function saveToHistory(){
       okList.push(okEntry);
       saveOkChimio(okList);
       
-          }
+      console.log('✓ Protocole ajouté à OK Chimio:', proto.name, 'pour', prenom, nom);
+    }
   } catch(err) {
     console.error('Erreur génération OK Chimio:', err);
   }
@@ -6682,17 +6695,20 @@ function getHistorique() {
 }
 
 function renderArchive(){
-    const list = document.getElementById('archive-list');
+  console.log('=== renderArchive appelée ===');
+  const list = document.getElementById('archive-list');
   if(!list) {
     console.log('❌ Element archive-list NON TROUVÉ');
     return;
   }
   
   const patients = JSON.parse(localStorage.getItem('chncak_patients') || '[]');
-    patients.forEach(p => );
+  console.log('Total patients:', patients.length);
+  patients.forEach(p => console.log(`  ${p.nom}: ${p.statut}`));
   
-  const terminated = patients; // Tous les patients avec protocole
-    
+  const terminated = patients.filter(p => p.statut === 'Terminé' || p.statut === 'termine' || p.statut === 'Traité');
+  console.log('Patients terminés:', terminated.length);
+  
   if(terminated.length === 0){
     list.innerHTML = '<div style="text-align:center;padding:40px;color:#999;"><p style="font-size:16px;">📦 Aucun patient archivé</p><p style="font-size:13px;margin-top:8px;">Les patients marqués comme "Traité" apparaîtront ici</p></div>';
     return;
@@ -6763,7 +6779,8 @@ function setStatut(patientId, statut) {
     nextRdv.setDate(nextRdv.getDate() + joursRdv);
     patients[idx].prochainRdv = nextRdv.toISOString().split('T')[0];
     
-      }
+    console.log(`✓ Patient ${patients[idx].nom} traité - Prochain RDV: ${patients[idx].prochainRdv}`);
+  }
   
   // Sauvegarder
   localStorage.setItem('chncak_patients', JSON.stringify(patients));
@@ -7193,7 +7210,8 @@ function saveNewProtocole() {
       ['ec100', 'xeliri', 'herceptin', 'avastin_zometa', 'gem_avastin', id].includes(p.id)
     )));
   } catch(e) {
-      }
+    console.log('Sauvegarde localStorage impossible');
+  }
   
   // Fermer modal
   closeAddProtocoleModal();
@@ -7204,7 +7222,8 @@ function saveNewProtocole() {
   // Message succès
   alert('✅ Protocole "' + name + '" ajouté avec succès !\n\nVous pouvez maintenant le sélectionner dans la liste.');
   
-  }
+  console.log('Nouveau protocole ajouté:', newProto);
+}
 
 // Charger les protocoles personnalisés au démarrage
 (function() {
@@ -7218,9 +7237,11 @@ function saveNewProtocole() {
           PROTOCOLS.push(cp);
         }
       });
-          }
+      console.log('Protocoles personnalisés chargés');
+    }
   } catch(e) {
-      }
+    console.log('Erreur chargement protocoles personnalisés:', e);
+  }
 })();
 
 
@@ -7268,7 +7289,11 @@ function sendEmailNotification(to, subject, message) {
   // IMPORTANT: Cette fonction simule l'envoi d'email
   // Pour un envoi réel, vous devez configurer un service backend (PHP, Node.js, etc.)
   
-          
+  console.log('📧 Email Notification:');
+  console.log('  To:', to);
+  console.log('  Subject:', subject);
+  console.log('  Message:', message);
+  
   // Simulation: afficher une notification à l'utilisateur
   const notification = document.createElement('div');
   notification.style.cssText = 'position:fixed;top:20px;right:20px;background:#4CAF50;color:white;padding:15px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10001;animation:slideIn 0.3s;';
@@ -7490,7 +7515,8 @@ function saveProtocol() {
   protocols.push(newProtocol);
   localStorage.setItem('chncak_protocols', JSON.stringify(protocols));
   
-    
+  console.log('✓ Protocole sauvegardé:', newProtocol);
+  
   
   
   // Envoyer email au médecin si renseigné
@@ -7501,7 +7527,8 @@ function saveProtocol() {
       'Nouveau protocole de chimiothérapie',
       `Un nouveau protocole a été créé pour ${patientName} (${dossier}).\n\nProtocole: ${protocolName}\nDate: ${dateProto}\n\nCordialement,\nService Oncologie CHNCAK`
     );
-      }alert('✅ Protocole sauvegardé avec succès !\n\nPatient: ' + patientName + '\nDossier: ' + dossier + '\n\nIl apparaît maintenant dans OK Chimio.');
+    console.log('✓ Email envoyé au médecin:', medecinEmail);
+  }alert('✅ Protocole sauvegardé avec succès !\n\nPatient: ' + patientName + '\nDossier: ' + dossier + '\n\nIl apparaît maintenant dans OK Chimio.');
   
   // Rafraîchir OK Chimio si la fonction existe
   if (typeof renderOkChimio === 'function') {
@@ -7547,7 +7574,8 @@ function addMedecinFromForm() {
   medecins.push(newMedecin);
   localStorage.setItem('chncak_medecins', JSON.stringify(medecins));
   
-    
+  console.log('✓ Médecin ajouté:', newMedecin);
+  
   alert('✅ Médecin ajouté avec succès !');
   
   // Vider formulaire
@@ -7666,7 +7694,10 @@ function clearHistory() {
 
 
 // Effacer historique
-
+function clearHistory() {
+  if (!confirm('⚠️ Êtes-vous sûr de vouloir effacer tout l\'historique ?\n\nCette action est irréversible !')) {
+    return;
+  }
   
   // Effacer localStorage
   const keysToKeep = ['chncak_user', 'chncak_medecins', 'chncak_patients', 'chncak_protocols'];
@@ -7749,7 +7780,8 @@ function createLogoutButton() {
   // Ajouter au body
   document.body.appendChild(btn);
   
-  }
+  console.log('✅ Bouton déconnexion créé et ajouté au DOM');
+}
 
 </script>
 
