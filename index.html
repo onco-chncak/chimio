@@ -270,7 +270,7 @@ body.dark-mode .med-item{background:#1E2530;border-color:#2E3A4A}
     </div>
 
 <!-- Bouton Déconnexion -->
-<div id="logout-button" style="position:fixed;top:15px;right:15px;z-index:999;display:none;">
+<div id="logout-button" style="position:fixed;top:20px;right:20px;z-index:99999;display:none;background:#E74C3C;color:white;padding:10px 20px;border-radius:6px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);font-weight:600;font-size:14px;">
   <button onclick="logout()" 
           style="background:#E74C3C;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(231,76,60,0.3);transition:all 0.3s;"
           onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(231,76,60,0.4)'"
@@ -1115,7 +1115,10 @@ window.addEventListener('DOMContentLoaded', checkAuth);
       <div style="display:flex;align-items:center;gap:10px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <h2 style="font-size:15px;font-weight:600;color:var(--blue);margin:0">📊 Statistiques du Service</h2>
-      <button onclick="printStats()" style="background:#0A3D7A;color:white;border:none;padding:10px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">🖨 Imprimer Rapport</button>
+      <div style="display:flex;gap:8px">
+        <button onclick="printStats()" style="background:#0A3D7A;color:white;border:none;padding:10px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">🖨 Imprimer</button>
+        <button onclick="clearHistory()" style="background:#E74C3C;color:white;border:none;padding:10px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">🗑 Effacer</button>
+      </div>
     </div>
     
           <button onclick="clearAllHistory()" style="padding:5px 12px;background:var(--red-pale);color:var(--red2);border:1px solid #F5AAAA;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer" title="Effacer tout l'historique">
@@ -1889,12 +1892,7 @@ function showPage(id,btn){
   if(id==='support') renderSupport();
   if(id==='stats') renderStats();
   if(id==='programme'){
-    initProgramme();
     renderProgramme();
-    // Force the page visible BEFORE rendering the RDV list
-    const progPage = document.getElementById('page-programme');
-    if(progPage) progPage.style.display = 'block';
-    renderRdvList();
   }
   if(id==='patients'){setTimeout(renderPatientsList,50);}
   if(id==='okchimio'){ renderOkChimio(); }
@@ -2263,7 +2261,7 @@ function populateMedecinSelect(){
     medecins.map(m => {
       const fullName = `Dr ${m.prenom} ${m.nom}`;
       const display = `${fullName}${m.specialite ? ' (' + m.specialite + ')' : ''}`;
-      return `<option value="${m.email || fullName}"${cur===fullName?' selected':''}>${display}</option>`;
+      return `<option value="${fullName}"${cur===fullName?' selected':''}>${display}</option>`;
     }).join('');
   
   if(cur) sel.value=cur;
@@ -6695,11 +6693,19 @@ function getHistorique() {
 }
 
 function renderArchive(){
+  console.log('=== renderArchive appelée ===');
   const list = document.getElementById('archive-list');
-  if(!list) return;
+  if(!list) {
+    console.log('❌ Element archive-list NON TROUVÉ');
+    return;
+  }
   
   const patients = JSON.parse(localStorage.getItem('chncak_patients') || '[]');
+  console.log('Total patients:', patients.length);
+  patients.forEach(p => console.log(`  ${p.nom}: ${p.statut}`));
+  
   const terminated = patients.filter(p => p.statut === 'Terminé' || p.statut === 'termine' || p.statut === 'Traité');
+  console.log('Patients terminés:', terminated.length);
   
   if(terminated.length === 0){
     list.innerHTML = '<div style="text-align:center;padding:40px;color:#999;"><p style="font-size:16px;">📦 Aucun patient archivé</p><p style="font-size:13px;margin-top:8px;">Les patients marqués comme "Traité" apparaîtront ici</p></div>';
@@ -7669,6 +7675,44 @@ function printStats() {
     </html>
   `);
   printWindow.document.close();
+}
+
+// Effacer historique
+function clearHistory() {
+  if (confirm('⚠️ Voulez-vous vraiment effacer tout l\'historique ?\n\nCette action est irréversible.')) {
+    localStorage.removeItem('chncak_historique');
+    alert('✅ Historique effacé');
+    
+    // Rafraîchir Stats si visible
+    if (typeof renderStats === 'function') {
+      renderStats();
+    }
+  }
+}
+
+
+// Effacer historique
+function clearHistory() {
+  if (!confirm('⚠️ Êtes-vous sûr de vouloir effacer tout l\'historique ?\n\nCette action est irréversible !')) {
+    return;
+  }
+  
+  // Effacer localStorage
+  const keysToKeep = ['chncak_user', 'chncak_medecins', 'chncak_patients', 'chncak_protocols'];
+  const allKeys = Object.keys(localStorage);
+  
+  allKeys.forEach(key => {
+    if (!keysToKeep.includes(key)) {
+      localStorage.removeItem(key);
+    }
+  });
+  
+  alert('✅ Historique effacé avec succès !');
+  
+  // Rafraîchir Stats
+  if (typeof renderStats === 'function') {
+    renderStats();
+  }
 }
 </script>
 
