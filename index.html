@@ -1113,7 +1113,11 @@ window.addEventListener('DOMContentLoaded', checkAuth);
     <!-- Header avec sélecteur période + bouton imprimer -->
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:10px">
-          <h2 style="font-size:15px;font-weight:600;color:var(--blue)">&#128200; Statistiques du Service</h2>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="font-size:15px;font-weight:600;color:var(--blue);margin:0">📊 Statistiques du Service</h2>
+      <button onclick="printStats()" style="background:#0A3D7A;color:white;border:none;padding:10px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">🖨 Imprimer Rapport</button>
+    </div>
+    
           <button onclick="clearAllHistory()" style="padding:5px 12px;background:var(--red-pale);color:var(--red2);border:1px solid #F5AAAA;border-radius:var(--radius);font-size:11px;font-weight:600;cursor:pointer" title="Effacer tout l'historique">
             🗑 Effacer historique
           </button>
@@ -2250,22 +2254,35 @@ function renderCapeTable(proto){
 ============================================================ */
 function populateMedecinSelect(){
   const sel=document.getElementById('medecin-select');
+  if (!sel) return;
+  
   const cur=sel.value||localStorage.getItem('chncak_last_medecin')||'';
+  const medecins = JSON.parse(localStorage.getItem('chncak_medecins') || '[]');
+  
   sel.innerHTML='<option value="">— Choisir un médecin —</option>'+
-    medecins.map(m=>`<option value="${m.name}"${cur===m.name?' selected':''}>${m.name}${m.grade?' ('+m.grade+')':''}</option>`).join('');
+    medecins.map(m => {
+      const fullName = `Dr ${m.prenom} ${m.nom}`;
+      const display = `${fullName}${m.specialite ? ' (' + m.specialite + ')' : ''}`;
+      return `<option value="${m.email || fullName}"${cur===fullName?' selected':''}>${display}</option>`;
+    }).join('');
+  
   if(cur) sel.value=cur;
 }
 
 function renderMedecins(){
   populateMedecinSelect();
+  const medecins = JSON.parse(localStorage.getItem('chncak_medecins') || '[]');
   document.getElementById('med-list').innerHTML=medecins.length?
     medecins.map((m,i)=>`
       <div class="med-item">
         <div class="med-info">
-          <div class="med-avatar">${m.name.split(' ').filter(w=>w.match(/[A-Z]/)).map(w=>w[0]).slice(0,2).join('')||m.name.substring(0,2).toUpperCase()}</div>
+          <div class="med-avatar">${(m.prenom?.[0]||'')+(m.nom?.[0]||'')}</div>
           <div>
-            <div class="med-name">${m.name}</div>
-            <div class="med-grade">${m.grade||'—'}</div>
+            <div class="med-name">Dr ${m.prenom || ''} ${m.nom || ''}</div>
+            <div class="med-grade">${m.specialite||'—'}</div>
+            <div style="font-size:11px;color:#666;margin-top:4px">
+              ${m.email ? '✉ ' + m.email : ''} ${m.email && m.contact ? ' • ' : ''} ${m.contact ? '☎ ' + m.contact : ''}
+            </div>
           </div>
         </div>
         <div class="med-actions">
@@ -4406,88 +4423,118 @@ function periodLabel(period){
   return 'Rapport global — Toutes périodes';
 }
 
-function renderStats(){
-  const period  = getStatsPeriod();
-  const allHist = historique;
-  const allSorties = JSON.parse(localStorage.getItem('chncak_sorties')||'[]');
-  const hist    = filterByPeriod(allHist, period);
-  const sorties = filterByPeriod(allSorties, period);
-  const el      = document.getElementById('stats-content');
-
-  if(!hist.length && !sorties.length){
-    el.innerHTML = `<div style="background:white;border:1px solid var(--gray-border);border-radius:var(--radius-lg);padding:60px;text-align:center;color:var(--gray-mid)">
-      <div style="font-size:40px;margin-bottom:12px">📊</div>
-      <div style="font-size:14px;font-weight:500">Aucune donnée disponible</div>
-      <div style="font-size:13px;margin-top:6px">Commencez à enregistrer des protocoles et à valider des préparations.</div>
-    </div>`;
-    return;
-  }
-
-  // ── KPIs ──
-  const total      = hist.length;
-  const patients   = new Set(hist.map(h=>h.nom+h.prenom)).size;
-  const thisMonth  = hist.filter(h=>{ const d=new Date(h.dateTs); const n=new Date(); return d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear(); }).length;
-  const nbSorties  = sorties.length;
-
-  // ── Protocol counts ──
-  const protoCount={}, medecinCount={}, indicCount={}, monthCount={};
-  hist.forEach(h=>{
-    protoCount[h.protoName]  = (protoCount[h.protoName]||0)+1;
-    if(h.medecin) medecinCount[h.medecin]=(medecinCount[h.medecin]||0)+1;
-    if(h.indication){
-      const ind=h.indication.replace('Chimiothérapie ','');
-      indicCount[ind]=(indicCount[ind]||0)+1;
-    }
-    const d=new Date(h.dateTs);
-    const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    monthCount[key]=(monthCount[key]||0)+1;
-  });
-
-  // ── Molecule usage from sorties ──
-  const molCount={}, molFlacons={};
-  sorties.forEach(s=>{
-    if(s.details){
-      s.details.split(', ').forEach(detail=>{
-        const m = detail.match(/^(.+?):\s*(\d+)\s*flacon/);
-        if(m){
-          const mol=m[1].trim(), fl=parseInt(m[2]);
-          molCount[mol]   = (molCount[mol]||0)+1;
-          molFlacons[mol] = (molFlacons[mol]||0)+fl;
-        }
-      });
-    }
-  });
-  // Fallback: count molecule usage from historique protocol drugs
-  if(!Object.keys(molCount).length){
-    hist.forEach(h=>{
-      const proto = PROTOCOLS.find(p=>p.id===h.protoId||p.name===h.protoName);
-      if(!proto) return;
-      proto.drugs.filter(d=>d.name&&!d.t).forEach(d=>{
-        molCount[d.name] = (molCount[d.name]||0)+1;
-      });
-    });
-  }
-
-  const topProtos   = Object.entries(protoCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  const topMedecins = Object.entries(medecinCount).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  const topIndics   = Object.entries(indicCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const months      = Object.entries(monthCount).sort((a,b)=>a[0].localeCompare(b[0])).slice(-6);
-  const topMols     = Object.entries(molCount).sort((a,b)=>b[1]-a[1]);
-  const maxMonth    = Math.max(...months.map(m=>m[1]),1);
-  const maxProto    = Math.max(...topProtos.map(p=>p[1]),1);
-  const maxMol      = Math.max(...topMols.map(m=>m[1]),1);
-
-  // Colors for molecules
-  const MOL_COLORS = ['#0A3D7A','#0B5E3C','#6B3FA0','#8B1A1A','#7A4B00','#185FA5','#C0392B','#2E86AB','#A23B72','#16A085'];
-
-  el.innerHTML = `
-    <!-- Bandeau période -->
-    <div style="background:linear-gradient(135deg,var(--blue),var(--blue2));
+function renderStats() {
+  // Récupérer données
+  const protocols = JSON.parse(localStorage.getItem('chncak_protocols') || '[]');
+  const patients = JSON.parse(localStorage.getItem('chncak_patients') || '[]');
+  const medecins = JSON.parse(localStorage.getItem('chncak_medecins') || '[]');
   
+  // Calculer statistiques
+  const stats = {
+    protocoles: protocols.length,
+    protocolesValides: protocols.filter(p => p.statut === 'Validé' || p.statut === 'En attente').length,
+    patientsTotal: patients.length,
+    patientsTraites: patients.filter(p => p.statut === 'Traité' || p.statut === 'Terminé').length,
+    patientsEnCours: patients.filter(p => p.statut === 'En cours').length,
+    medecins: medecins.length,
+    
+    // Protocoles par type
+    typesProtocoles: {},
+    
+    // Médecins prescripteurs
+    medecinsPrescripteurs: {}
+  };
   
-function getPatients(){ return JSON.parse(localStorage.getItem('chncak_patients')||'[]'); }
-function savePatients(list){ localStorage.setItem('chncak_patients', JSON.stringify(list)); }
-  `;
+  // Compter types de protocoles
+  protocols.forEach(p => {
+    const proto = p.protocole || 'Non spécifié';
+    stats.typesProtocoles[proto] = (stats.typesProtocoles[proto] || 0) + 1;
+  });
+  
+  // Compter médecins prescripteurs
+  protocols.forEach(p => {
+    const med = p.medecin || 'Non assigné';
+    stats.medecinsPrescripteurs[med] = (stats.medecinsPrescripteurs[med] || 0) + 1;
+  });
+  
+  // Afficher
+  const container = document.querySelector('#page-stats .card-body') || document.getElementById('page-stats');
+  
+  if (container) {
+    container.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px">
+        <div style="background:#EEF4FD;padding:16px;border-radius:8px">
+          <div style="font-size:28px;font-weight:700;color:#0A3D7A">${stats.protocoles}</div>
+          <div style="font-size:13px;color:#666;margin-top:4px">Protocoles total</div>
+        </div>
+        <div style="background:#E4F5ED;padding:16px;border-radius:8px">
+          <div style="font-size:28px;font-weight:700;color:#0B5E3C">${stats.patientsTotal}</div>
+          <div style="font-size:13px;color:#666;margin-top:4px">Patients total</div>
+        </div>
+        <div style="background:#FFF3CD;padding:16px;border-radius:8px">
+          <div style="font-size:28px;font-weight:700;color:#856404">${stats.patientsEnCours}</div>
+          <div style="font-size:13px;color:#666;margin-top:4px">Patients en cours</div>
+        </div>
+        <div style="background:#E5E7EB;padding:16px;border-radius:8px">
+          <div style="font-size:28px;font-weight:700;color:#374151">${stats.patientsTraites}</div>
+          <div style="font-size:13px;color:#666;margin-top:4px">Patients traités</div>
+        </div>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="card">
+          <div class="card-header"><h3 style="font-size:14px;font-weight:600">Types de chimiothérapie</h3></div>
+          <div class="card-body">
+            ${Object.keys(stats.typesProtocoles).length > 0 ? 
+              Object.entries(stats.typesProtocoles).map(([type, count]) => `
+                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee">
+                  <span style="font-size:13px">${type}</span>
+                  <span style="font-weight:600;color:#0A3D7A">${count}</span>
+                </div>
+              `).join('') : 
+              '<div style="text-align:center;color:#999;padding:20px">Aucun protocole</div>'
+            }
+          </div>
+        </div>
+        
+        <div class="card">
+          <div class="card-header"><h3 style="font-size:14px;font-weight:600">Médecins prescripteurs</h3></div>
+          <div class="card-body">
+            ${Object.keys(stats.medecinsPrescripteurs).length > 0 ? 
+              Object.entries(stats.medecinsPrescripteurs).map(([med, count]) => `
+                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee">
+                  <span style="font-size:13px">${med}</span>
+                  <span style="font-weight:600;color:#0B5E3C">${count}</span>
+                </div>
+              `).join('') : 
+              '<div style="text-align:center;color:#999;padding:20px">Aucun médecin</div>'
+            }
+          </div>
+        </div>
+      
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+        <div class="card">
+          <div class="card-header"><h3 style="font-size:14px;font-weight:600">Médicaments utilisés</h3></div>
+          <div class="card-body">
+            <div style="text-align:center;color:#999;padding:20px;font-size:12px">
+              À venir : Liste des médicaments selon protocoles
+            </div>
+          </div>
+        </div>
+        
+        <div class="card">
+          <div class="card-header"><h3 style="font-size:14px;font-weight:600">Nombre de préparations</h3></div>
+          <div class="card-body">
+            <div style="text-align:center;padding:20px">
+              <div style="font-size:32px;font-weight:700;color:#0A3D7A">${stats.protocoles}</div>
+              <div style="font-size:12px;color:#666;margin-top:4px">Préparations total</div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    `;
+  }
 }
 
 
@@ -7462,7 +7509,18 @@ function saveProtocol() {
   
   console.log('✓ Protocole sauvegardé:', newProtocol);
   
-  alert('✅ Protocole sauvegardé avec succès !\n\nPatient: ' + patientName + '\nDossier: ' + dossier + '\n\nIl apparaît maintenant dans OK Chimio.');
+  
+  
+  // Envoyer email au médecin si renseigné
+  const medecinEmail = document.getElementById('medecin-email')?.value?.trim();
+  if (medecinEmail && medecinEmail.includes('@')) {
+    sendEmailNotification(
+      medecinEmail,
+      'Nouveau protocole de chimiothérapie',
+      `Un nouveau protocole a été créé pour ${patientName} (${dossier}).\n\nProtocole: ${protocolName}\nDate: ${dateProto}\n\nCordialement,\nService Oncologie CHNCAK`
+    );
+    console.log('✓ Email envoyé au médecin:', medecinEmail);
+  }alert('✅ Protocole sauvegardé avec succès !\n\nPatient: ' + patientName + '\nDossier: ' + dossier + '\n\nIl apparaît maintenant dans OK Chimio.');
   
   // Rafraîchir OK Chimio si la fonction existe
   if (typeof renderOkChimio === 'function') {
@@ -7524,6 +7582,93 @@ function addMedecinFromForm() {
   if (typeof renderMedecins === 'function') {
     renderMedecins();
   }
+}
+
+
+// Imprimer rapport statistiques
+function printStats() {
+  const protocols = JSON.parse(localStorage.getItem('chncak_protocols') || '[]');
+  const patients = JSON.parse(localStorage.getItem('chncak_patients') || '[]');
+  const medecins = JSON.parse(localStorage.getItem('chncak_medecins') || '[]');
+  
+  const stats = {
+    protocoles: protocols.length,
+    patientsTotal: patients.length,
+    patientsTraites: patients.filter(p => p.statut === 'Traité' || p.statut === 'Terminé').length,
+    patientsEnCours: patients.filter(p => p.statut === 'En cours').length,
+    medecins: medecins.length
+  };
+  
+  const typesProtocoles = {};
+  protocols.forEach(p => {
+    const proto = p.protocole || 'Non spécifié';
+    typesProtocoles[proto] = (typesProtocoles[proto] || 0) + 1;
+  });
+  
+  const printWindow = window.open('', '', 'width=800,height=600');
+  printWindow.document.write(`
+    <html>
+    <head>
+      <title>Rapport Statistiques - CHNCAK</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        h1 { color: #0A3D7A; border-bottom: 3px solid #0A3D7A; padding-bottom: 10px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0; }
+        .stat-card { border: 1px solid #ddd; padding: 15px; border-radius: 8px; text-align: center; }
+        .stat-value { font-size: 32px; font-weight: bold; color: #0A3D7A; }
+        .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background: #0A3D7A; color: white; }
+        .footer { margin-top: 30px; text-align: center; color: #999; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <h1>📊 Rapport Statistiques Service Oncologie</h1>
+      <p><strong>CHNCAK Touba</strong> • Date: ${new Date().toLocaleDateString('fr-FR')}</p>
+      
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value">${stats.protocoles}</div>
+          <div class="stat-label">Protocoles</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${stats.patientsTotal}</div>
+          <div class="stat-label">Patients total</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${stats.patientsEnCours}</div>
+          <div class="stat-label">En cours</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${stats.patientsTraites}</div>
+          <div class="stat-label">Traités</div>
+        </div>
+      </div>
+      
+      <h2>Types de Chimiothérapie</h2>
+      <table>
+        <thead>
+          <tr><th>Protocole</th><th>Nombre</th></tr>
+        </thead>
+        <tbody>
+          ${Object.entries(typesProtocoles).map(([type, count]) => 
+            `<tr><td>${type}</td><td>${count}</td></tr>`
+          ).join('')}
+        </tbody>
+      </table>
+      
+      <div class="footer">
+        ChimioPro v3 - Service Oncologie-Radiothérapie CHNCAK
+      </div>
+      
+      <script>
+        window.onload = () => window.print();
+      <\/script>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
 }
 </script>
 
