@@ -369,6 +369,7 @@ function checkAuth() {
     if (logoutBtn) {
       logoutBtn.style.display = 'block';
       console.log('✓ Bouton déconnexion affiché (session)');
+      createLogoutButton();
     }
     
     // Appliquer permissions
@@ -417,6 +418,7 @@ function handleLogin(event) {
   if (logoutBtn) {
     logoutBtn.style.display = 'block';
     console.log('✓ Bouton déconnexion affiché');
+    createLogoutButton();
   } else {
     console.error('✗ Bouton logout-button non trouvé !');
   }
@@ -2259,7 +2261,7 @@ function populateMedecinSelect(){
   
   sel.innerHTML='<option value="">— Choisir un médecin —</option>'+
     medecins.map(m => {
-      const fullName = `Dr ${m.prenom} ${m.nom}`;
+      const fullName = `Dr ${m.prenom || ''} ${m.nom || ''}`.trim();
       const display = `${fullName}${m.specialite ? ' (' + m.specialite + ')' : ''}`;
       return `<option value="${fullName}"${cur===fullName?' selected':''}>${display}</option>`;
     }).join('');
@@ -6704,7 +6706,7 @@ function renderArchive(){
   console.log('Total patients:', patients.length);
   patients.forEach(p => console.log(`  ${p.nom}: ${p.statut}`));
   
-  const terminated = patients.filter(p => p.statut === 'Terminé' || p.statut === 'termine' || p.statut === 'Traité');
+  const terminated = patients; // Tous les patients avec protocole
   console.log('Patients terminés:', terminated.length);
   
   if(terminated.length === 0){
@@ -7714,6 +7716,73 @@ function clearHistory() {
     renderStats();
   }
 }
+
+
+// Forcer affichage bouton déconnexion
+setInterval(() => {
+  const user = localStorage.getItem('chncak_user');
+  const logoutBtn = document.getElementById('logout-button');
+  const loginScreen = document.getElementById('login-screen');
+  
+  if (user && logoutBtn && loginScreen) {
+    const loginVisible = window.getComputedStyle(loginScreen).display !== 'none';
+    
+    if (!loginVisible) {
+      // Utilisateur connecté
+      logoutBtn.style.display = 'block';
+      logoutBtn.style.visibility = 'visible';
+      logoutBtn.style.opacity = '1';
+    }
+  }
+}, 500);
+
+
+// Créer bouton déconnexion visible GARANTI
+function createLogoutButton() {
+  // Supprimer ancien si existe
+  const old = document.getElementById('logout-btn-forced');
+  if (old) old.remove();
+  
+  // Créer nouveau bouton
+  const btn = document.createElement('button');
+  btn.id = 'logout-btn-forced';
+  btn.textContent = '🚪 Déconnexion';
+  btn.onclick = logout;
+  
+  // Style GARANTI visible
+  btn.style.position = 'fixed';
+  btn.style.top = '20px';
+  btn.style.right = '20px';
+  btn.style.zIndex = '999999';
+  btn.style.background = '#E74C3C';
+  btn.style.color = 'white';
+  btn.style.border = 'none';
+  btn.style.padding = '12px 24px';
+  btn.style.borderRadius = '6px';
+  btn.style.cursor = 'pointer';
+  btn.style.fontWeight = '700';
+  btn.style.fontSize = '14px';
+  btn.style.boxShadow = '0 4px 12px rgba(231,76,60,0.4)';
+  btn.style.transition = 'all 0.2s';
+  
+  // Effet hover
+  btn.onmouseover = () => {
+    btn.style.background = '#C0392B';
+    btn.style.transform = 'translateY(-2px)';
+    btn.style.boxShadow = '0 6px 16px rgba(231,76,60,0.5)';
+  };
+  btn.onmouseout = () => {
+    btn.style.background = '#E74C3C';
+    btn.style.transform = 'translateY(0)';
+    btn.style.boxShadow = '0 4px 12px rgba(231,76,60,0.4)';
+  };
+  
+  // Ajouter au body
+  document.body.appendChild(btn);
+  
+  console.log('✅ Bouton déconnexion créé et ajouté au DOM');
+}
+
 </script>
 
 <!-- MODAL AJOUTER PROTOCOLE -->
