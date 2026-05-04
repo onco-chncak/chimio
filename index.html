@@ -6601,10 +6601,9 @@ function renderOkChimio() {
             <td style="padding:10px;text-align:center">C${e.cure}</td>
             <td style="padding:10px">${e.medecin}</td>
             <td style="padding:10px;text-align:center">
-              <button <button onclick="previewProtocol(${e.id})" style="background:#2196F3;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">👁 Aperçu</button>
+              <button onclick="previewProtocol(${e.id})" style="background:#2196F3;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">👁 Aperçu</button>
               <button onclick="refuserProtocol(${e.id})" style="background:#E74C3C;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">✕ Refuser</button>
-              onclick="validerOkChimio(${e.id})" style="background:#E4F5ED;border:1px solid #0B5E3C;color:#0B5E3C;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">✓ Valider</button>
-              <button onclick="refuserOkChimio(${e.id})" style="background:#FDEAEA;border:1px solid #E74C3C;color:#E74C3C;padding:6px 12px;border-radius:4px;cursor:pointer">✕ Refuser</button>
+              <button onclick="validerOkChimio(${e.id})" style="background:#27AE60;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">✓ Valider</button>
             </td>
           </tr>
         `).join('')}
