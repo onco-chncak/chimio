@@ -1,0 +1,56 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+  <meta charset="utf-8">
+  <style>
+    table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
+    th { background: #0A3D7A; color: white; font-weight: bold; }
+    th, td { border: 1px solid #999; padding: 6px; }
+  </style>
+</head>
+<body>
+  <table>
+    <tr>
+      <th>id</th>
+      <th>nom</th>
+      <th>rythme</th>
+      <th>indication</th>
+      <th>detail</th>
+      <th>medicament</th>
+      <th>type_calcul</th>
+      <th>dose</th>
+      <th>unite</th>
+      <th>solvant</th>
+      <th>duree</th>
+      <th>jours</th>
+    </tr>
+    <tr>
+      <td>paclitaxel_hebdo</td>
+      <td>PACLITAXEL HEBDO</td>
+      <td>J1=J8</td>
+      <td>Chimiotherapie palliative</td>
+      <td>Paclitaxel 80 mg/m2 hebdomadaire</td>
+      <td>TAXOL (Paclitaxel)</td>
+      <td>sc</td>
+      <td>80</td>
+      <td>mg</td>
+      <td>250 cc SSI 0.9%</td>
+      <td>60 mn</td>
+      <td>J1, J8, J15</td>
+    </tr>
+    <tr>
+      <td>paclitaxel_hebdo</td>
+      <td>PACLITAXEL HEBDO</td>
+      <td>J1=J8</td>
+      <td>Chimiotherapie palliative</td>
+      <td>Paclitaxel 80 mg/m2 hebdomadaire</td>
+      <td>Kytril</td>
+      <td>fix</td>
+      <td>3</td>
+      <td>mg</td>
+      <td>15 cc SSI 0.9%</td>
+      <td>2 mn</td>
+      <td>J1, J8, J15</td>
+    </tr>
+  </table>
+</body>
+</html>
