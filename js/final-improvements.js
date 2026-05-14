@@ -1162,6 +1162,7 @@
       .cloud-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
       .cloud-actions button{border:1px solid #ccd8e6;background:#f8fbff;color:#0A3D7A;border-radius:6px;padding:7px 8px;font-size:11px;font-weight:700;cursor:pointer}
       .cloud-actions button:first-child,.cloud-actions button:nth-child(2){background:#0A3D7A;color:#fff;border-color:#0A3D7A}
+      .cloud-actions button.danger{grid-column:1/-1;background:#FDEAEA;color:#C0392B;border-color:#F5AAAA}
       #logout-btn-forced{top:10px!important;right:10px!important;padding:8px 12px!important;font-size:12px!important}
       @media (max-width:900px){.dash-final-hero,.dash-final-main{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}}
       @media print{.protocol-print-fit{font-size:7px!important}.protocol-print-fit *{line-height:1!important}.protocol-print-fit table:first-child *{font-size:5.8px!important;line-height:.95!important}}

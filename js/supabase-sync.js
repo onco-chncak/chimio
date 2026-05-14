@@ -8,6 +8,7 @@
   const SNAPSHOT_KEY = 'cloud_snapshot_v1';
   const LOCAL_META_KEY = 'chncak_cloud_last_sync';
   const DEVICE_ID_KEY = 'chncak_cloud_device_id';
+  const ADMIN_CODE = '2026';
 
   const DATA_KEYS = [
     'chncak_patients',
@@ -45,6 +46,36 @@
     'historique',
     'rdv'
   ]);
+
+  const RESET_KEEP_KEYS = new Set([
+    'chncak_catalog',
+    'chncak_medecins',
+    'chncak_responsables',
+    'chncak_prog_config',
+    'chncak_dashboard_team_photo',
+    'chncak_cloud_device_id',
+    'chncak_dark',
+    'supabase.auth.token'
+  ]);
+
+  const RESET_REMOVE_KEYS = [
+    'chncak_patients',
+    'chncak_rdv',
+    'chncak_historique',
+    'chncak_protocols',
+    'chncak_sorties',
+    'chncak_suivi',
+    'chncak_biologie',
+    'chncak_programme',
+    'chncak_archived_patients',
+    'chncak_last_backup',
+    'chncak_last_restore',
+    'chncak_cloud_last_sync',
+    'suivi',
+    'biologie',
+    'historique',
+    'rdv'
+  ];
 
   function esc(value){
     return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -129,6 +160,19 @@
     return data;
   }
 
+  function collectOfficialEmptyData(){
+    const data = {};
+    const catalog = localStorage.getItem('chncak_catalog');
+    const medecins = localStorage.getItem('chncak_medecins');
+    const responsables = localStorage.getItem('chncak_responsables');
+    const config = localStorage.getItem('chncak_prog_config');
+    if(catalog !== null) data.chncak_catalog = catalog;
+    if(medecins !== null) data.chncak_medecins = medecins;
+    if(responsables !== null) data.chncak_responsables = responsables;
+    if(config !== null) data.chncak_prog_config = config;
+    return data;
+  }
+
   function applyCloudData(cloudData){
     const localData = collectLocalData();
     const merged = {...cloudData};
@@ -151,6 +195,17 @@
     try { window.renderPatientsList?.(); } catch(e) {}
     try { window.renderRdvPage?.(); } catch(e) {}
     try { window.renderOkChimio?.(); } catch(e) {}
+  }
+
+  function resetLocalOfficialData(){
+    RESET_REMOVE_KEYS.forEach(key => localStorage.removeItem(key));
+    for(let i = localStorage.length - 1; i >= 0; i--){
+      const key = localStorage.key(i);
+      if(key && key.startsWith('chncak_') && !RESET_KEEP_KEYS.has(key) && !key.includes('catalog')){
+        localStorage.removeItem(key);
+      }
+    }
+    refreshViews();
   }
 
   function client(){
@@ -222,6 +277,10 @@
     localStorage.setItem(LOCAL_META_KEY, value.updatedAt);
     updateCloudUi(current.user.email || '');
     return value;
+  }
+
+  async function resetCloudSnapshot(){
+    await saveCloudSnapshot(collectOfficialEmptyData());
   }
 
   let autoTimer = null;
@@ -317,6 +376,7 @@
             <button type="button" onclick="chimioproCloudPull()">Recuperer</button>
             <button type="button" onclick="chimioproCloudPush()">Envoyer</button>
             <button type="button" onclick="chimioproCloudLogout()">Quitter</button>
+            <button type="button" class="danger" onclick="chimioproOfficialReset()">Initialisation officielle</button>
           </div>
         </div>
       </div>
@@ -361,6 +421,26 @@
   window.chimioproCloudSync = async function(){
     try{ await cloudSync(); }
     catch(e){ alert('Synchronisation cloud impossible: ' + e.message); }
+  };
+
+  window.chimioproOfficialReset = async function(){
+    const code = prompt('Code admin 4 chiffres pour initialisation officielle :');
+    if(code === null) return;
+    if(code !== ADMIN_CODE) return alert('Code incorrect.');
+    if(!confirm('Cette action efface les donnees de test locales et cloud, mais garde le catalogue pharmacie. Continuer ?')) return;
+    const phrase = prompt('Tapez INITIALISER pour confirmer definitivement :');
+    if(phrase !== 'INITIALISER') return alert('Confirmation annulee.');
+    try{
+      await requireSession();
+      resetLocalOfficialData();
+      await resetCloudSnapshot();
+      localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());
+      notify('Initialisation officielle terminee. Catalogue conserve.', 'success');
+      alert('Initialisation officielle terminee. Le catalogue pharmacie est conserve.');
+    } catch(e){
+      resetLocalOfficialData();
+      alert('Donnees locales remises a zero, mais nettoyage cloud impossible: ' + e.message);
+    }
   };
 
   document.addEventListener('DOMContentLoaded', async () => {
