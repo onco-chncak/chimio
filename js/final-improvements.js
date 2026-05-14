@@ -1152,6 +1152,16 @@
       .stats-bar-row{display:grid;grid-template-columns:minmax(120px,1fr) 3fr 42px;gap:10px;align-items:center;margin:8px 0;font-size:12px}
       .stats-bar-row div{height:12px;background:#eef2f6;border-radius:4px;overflow:hidden}
       .stats-bar-row i{display:block;height:100%;background:#0A3D7A}
+      .cloud-sync-panel{position:fixed;right:12px;bottom:12px;z-index:9998;font-family:var(--font);color:#17324d}
+      #cloud-sync-toggle{background:#0A3D7A;color:#fff;border:none;border-radius:20px;padding:8px 14px;font-size:12px;font-weight:700;box-shadow:0 8px 20px rgba(10,61,122,.22);cursor:pointer}
+      .cloud-sync-panel.cloud-connected #cloud-sync-toggle{background:#0B5E3C}
+      #cloud-sync-body{display:none;width:280px;background:#fff;border:1px solid #dbe5f2;border-radius:8px;box-shadow:0 14px 34px rgba(10,61,122,.18);padding:12px;margin-bottom:8px}
+      .cloud-sync-panel.open #cloud-sync-body{display:block}
+      #cloud-sync-status{font-size:12px;line-height:1.35;background:#f8fbff;border:1px solid #dbe5f2;border-radius:6px;padding:8px;margin-bottom:8px}
+      #cloud-sync-body input{width:100%;box-sizing:border-box;margin:4px 0;padding:8px;border:1px solid #ccd8e6;border-radius:6px;font-size:12px}
+      .cloud-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+      .cloud-actions button{border:1px solid #ccd8e6;background:#f8fbff;color:#0A3D7A;border-radius:6px;padding:7px 8px;font-size:11px;font-weight:700;cursor:pointer}
+      .cloud-actions button:first-child,.cloud-actions button:nth-child(2){background:#0A3D7A;color:#fff;border-color:#0A3D7A}
       #logout-btn-forced{top:10px!important;right:10px!important;padding:8px 12px!important;font-size:12px!important}
       @media (max-width:900px){.dash-final-hero,.dash-final-main{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}}
       @media print{.protocol-print-fit{font-size:7px!important}.protocol-print-fit *{line-height:1!important}.protocol-print-fit table:first-child *{font-size:5.8px!important;line-height:.95!important}}

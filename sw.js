@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chimiopro-v20260514e';
+const CACHE_NAME = 'chimiopro-v20260514f';
 
 const ASSETS = [
   './',
@@ -10,6 +10,7 @@ const ASSETS = [
   './js/rdv.js',
   './js/clinical-modules.js',
   './js/data-tools.js',
+  './js/supabase-sync.js',
   './js/protocol-editor.js',
   './js/app-polish.js',
   './js/enhancements.js',

@@ -1,0 +1,380 @@
+/* ============================================================
+   SYNCHRONISATION CLOUD SUPABASE - CHIMIOPRO
+   Premiere couche prudente: snapshot fusionnable des donnees locales.
+============================================================ */
+(function(){
+  const SUPABASE_URL = 'https://frfungcoqagpcyaaglox.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_LWC2vokbGnSWFA1Vg6DAsA_JFaCNbei';
+  const SNAPSHOT_KEY = 'cloud_snapshot_v1';
+  const LOCAL_META_KEY = 'chncak_cloud_last_sync';
+  const DEVICE_ID_KEY = 'chncak_cloud_device_id';
+
+  const DATA_KEYS = [
+    'chncak_patients',
+    'chncak_rdv',
+    'chncak_historique',
+    'chncak_protocols',
+    'chncak_catalog',
+    'chncak_sorties',
+    'chncak_suivi',
+    'chncak_biologie',
+    'chncak_medecins',
+    'chncak_programme',
+    'chncak_prog_config',
+    'chncak_responsables',
+    'chncak_archived_patients',
+    'suivi',
+    'biologie',
+    'historique',
+    'rdv'
+  ];
+
+  const ARRAY_KEYS = new Set([
+    'chncak_patients',
+    'chncak_rdv',
+    'chncak_historique',
+    'chncak_protocols',
+    'chncak_catalog',
+    'chncak_sorties',
+    'chncak_suivi',
+    'chncak_biologie',
+    'chncak_medecins',
+    'chncak_archived_patients',
+    'suivi',
+    'biologie',
+    'historique',
+    'rdv'
+  ]);
+
+  function esc(value){
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    }[ch]));
+  }
+
+  function notify(message, type){
+    if(typeof showToast === 'function') showToast(message, type || 'info');
+    else console.log(message);
+  }
+
+  function readJsonValue(raw, fallback){
+    try { return JSON.parse(raw); }
+    catch(e){ return fallback; }
+  }
+
+  function getDeviceId(){
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if(!id){
+      id = 'device_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  }
+
+  function identity(item, index){
+    if(!item || typeof item !== 'object') return 'idx_' + index + '_' + JSON.stringify(item);
+    return String(
+      item.id ||
+      item.codegratuite ||
+      item.codeGratuite ||
+      item.code ||
+      item.dossier ||
+      item.name ||
+      item.nom ||
+      item.patientCode ||
+      item.dateTs ||
+      index
+    );
+  }
+
+  function mergeArrays(cloudValue, localValue){
+    const map = new Map();
+    (Array.isArray(cloudValue) ? cloudValue : []).forEach((item, index) => {
+      map.set(identity(item, index), item);
+    });
+    (Array.isArray(localValue) ? localValue : []).forEach((item, index) => {
+      const key = identity(item, index);
+      const old = map.get(key);
+      map.set(key, old && typeof old === 'object' && typeof item === 'object' ? {...old, ...item} : item);
+    });
+    return Array.from(map.values());
+  }
+
+  function mergeValues(key, cloudRaw, localRaw){
+    if(localRaw === null || localRaw === undefined || localRaw === '') return cloudRaw;
+    if(cloudRaw === null || cloudRaw === undefined || cloudRaw === '') return localRaw;
+    const cloud = readJsonValue(cloudRaw, null);
+    const local = readJsonValue(localRaw, null);
+    if(ARRAY_KEYS.has(key) && Array.isArray(cloud) && Array.isArray(local)){
+      return JSON.stringify(mergeArrays(cloud, local));
+    }
+    if(cloud && local && typeof cloud === 'object' && typeof local === 'object' && !Array.isArray(cloud) && !Array.isArray(local)){
+      return JSON.stringify({...cloud, ...local});
+    }
+    return localRaw;
+  }
+
+  function collectLocalData(){
+    const data = {};
+    DATA_KEYS.forEach(key => {
+      const value = localStorage.getItem(key);
+      if(value !== null) data[key] = value;
+    });
+    for(let i = 0; i < localStorage.length; i++){
+      const key = localStorage.key(i);
+      if(key && key.startsWith('chncak_') && !(key in data)){
+        data[key] = localStorage.getItem(key);
+      }
+    }
+    return data;
+  }
+
+  function applyCloudData(cloudData){
+    const localData = collectLocalData();
+    const merged = {...cloudData};
+    Object.keys(localData).forEach(key => {
+      merged[key] = mergeValues(key, cloudData?.[key], localData[key]);
+    });
+    Object.keys(merged).forEach(key => {
+      if(merged[key] !== undefined && merged[key] !== null) localStorage.setItem(key, merged[key]);
+    });
+    localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());
+    refreshViews();
+    return merged;
+  }
+
+  function refreshViews(){
+    try { window.renderDashboard?.(); } catch(e) {}
+    try { window.renderStats?.(); } catch(e) {}
+    try { window.renderSuivi?.(); } catch(e) {}
+    try { window.renderBiologie?.(); } catch(e) {}
+    try { window.renderPatientsList?.(); } catch(e) {}
+    try { window.renderRdvPage?.(); } catch(e) {}
+    try { window.renderOkChimio?.(); } catch(e) {}
+  }
+
+  function client(){
+    if(!window.supabase?.createClient) return null;
+    if(!window.chimioproSupabaseClient){
+      window.chimioproSupabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: { persistSession:true, autoRefreshToken:true }
+      });
+    }
+    return window.chimioproSupabaseClient;
+  }
+
+  async function session(){
+    const sb = client();
+    if(!sb) return null;
+    const { data } = await sb.auth.getSession();
+    return data?.session || null;
+  }
+
+  async function requireSession(){
+    const current = await session();
+    if(!current) throw new Error('Connexion cloud requise.');
+    return current;
+  }
+
+  async function signIn(email, password){
+    const sb = client();
+    if(!sb) throw new Error('Supabase non charge. Verifiez la connexion internet.');
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if(error) throw error;
+    await setupRealtime();
+    updateCloudUi(data.session?.user?.email || email);
+    return data.session;
+  }
+
+  async function signOut(){
+    const sb = client();
+    if(!sb) return;
+    await sb.auth.signOut();
+    updateCloudUi('');
+  }
+
+  async function loadCloudSnapshot(){
+    const sb = client();
+    await requireSession();
+    const { data, error } = await sb
+      .from('app_settings')
+      .select('value, updated_at')
+      .eq('key', SNAPSHOT_KEY)
+      .maybeSingle();
+    if(error) throw error;
+    return data?.value || null;
+  }
+
+  async function saveCloudSnapshot(data){
+    const sb = client();
+    const current = await requireSession();
+    const value = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      updatedBy: current.user.email || current.user.id,
+      deviceId: getDeviceId(),
+      data
+    };
+    const { error } = await sb
+      .from('app_settings')
+      .upsert({ key: SNAPSHOT_KEY, value, updated_at: new Date().toISOString() }, { onConflict:'key' });
+    if(error) throw error;
+    localStorage.setItem(LOCAL_META_KEY, value.updatedAt);
+    updateCloudUi(current.user.email || '');
+    return value;
+  }
+
+  let autoTimer = null;
+  function scheduleCloudPush(){
+    if(!window.chimioproCloudReady) return;
+    clearTimeout(autoTimer);
+    autoTimer = setTimeout(() => {
+      window.chimioproCloudPush(true).catch(err => notify('Sync cloud echouee: ' + err.message, 'error'));
+    }, 2500);
+  }
+
+  function patchLocalStorage(){
+    if(window.chimioproLocalStoragePatched) return;
+    window.chimioproLocalStoragePatched = true;
+    const nativeSet = Storage.prototype.setItem;
+    const nativeRemove = Storage.prototype.removeItem;
+    Storage.prototype.setItem = function(key, value){
+      const out = nativeSet.apply(this, arguments);
+      if(String(key).startsWith('chncak_') || DATA_KEYS.includes(key)) scheduleCloudPush();
+      return out;
+    };
+    Storage.prototype.removeItem = function(key){
+      const out = nativeRemove.apply(this, arguments);
+      if(String(key).startsWith('chncak_') || DATA_KEYS.includes(key)) scheduleCloudPush();
+      return out;
+    };
+  }
+
+  async function setupRealtime(){
+    const sb = client();
+    const current = await session();
+    if(!sb || !current || window.chimioproRealtimeReady) return;
+    window.chimioproRealtimeReady = true;
+    sb.channel('app_settings_snapshot')
+      .on('postgres_changes', {event:'UPDATE', schema:'public', table:'app_settings', filter:`key=eq.${SNAPSHOT_KEY}`}, payload => {
+        const value = payload.new?.value;
+        if(!value || value.deviceId === getDeviceId()) return;
+        applyCloudData(value.data || {});
+        notify('Donnees cloud synchronisees.', 'success');
+      })
+      .subscribe();
+  }
+
+  async function cloudPull(silent){
+    const snap = await loadCloudSnapshot();
+    if(!snap?.data){
+      if(!silent) notify('Aucune sauvegarde cloud pour le moment.', 'info');
+      return;
+    }
+    const merged = applyCloudData(snap.data);
+    await saveCloudSnapshot(merged);
+    if(!silent) notify('Donnees cloud recuperees et fusionnees.', 'success');
+  }
+
+  async function cloudPush(silent){
+    await saveCloudSnapshot(collectLocalData());
+    if(!silent) notify('Donnees locales envoyees vers Supabase.', 'success');
+  }
+
+  async function cloudSync(){
+    const snap = await loadCloudSnapshot();
+    const merged = snap?.data ? applyCloudData(snap.data) : collectLocalData();
+    await saveCloudSnapshot(merged);
+    notify('Synchronisation cloud terminee.', 'success');
+  }
+
+  function updateCloudUi(email){
+    const panel = document.getElementById('cloud-sync-panel');
+    const status = document.getElementById('cloud-sync-status');
+    if(!panel || !status) return;
+    const last = localStorage.getItem(LOCAL_META_KEY);
+    if(email){
+      status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}`;
+      panel.classList.add('cloud-connected');
+    } else {
+      status.textContent = 'Non connecte au cloud';
+      panel.classList.remove('cloud-connected');
+    }
+  }
+
+  function installCloudUi(){
+    if(document.getElementById('cloud-sync-panel')) return;
+    document.body.insertAdjacentHTML('beforeend', `
+      <div id="cloud-sync-panel" class="cloud-sync-panel no-print">
+        <button id="cloud-sync-toggle" type="button" onclick="toggleCloudSyncPanel()">Cloud</button>
+        <div id="cloud-sync-body">
+          <div id="cloud-sync-status">Non connecte au cloud</div>
+          <input id="cloud-email" type="email" placeholder="Email Supabase">
+          <input id="cloud-password" type="password" placeholder="Mot de passe">
+          <div class="cloud-actions">
+            <button type="button" onclick="chimioproCloudLogin()">Connexion</button>
+            <button type="button" onclick="chimioproCloudSync()">Synchroniser</button>
+            <button type="button" onclick="chimioproCloudPull()">Recuperer</button>
+            <button type="button" onclick="chimioproCloudPush()">Envoyer</button>
+            <button type="button" onclick="chimioproCloudLogout()">Quitter</button>
+          </div>
+        </div>
+      </div>
+    `);
+    updateCloudUi('');
+  }
+
+  window.toggleCloudSyncPanel = function(){
+    document.getElementById('cloud-sync-panel')?.classList.toggle('open');
+  };
+
+  window.chimioproCloudLogin = async function(){
+    const email = document.getElementById('cloud-email')?.value?.trim();
+    const password = document.getElementById('cloud-password')?.value || '';
+    if(!email || !password) return alert('Renseigner email et mot de passe Supabase.');
+    try{
+      await signIn(email, password);
+      window.chimioproCloudReady = true;
+      patchLocalStorage();
+      await cloudSync();
+    } catch(e){
+      alert('Connexion cloud impossible: ' + e.message);
+    }
+  };
+
+  window.chimioproCloudLogout = async function(){
+    await signOut();
+    window.chimioproCloudReady = false;
+    notify('Deconnecte du cloud.', 'info');
+  };
+
+  window.chimioproCloudPull = async function(silent){
+    try{ await cloudPull(Boolean(silent)); }
+    catch(e){ alert('Recuperation cloud impossible: ' + e.message); }
+  };
+
+  window.chimioproCloudPush = async function(silent){
+    try{ await cloudPush(Boolean(silent)); }
+    catch(e){ if(!silent) alert('Envoi cloud impossible: ' + e.message); else throw e; }
+  };
+
+  window.chimioproCloudSync = async function(){
+    try{ await cloudSync(); }
+    catch(e){ alert('Synchronisation cloud impossible: ' + e.message); }
+  };
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    installCloudUi();
+    patchLocalStorage();
+    try{
+      const current = await session();
+      if(current){
+        window.chimioproCloudReady = true;
+        updateCloudUi(current.user.email || '');
+        await setupRealtime();
+      }
+    } catch(e){
+      console.warn('Cloud non initialise:', e.message);
+    }
+  });
+})();
