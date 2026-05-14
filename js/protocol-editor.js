@@ -3,17 +3,15 @@
 // ════════════════════════════════════════════════════════════
 
 function showAddProtocolModal() {
-  document.getElementById('add-protocol-modal').style.display = 'block';
-  document.body.style.overflow = 'hidden';
+  showAddProtocoleModal();
 }
 
 function closeAddProtocolModal() {
-  document.getElementById('add-protocol-modal').style.display = 'none';
-  document.body.style.overflow = 'auto';
-  document.getElementById('add-protocol-form').reset();
+  closeAddProtocoleModal();
   
   // Réinitialiser les champs médicaments
   const container = document.getElementById('drugs-container');
+  if(!container) return;
   container.innerHTML = `
     <div class="drug-field" style="background:#f8f9fa;padding:15px;border-radius:6px;margin-bottom:10px;">
       <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;">
@@ -52,18 +50,50 @@ function addDrugField() {
   container.appendChild(newField);
 }
 
+function protocolEditorField(root, id) {
+  return root?.querySelector('#' + id) || document.getElementById(id);
+}
+
+function protocolEditorValue(root, id) {
+  return protocolEditorField(root, id)?.value?.trim() || '';
+}
+
+function normalizeDrugForCalcul(name, unit, calc, coef) {
+  const drug = {name: name, unit: unit || 'mg', hl: true};
+  if (calc === 'sc') drug.mgm2 = coef;
+  else if (calc === 'poids') drug.mgkg = coef;
+  else drug.fix = coef;
+  return drug;
+}
+
+function saveCustomProtocolDefinition(newProtocol) {
+  const customProtocols = JSON.parse(localStorage.getItem('chncak_custom_protocols') || '[]');
+  const idx = customProtocols.findIndex(p => p.id === newProtocol.id);
+  if (idx >= 0) customProtocols[idx] = newProtocol;
+  else customProtocols.push(newProtocol);
+  localStorage.setItem('chncak_custom_protocols', JSON.stringify(customProtocols));
+}
+
+function refreshProtocolEditorList() {
+  if (typeof renderProtos === 'function') renderProtos();
+  if (typeof renderProtocols === 'function') renderProtocols();
+  if (typeof renderProtoCards === 'function') renderProtoCards();
+}
+
 function saveNewProtocol(event) {
   event.preventDefault();
+  const root = document.getElementById('add-protocol-modal');
+  if (!root) return saveNewProtocole();
   
   // Collecter les données
-  const id = document.getElementById('new-proto-id').value.trim().toLowerCase();
-  const name = document.getElementById('new-proto-name').value.trim();
-  const rythme = document.getElementById('new-proto-rythme').value;
-  const indication = document.getElementById('new-proto-indication').value.trim();
-  const detail = document.getElementById('new-proto-detail').value.trim();
-  const badgeClass = document.getElementById('new-proto-badge-class').value;
-  const pre = document.getElementById('new-proto-pre').value.trim();
-  const post = document.getElementById('new-proto-post').value.trim();
+  const id = protocolEditorValue(root, 'new-proto-id').toLowerCase();
+  const name = protocolEditorValue(root, 'new-proto-name');
+  const rythme = protocolEditorValue(root, 'new-proto-rythme');
+  const indication = protocolEditorValue(root, 'new-proto-indication');
+  const detail = protocolEditorValue(root, 'new-proto-detail');
+  const badgeClass = protocolEditorValue(root, 'new-proto-badge-class');
+  const pre = protocolEditorValue(root, 'new-proto-pre');
+  const post = protocolEditorValue(root, 'new-proto-post');
   
   // Vérifier que l'ID n'existe pas déjà
   if (PROTOCOLS.find(p => p.id === id)) {
@@ -72,7 +102,7 @@ function saveNewProtocol(event) {
   }
   
   // Collecter les médicaments
-  const drugFields = document.querySelectorAll('.drug-field');
+  const drugFields = root.querySelectorAll('.drug-field');
   const drugs = [];
   
   drugFields.forEach(field => {
@@ -82,13 +112,7 @@ function saveNewProtocol(event) {
     const calc = field.querySelector('.drug-calc').value;
     
     if (name && unit && coef) {
-      drugs.push({
-        name: name,
-        unit: unit,
-        calc: calc,
-        coef: coef,
-        base: calc === 'sc' ? 'm2' : calc === 'poids' ? 'kg' : undefined
-      });
+      drugs.push(normalizeDrugForCalcul(name, unit, calc, coef));
     }
   });
   
@@ -98,10 +122,10 @@ function saveNewProtocol(event) {
   }
   
   // Supports et post-chimio
-  const supportsText = document.getElementById('new-proto-supports').value.trim();
+  const supportsText = protocolEditorValue(root, 'new-proto-supports');
   const supports = supportsText ? supportsText.split(',').map(s => s.trim()) : [];
   
-  const postChimioText = document.getElementById('new-proto-postchimio').value.trim();
+  const postChimioText = protocolEditorValue(root, 'new-proto-postchimio');
   const postChimio = postChimioText ? postChimioText.split(',').map(s => s.trim()) : [];
   
   // Créer le protocole
@@ -125,9 +149,7 @@ function saveNewProtocol(event) {
   
   // Sauvegarder dans localStorage pour persistance
   try {
-    const customProtocols = JSON.parse(localStorage.getItem('chncak_custom_protocols') || '[]');
-    customProtocols.push(newProtocol);
-    localStorage.setItem('chncak_custom_protocols', JSON.stringify(customProtocols));
+    saveCustomProtocolDefinition(newProtocol);
   } catch(e) {
     console.error('Erreur sauvegarde:', e);
   }
@@ -136,7 +158,7 @@ function saveNewProtocol(event) {
   closeAddProtocolModal();
   
   // Rafraîchir l'affichage
-  renderProtocols();
+  refreshProtocolEditorList();
   
   // Message de succès
   alert('✅ Protocole "' + name + '" ajouté avec succès !');
@@ -164,20 +186,21 @@ window.addEventListener('DOMContentLoaded', function() {
 // ══════════════════════════════════════════════════════════════
 
 function showAddProtocoleModal() {
-  document.getElementById('add-protocole-modal').style.display = 'block';
+  const root = document.getElementById('add-protocole-modal');
+  root.style.display = 'block';
   
   // Reset form
-  document.getElementById('new-proto-id').value = '';
-  document.getElementById('new-proto-name').value = '';
-  document.getElementById('new-proto-rythme').value = 'J21';
-  document.getElementById('new-proto-badge-class').value = 'b21';
-  document.getElementById('new-proto-indication').value = '';
-  document.getElementById('new-proto-detail').value = '';
-  document.getElementById('new-proto-pre').value = '';
-  document.getElementById('new-proto-post').value = '';
-  document.getElementById('new-proto-drugs').value = '';
-  document.getElementById('new-proto-supports').value = '';
-  document.getElementById('new-proto-postchimio').value = '';
+  protocolEditorField(root, 'new-proto-id').value = '';
+  protocolEditorField(root, 'new-proto-name').value = '';
+  protocolEditorField(root, 'new-proto-rythme').value = 'J21';
+  protocolEditorField(root, 'new-proto-badge-class').value = 'b21';
+  protocolEditorField(root, 'new-proto-indication').value = '';
+  protocolEditorField(root, 'new-proto-detail').value = '';
+  protocolEditorField(root, 'new-proto-pre').value = '';
+  protocolEditorField(root, 'new-proto-post').value = '';
+  protocolEditorField(root, 'new-proto-drugs').value = '';
+  protocolEditorField(root, 'new-proto-supports').value = '';
+  protocolEditorField(root, 'new-proto-postchimio').value = '';
 }
 
 function closeAddProtocoleModal() {
@@ -185,18 +208,19 @@ function closeAddProtocoleModal() {
 }
 
 function saveNewProtocole() {
+  const root = document.getElementById('add-protocole-modal');
   // Récupérer les valeurs
-  const id = document.getElementById('new-proto-id').value.trim().toLowerCase();
-  const name = document.getElementById('new-proto-name').value.trim();
-  const rythme = document.getElementById('new-proto-rythme').value;
-  const badgeClass = document.getElementById('new-proto-badge-class').value;
-  const indication = document.getElementById('new-proto-indication').value.trim();
-  const detail = document.getElementById('new-proto-detail').value.trim();
-  const pre = document.getElementById('new-proto-pre').value.trim();
-  const post = document.getElementById('new-proto-post').value.trim();
-  const drugsText = document.getElementById('new-proto-drugs').value.trim();
-  const supportsText = document.getElementById('new-proto-supports').value.trim();
-  const postChimioText = document.getElementById('new-proto-postchimio').value.trim();
+  const id = protocolEditorValue(root, 'new-proto-id').toLowerCase();
+  const name = protocolEditorValue(root, 'new-proto-name');
+  const rythme = protocolEditorValue(root, 'new-proto-rythme');
+  const badgeClass = protocolEditorValue(root, 'new-proto-badge-class');
+  const indication = protocolEditorValue(root, 'new-proto-indication');
+  const detail = protocolEditorValue(root, 'new-proto-detail');
+  const pre = protocolEditorValue(root, 'new-proto-pre');
+  const post = protocolEditorValue(root, 'new-proto-post');
+  const drugsText = protocolEditorValue(root, 'new-proto-drugs');
+  const supportsText = protocolEditorValue(root, 'new-proto-supports');
+  const postChimioText = protocolEditorValue(root, 'new-proto-postchimio');
   
   // Validation
   if (!id || !name) {
@@ -217,6 +241,11 @@ function saveNewProtocole() {
     for (let line of lines) {
       const parts = line.split('|').map(p => p.trim());
       if (parts.length >= 4) {
+        const calc = parts[2] === 'fixe' ? 'fix' : parts[2];
+        const dose = parseFloat(parts[3]) || 0;
+        const drug = normalizeDrugForCalcul(parts[0], parts[1], calc, dose);
+        if (dose <= 0) continue;
+        /*
         const drug = {
           name: parts[0],
           unit: parts[1],
@@ -229,6 +258,7 @@ function saveNewProtocole() {
           drug.base = parts[4];
         }
         
+        */
         drugs.push(drug);
       }
     }
@@ -266,9 +296,7 @@ function saveNewProtocole() {
   
   // Sauvegarder dans localStorage
   try {
-    localStorage.setItem('chncak_custom_protocols', JSON.stringify(PROTOCOLS.filter(p => 
-      ['ec100', 'xeliri', 'herceptin', 'avastin_zometa', 'gem_avastin', id].includes(p.id)
-    )));
+    saveCustomProtocolDefinition(newProto);
   } catch(e) {
     console.log('Sauvegarde localStorage impossible');
   }
@@ -277,7 +305,7 @@ function saveNewProtocole() {
   closeAddProtocoleModal();
   
   // Recharger la liste
-  renderProtoCards();
+  refreshProtocolEditorList();
   
   // Message succès
   alert('✅ Protocole "' + name + '" ajouté avec succès !\n\nVous pouvez maintenant le sélectionner dans la liste.');

@@ -954,7 +954,7 @@
         };
         const dose = Number(firstValue(row.dose, row.Dose));
         if(calc === 'sc') drug.mgm2 = dose;
-        else if(calc === 'poids') drug.fix = dose ? `${dose} mg/kg` : '';
+        else if(calc === 'poids') drug.mgkg = dose;
         else if(calc === 'fixe' || calc === 'fix') drug.fix = dose || firstValue(row.dose, row.Dose);
         else drug.mgm2 = dose;
         if(drug.name) grouped[id].drugs.push(drug);

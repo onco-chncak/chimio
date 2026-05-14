@@ -1,0 +1,60 @@
+{
+  "name": "chimiopro",
+  "version": "1.0.0",
+  "description": "Logiciel de gestion des protocoles de chimiothérapie - CHNCAK Touba",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build:installer": "electron-builder --win nsis --x64"
+  },
+  "build": {
+    "appId": "com.chncak.chimiopro",
+    "productName": "ChimioPro",
+    "copyright": "© 2024 CHNCAK Touba",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron-main.js",
+      "index.html",
+      "css/**",
+      "js/**",
+      "assets/**",
+      "*.xls",
+      "*.xlsx"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ChimioPro",
+      "installerHeaderBitmap": null,
+      "uninstallDisplayName": "ChimioPro"
+    },
+    "portable": {
+      "artifactName": "ChimioPro-Portable-${version}.exe"
+    }
+  },
+  "keywords": ["chimiothérapie", "oncologie", "pharmacie", "hôpital"],
+  "author": "CHNCAK Touba",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.0.0"
+  }
+}

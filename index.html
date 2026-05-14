@@ -6,6 +6,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0A3D7A">
 <title>ChimioPro — CHNCAK Touba</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/icon.svg">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ChimioPro">
 <link rel="stylesheet" href="css/styles.css">
 <!-- SheetJS for Excel import -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -1016,147 +1022,6 @@
 
 <iframe id="print-frame" style="display:none;position:fixed;left:-9999px;top:0;width:0;height:0;border:none"></iframe>
 
-<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-<!-- MODAL AJOUTER PROTOCOLE -->
-<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-
-<div id="add-protocol-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10001;overflow-y:auto;padding:20px;">
-  <div style="max-width:800px;margin:20px auto;background:white;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
-    
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,#0B5E3C,#16a085);color:white;padding:20px;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center;">
-      <h2 style="margin:0;font-size:20px;">+ Ajouter un nouveau protocole</h2>
-      <button onclick="closeAddProtocolModal()" style="background:none;border:none;color:white;font-size:24px;cursor:pointer;padding:0;width:32px;height:32px;">&times;</button>
-    </div>
-    
-    <!-- Formulaire -->
-    <form id="add-protocol-form" onsubmit="saveNewProtocol(event)" style="padding:30px;">
-      
-      <!-- Informations générales -->
-      <div style="margin-bottom:30px;">
-        <h3 style="color:#0B5E3C;margin:0 0 20px 0;font-size:16px;border-bottom:2px solid #0B5E3C;padding-bottom:8px;">Informations générales</h3>
-        
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:15px;">
-          <div>
-            <label style="display:block;font-weight:600;margin-bottom:6px;font-size:13px;">Nom du protocole *</label>
-            <input id="new-proto-name" type="text" required placeholder="Ex: FOLFOX4"
-                   style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;">
-          </div>
-          
-          <div>
-            <label style="display:block;font-weight:600;margin-bottom:6px;font-size:13px;">ID (unique) *</label>
-            <input id="new-proto-id" type="text" required placeholder="Ex: folfox4" pattern="[a-z0-9_]+"
-                   style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;">
-            <small style="color:#666;font-size:11px;">Minuscules, chiffres et _ uniquement</small>
-          </div>
-        </div>
-        
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:15px;">
-          <div>
-            <label style="display:block;font-weight:600;margin-bottom:6px;font-size:13px;">Rythme *</label>
-            <select id="new-proto-rythme" required style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
-              <option value="">-- Choisir --</option>
-              <option value="J7">J7 (hebdomadaire)</option>
-              <option value="J14">J14 (bi-hebdomadaire)</option>
-              <option value="J21">J21 (tri-hebdomadaire)</option>
-              <option value="J28">J28 (mensuel)</option>
-            </select>
-          </div>
-          
-          <div>
-            <label style="display:block;font-weight:600;margin-bottom:6px;font-size:13px;">Badge</label>
-            <select id="new-proto-badge-class" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
-              <option value="b7">J7 (vert)</option>
-              <option value="b14">J14 (bleu)</option>
-              <option value="b21" selected>J21 (orange)</option>
-              <option value="b28">J28 (violet)</option>
-            </select>
-          </div>
-        </div>
-        
-        <div style="margin-bottom:15px;">
-          <label style="display:block;font-weight:600;margin-bottom:6px;font-size:13px;">Indication *</label>
-          <input id="new-proto-indication" type="text" required placeholder="Ex: Cancer colorectal métastatique"
-                 style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;">
-        </div>
-        
-        <div style="margin-bottom:15px;">
-          <label style="display:block;font-weight:600;margin-bottom:6px;font-size:13px;">Détail du protocole *</label>
-          <textarea id="new-proto-detail" required placeholder="Ex: 5-FU 400mg/m² bolus J1 + 5-FU 2400mg/m² perfusion 46h"
-                    style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-height:60px;box-sizing:border-box;"></textarea>
-        </div>
-        
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-          <div>
-            <label style="display:block;font-weight:600;margin-bottom:6px;font-size:13px;">Bilan pré-chimio</label>
-            <input id="new-proto-pre" type="text" placeholder="Ex: NFS, créatinine, ECG"
-                   style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;">
-          </div>
-          
-          <div>
-            <label style="display:block;font-weight:600;margin-bottom:6px;font-size:13px;">Consignes post-chimio</label>
-            <input id="new-proto-post" type="text" placeholder="Ex: Hydratation, surveillance"
-                   style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;">
-          </div>
-        </div>
-      </div>
-      
-      <!-- Médicaments -->
-      <div style="margin-bottom:30px;">
-        <h3 style="color:#0B5E3C;margin:0 0 15px 0;font-size:16px;border-bottom:2px solid #0B5E3C;padding-bottom:8px;">
-          Médicaments
-          <button type="button" onclick="addDrugField()" style="float:right;background:#E4F5ED;border:1px solid #0B5E3C;color:#0B5E3C;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;">+ Ajouter</button>
-        </h3>
-        
-        <div id="drugs-container">
-          <div class="drug-field" style="background:#f8f9fa;padding:15px;border-radius:6px;margin-bottom:10px;">
-            <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;">
-              <input type="text" placeholder="Nom (ex: 5-FU 250mg)" class="drug-name" style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:12px;">
-              <input type="text" placeholder="Unité (mg)" class="drug-unit" style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:12px;">
-              <input type="number" placeholder="Dose" class="drug-coef" style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:12px;">
-              <select class="drug-calc" style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:12px;">
-                <option value="sc">Surface (m²)</option>
-                <option value="poids">Poids (kg)</option>
-                <option value="fix">Fixe</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Support et Post-chimio -->
-      <div style="margin-bottom:30px;">
-        <h3 style="color:#0B5E3C;margin:0 0 15px 0;font-size:16px;border-bottom:2px solid #0B5E3C;padding-bottom:8px;">Médication de support</h3>
-        
-        <div style="margin-bottom:15px;">
-          <label style="display:block;font-weight:600;margin-bottom:6px;font-size:13px;">Support (perfusion)</label>
-          <input id="new-proto-supports" type="text" placeholder="Ex: ONDANSETRON 8MG, DEXAMETHASONE 20MG (séparés par des virgules)"
-                 style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;">
-        </div>
-        
-        <div>
-          <label style="display:block;font-weight:600;margin-bottom:6px;font-size:13px;">Post-chimio (à emporter)</label>
-          <input id="new-proto-postchimio" type="text" placeholder="Ex: BETAMETHASONE-GH 2MG, NEUFER SIROP (séparés par des virgules)"
-                 style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;">
-        </div>
-      </div>
-      
-      <!-- Boutons -->
-      <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:20px;border-top:1px solid #eee;">
-        <button type="button" onclick="closeAddProtocolModal()" 
-                style="background:#f5f5f5;border:1px solid #ddd;padding:10px 24px;border-radius:6px;cursor:pointer;font-size:14px;">
-          Annuler
-        </button>
-        <button type="submit" 
-                style="background:#0B5E3C;color:white;border:none;padding:10px 24px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">
-          💾 Enregistrer le protocole
-        </button>
-      </div>
-      
-    </form>
-  </div>
-</div>
-
 <!-- MODAL AJOUTER PROTOCOLE -->
 <div id="add-protocole-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;overflow-y:auto">
   <div style="max-width:800px;margin:40px auto;background:white;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3)">
@@ -1275,6 +1140,15 @@ NaCl 0.9% 250ml | ml | fix | 250"
 <script src="js/protocol-editor.js"></script>
 <script src="js/app-polish.js"></script>
 <script src="js/requested-improvements.js"></script>
+<script src="js/final-improvements.js?v=20260514d"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .catch(err => console.warn('Service worker non enregistré:', err));
+    });
+  }
+</script>
 <footer class="app-copyright no-print">Copyright SMSG 2026 - Serigne Mor Samb Gueye, biologiste spécialisé en génétique des populations - smsgueye@gmail.com</footer>
 </body>
 </html>

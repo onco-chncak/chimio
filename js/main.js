@@ -593,6 +593,10 @@ function getDose(d){
   } else if(d.fix!==undefined){
     doseTxt = typeof d.fix==='number'? d.fix+' '+(d.unit||'') : d.fix;
     val = typeof d.fix==='number'? d.fix : null;
+  } else if(d.mgkg){
+    val = Math.round(Number(d.mgkg) * poids);
+    doseTxt = val+' '+(d.unit||'mg');
+    extra = {calc:true};
   } else if(d.carbo){
     val = carboDose>0 ? carboDose : Math.round(5*(poids*0.8+25));
     doseTxt = val+' mg';
