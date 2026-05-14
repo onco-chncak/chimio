@@ -30,6 +30,12 @@
   const patientName = p => `${val(p?.prenom)} ${val(p?.nom)}`.trim() || val(p?.patientName, p?.patient, p?.name);
   const patientCode = p => val(p?.codegratuite, p?.codeGratuite, p?.code, p?.dossier, p?.id);
   const todayIso = () => new Date().toISOString().slice(0, 10);
+  const protocolNameFor = p => {
+    const protoId = val(p?.protoId, p?.protocolId, p?.protocoleId);
+    const direct = val(p?.protocole, p?.proto, p?.protoName, p?.protocol, p?.protocolName, p?.chimio, p?.chimiotherapie);
+    if(direct) return direct;
+    return val((window.PROTOCOLS || []).find(proto => proto.id === protoId)?.name, '-');
+  };
 
   function requireCode(message){
     const code = prompt(message || 'Code de confirmation a 4 chiffres :');
@@ -337,6 +343,9 @@
     const chartRows = Object.entries(meds).sort((a,b) => b[1].preparations - a[1].preparations).slice(0, 10).map(([name, d]) => `<div class="stats-bar-row"><span>${esc(name)}</span><div><i style="width:${Math.max(5, Math.round(d.preparations / maxPrep * 100))}%"></i></div><strong>${d.preparations}</strong></div>`).join('');
     const preparations = sorties.length || hist.length;
     const seances = rdv.filter(r => norm(r.status || r.statut).includes('traite') || r.validatedAt).length || ok.filter(o => norm(o.statut).includes('valid')).length || hist.length;
+    const totalDose = Object.values(meds).reduce((sum, item) => sum + Number(item.dose || 0), 0);
+    const totalWaste = Object.values(meds).reduce((sum, item) => sum + Number(item.wasteMg || 0), 0);
+    const totalFlacons = Object.values(meds).reduce((sum, item) => sum + Number(item.flacons || 0), 0);
     host.innerHTML = `
       <div class="clinical-shell stats-full">
         <div class="stats-summary-grid">
@@ -344,7 +353,12 @@
           <div class="stats-box"><h3>Preparations</h3><p>${preparations}</p></div>
           <div class="stats-box"><h3>Seances chimio</h3><p>${seances}</p></div>
           <div class="stats-box"><h3>Protocoles sauvegardes</h3><p>${hist.length}</p></div>
+          <div class="stats-box"><h3>Medicaments distincts</h3><p>${Object.keys(meds).length}</p></div>
+          <div class="stats-box"><h3>Dose totale utilisee</h3><p>${Math.round(totalDose).toLocaleString('fr-FR')}</p><small>mg</small></div>
+          <div class="stats-box"><h3>Dose totale jetee</h3><p>${Math.round(totalWaste).toLocaleString('fr-FR')}</p><small>mg</small></div>
+          <div class="stats-box"><h3>Flacons utilises</h3><p>${totalFlacons}</p></div>
         </div>
+        <div class="stats-final-note">Statistiques issues des preparations validees, sorties de stock, OK Chimio et anciennes sauvegardes disponibles.</div>
         <div class="card stats-section-card"><div class="card-header"><h2>Graphique medicaments</h2></div><div class="card-body">${chartRows || '<div class="dash-empty">Aucune donnee medicament.</div>'}</div></div>
         <div class="card stats-section-card"><div class="card-header"><h2>Medicaments utilises</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Preparations</th><th>Seances</th><th>Dose totale utilisee</th><th>Dose totale jetee</th><th>Reliquat flacons</th><th>Flacons utilises</th></tr></thead><tbody>${medRows || '<tr><td colspan="7" class="dash-empty">Aucune sortie de stock validee.</td></tr>'}</tbody></table></div></div>
         <div class="clinical-report-grid">
@@ -364,6 +378,96 @@
       <style>@page{size:A4;margin:9mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:9px;color:#111}.print-head{display:grid;grid-template-columns:52px 1fr 135px;gap:8px;align-items:start;border-bottom:2px solid #0A3D7A;padding-bottom:5px;margin-bottom:8px}.print-head img{width:48px;height:48px;object-fit:contain}.ministry{font-size:7px;line-height:1.08}.right{text-align:right;font-size:8px;line-height:1.2}.stats-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}.stats-box{border:1px solid #b7c7dd;padding:6px;border-radius:4px}.stats-box h3{font-size:8px;margin:0;color:#0A3D7A}.stats-box p{font-size:18px;margin:2px 0 0;font-weight:bold}.card{border:1px solid #d6dce5;margin-top:8px;border-radius:4px}.card-header{background:#eef4fd;padding:5px 7px}.card-header h2{font-size:10px;margin:0}.card-body{padding:6px}.dash-table{width:100%;border-collapse:collapse}.dash-table th{background:#0A3D7A;color:#fff}.dash-table th,.dash-table td{border:1px solid #cad3df;padding:3px 4px;font-size:7.5px}.clinical-report-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.stats-bar-row{display:grid;grid-template-columns:1.4fr 3fr 28px;gap:6px;align-items:center;margin:4px 0;font-size:7.5px}.stats-bar-row div{height:8px;background:#e9eef5;border-radius:2px}.stats-bar-row i{display:block;height:100%;background:#0A3D7A}.no-print,button,input,select{display:none!important}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
     </head><body><div class="print-head"><img src="${logo}"><div class="ministry">Republique du Senegal - Un peuple, un but, une foi<br>Ministere de la Sante et de l'Action Sociale<br><b>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba</b><br><b>Service d'Oncologie-Radiotherapie</b></div><div class="right">Statistiques ChimioPro<br>${new Date().toLocaleDateString('fr-FR')}</div></div>${content}</body></html>`;
     printHtml(html);
+  };
+
+  function renderSuiviFinal(){
+    if(typeof nativeRenderSuiviFinal === 'function') nativeRenderSuiviFinal();
+    const table = document.querySelector('#suivi-content .suivi-table tbody');
+    if(!table) return;
+    const patients = readJson(STORAGE.patients, []);
+    Array.from(table.querySelectorAll('tr')).forEach((row, index) => {
+      const patient = patients[index];
+      const cells = row.querySelectorAll('td');
+      if(patient && cells[13]) cells[13].textContent = protocolNameFor(patient);
+      if(patient && cells[18] && cells[13]?.textContent.trim() === '-') cells[18].innerHTML = '<span class="clinical-pill warn">Protocole absent</span>';
+    });
+  }
+
+  const nativeRenderSuiviFinal = window.renderSuivi;
+  window.renderSuivi = renderSuiviFinal;
+
+  window.renderDashboard = function(){
+    const el = document.getElementById('dashboard-content');
+    if(!el) return;
+    const patients = readJson(STORAGE.patients, []);
+    const rdv = readJson(STORAGE.rdv, readJson('rdv', []));
+    const hist = readJson(STORAGE.historique, readJson('historique', []));
+    const ok = readJson(STORAGE.okchimio, readJson('chncak_okchimio', []));
+    const suivi = readJson(STORAGE.suivi, readJson('suivi', []));
+    const bio = readJson(STORAGE.biologie, readJson('biologie', []));
+    const catalog = readJson(STORAGE.catalog, []);
+    const responsables = readJson('chncak_responsables', {});
+    const teamPhoto = localStorage.getItem('chncak_dashboard_team_photo') || '';
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const weekEnd = new Date(today);
+    weekEnd.setDate(today.getDate() + 7);
+    const upcoming = rdv
+      .map(r => ({...r, _date:new Date(val(r.dateRdv, r.date) + 'T00:00:00')}))
+      .filter(r => !isNaN(r._date) && r._date >= today && r._date <= weekEnd)
+      .sort((a,b) => a._date - b._date);
+    const normStatus = value => norm(value);
+    const active = patients.filter(p => !['termine','traite','archive','decede'].includes(normStatus(p.statut))).length;
+    const treated = rdv.filter(r => normStatus(val(r.status, r.statut)).includes('traite') || r.validatedAt).length;
+    const lowStock = catalog.filter(item => Number(val(item.qteStock, item.stock, item.quantite, 0)) <= 5).length;
+    const countBy = (items, fn) => items.reduce((acc, item) => {
+      const key = val(fn(item), 'Non renseigne');
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    const miniRows = data => Object.entries(data).sort((a,b) => b[1] - a[1]).slice(0, 6)
+      .map(([name, count]) => `<div class="dash-line"><span>${esc(name)}</span><strong>${count}</strong></div>`).join('') ||
+      '<div class="dash-empty">Aucune donnee.</div>';
+    const rdvRows = upcoming.slice(0, 8).map(r => `
+      <tr>
+        <td>${esc(r._date.toLocaleDateString('fr-FR'))}</td>
+        <td><strong>${esc(patientName(r))}</strong><div class="dash-muted">${esc(val(r.dossier, r.codegratuite, '-'))}</div></td>
+        <td>${esc(protocolNameFor(r))}</td>
+        <td>${esc(val(r.medecin, '-'))}</td>
+        <td><span class="dash-status ${normStatus(val(r.status, r.statut)).includes('traite') ? 'ok' : ''}">${esc(val(r.status, r.statut, 'planifie'))}</span></td>
+      </tr>`).join('');
+    el.innerHTML = `
+      <div class="dashboard-shell dash-final">
+        <div class="dash-final-hero">
+          <div class="dash-final-title">
+            <img src="${document.querySelector('.nav-logo img')?.src || ''}" alt="CHNCAK">
+            <div>
+              <span>Centre Hospitalier National Cheikh Ahmadoul Khadim</span>
+              <h2>Tableau de bord ChimioPro</h2>
+              <p>Vue de pilotage du service : activité, rendez-vous, protocoles, suivi, biologie et pharmacie centrale.</p>
+            </div>
+          </div>
+          <div class="dashboard-team-panel dash-final-photo">
+            ${teamPhoto ? `<img src="${teamPhoto}" alt="Equipe CHNCAK">` : '<div class="dashboard-team-empty">Photo de l equipe</div>'}
+            <label class="dashboard-photo-btn" title="Changer la photo">Photo<input type="file" accept="image/*" onchange="handleDashboardTeamPhoto(this)"></label>
+          </div>
+        </div>
+        <div class="dash-final-grid">
+          <div class="dash-final-kpi"><span>Patients</span><strong>${patients.length}</strong><em>${active} en cours</em></div>
+          <div class="dash-final-kpi"><span>RDV 7 jours</span><strong>${upcoming.length}</strong><em>${treated} traites</em></div>
+          <div class="dash-final-kpi"><span>Protocoles</span><strong>${hist.length}</strong><em>${ok.length} OK Chimio</em></div>
+          <div class="dash-final-kpi"><span>Suivi & bio</span><strong>${suivi.length + bio.length}</strong><em>${suivi.length} suivi, ${bio.length} bio</em></div>
+          <div class="dash-final-kpi ${lowStock ? 'warn' : ''}"><span>Stock bas</span><strong>${lowStock}</strong><em>seuil <= 5 flacons</em></div>
+        </div>
+        <div class="dash-final-main">
+          <div class="card"><div class="card-header"><h2>Rendez-vous prochains</h2><button class="btn-secondary" onclick="renderDashboard()">Actualiser</button></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Protocole</th><th>Medecin</th><th>Statut</th></tr></thead><tbody>${rdvRows || '<tr><td colspan="5" class="dash-empty">Aucun rendez-vous dans les 7 prochains jours.</td></tr>'}</tbody></table></div></div>
+          <div class="dash-final-side">
+            <div class="card"><div class="card-header"><h2>Protocoles utilises</h2></div><div class="card-body">${miniRows(countBy([...patients, ...hist], p => protocolNameFor(p)))}</div></div>
+            <div class="card"><div class="card-header"><h2>Diagnostics</h2></div><div class="card-body">${miniRows(countBy(patients, p => val(p.localisation, p.diagnostic, p.localisations)))}</div></div>
+          </div>
+        </div>
+        <div class="dash-final-resp">Salle chimio : <b>${esc(val(responsables.chimio, '-'))}</b> · Preparation : <b>${esc(val(responsables.preparation, '-'))}</b> · Pharmacie : <b>${esc(val(responsables.pharmacie, '-'))}</b></div>
+      </div>`;
   };
 
   window.traiterRdvStandalone = function(id){
@@ -655,7 +759,10 @@
     const reader = new FileReader();
     reader.onload = event => {
       localStorage.setItem('chncak_dashboard_team_photo', event.target.result);
+      const img = document.querySelector('.dashboard-team-panel img');
+      if(img) img.src = event.target.result;
       window.renderDashboard?.();
+      setTimeout(() => window.renderDashboard?.(), 80);
     };
     reader.readAsDataURL(file);
     input.value = '';
@@ -994,9 +1101,9 @@
     if(id === 'stats') setTimeout(renderStatsFinal, 20);
     if(id === 'patients') setTimeout(() => { cleanupLoginAndButtons(); renderPatientsListFinal(); }, 20);
     if(id === 'apercu') setTimeout(installApercuSearch, 20);
-    if(id === 'suivi') setTimeout(cleanupLoginAndButtons, 80);
+    if(id === 'suivi') setTimeout(() => { renderSuiviFinal(); cleanupLoginAndButtons(); }, 80);
     if(id === 'programme') setTimeout(cleanupLoginAndButtons, 20);
-    if(id === 'dashboard') setTimeout(cleanupLoginAndButtons, 20);
+    if(id === 'dashboard') setTimeout(() => { window.renderDashboard?.(); cleanupLoginAndButtons(); }, 20);
     if(id === 'support') {
       setTimeout(cleanupLoginAndButtons, 20);
       setTimeout(removeSupportChangeIdea, 120);
@@ -1023,10 +1130,30 @@
       .dashboard-photo-btn{opacity:.28!important;padding:5px 8px!important;font-size:10px!important}
       .dashboard-team-panel:hover .dashboard-photo-btn{opacity:.9!important}
       .dash-card{border-left:3px solid var(--blue);box-shadow:0 8px 20px rgba(10,61,122,.08)}
+      .dash-final{display:flex;flex-direction:column;gap:14px}
+      .dash-final-hero{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(240px,.8fr);gap:14px;align-items:stretch;background:#fff;border:1px solid #dbe5f2;border-radius:8px;padding:14px;box-shadow:0 10px 24px rgba(10,61,122,.08)}
+      .dash-final-title{display:flex;gap:14px;align-items:center}
+      .dash-final-title img{width:58px;height:58px;object-fit:contain;border:1px solid #dbe5f2;border-radius:8px;padding:5px;background:#f8fbff}
+      .dash-final-title span{display:block;font-size:11px;color:#0A3D7A;font-weight:700;text-transform:uppercase}
+      .dash-final-title h2{margin:2px 0;font-size:24px;color:#17324d;letter-spacing:0}
+      .dash-final-title p{margin:0;color:#607080;font-size:13px;line-height:1.45;max-width:680px}
+      .dash-final-photo{min-height:132px;border-radius:8px;overflow:hidden;background:#eef4fd;border:1px solid #dbe5f2;position:relative}
+      .dash-final-photo img{width:100%;height:100%;min-height:132px;object-fit:cover;display:block}
+      .dash-final-grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px}
+      .dash-final-kpi{background:#fff;border:1px solid #dbe5f2;border-radius:8px;padding:12px;box-shadow:0 8px 18px rgba(10,61,122,.06)}
+      .dash-final-kpi span{display:block;font-size:11px;color:#607080;text-transform:uppercase;font-weight:700}
+      .dash-final-kpi strong{display:block;font-size:25px;color:#0A3D7A;margin-top:5px}
+      .dash-final-kpi em{display:block;font-size:11px;color:#607080;font-style:normal;margin-top:3px}
+      .dash-final-kpi.warn strong{color:#C0392B}
+      .dash-final-main{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,.8fr);gap:12px}
+      .dash-final-side{display:flex;flex-direction:column;gap:12px}
+      .dash-final-resp{background:#f8fbff;border:1px solid #dbe5f2;border-radius:8px;padding:10px 12px;font-size:12px;color:#405064}
+      .stats-final-note{background:#eef4fd;border:1px solid #c8d8ef;color:#0A3D7A;border-radius:8px;padding:10px 12px;font-size:12px;margin:10px 0}
       .stats-bar-row{display:grid;grid-template-columns:minmax(120px,1fr) 3fr 42px;gap:10px;align-items:center;margin:8px 0;font-size:12px}
       .stats-bar-row div{height:12px;background:#eef2f6;border-radius:4px;overflow:hidden}
       .stats-bar-row i{display:block;height:100%;background:#0A3D7A}
       #logout-btn-forced{top:10px!important;right:10px!important;padding:8px 12px!important;font-size:12px!important}
+      @media (max-width:900px){.dash-final-hero,.dash-final-main{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}}
       @media print{.protocol-print-fit{font-size:7px!important}.protocol-print-fit *{line-height:1!important}.protocol-print-fit table:first-child *{font-size:5.8px!important;line-height:.95!important}}
     `;
     document.head.appendChild(style);
