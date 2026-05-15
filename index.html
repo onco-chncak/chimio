@@ -608,7 +608,7 @@
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
 
-        <button id="prep-print-btn" onclick="printPreparation()" disabled
+        <button id="prep-print-btn" onclick="(window.printPreparationFinal || window.printPreparation)()" disabled
           style="padding:10px 18px;background:var(--blue);color:white;border:none;border-radius:var(--radius);font-size:13px;font-weight:600;cursor:not-allowed;display:flex;align-items:center;gap:8px;opacity:0.5;transition:all 0.2s">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
           Imprimer fiche
@@ -1145,7 +1145,7 @@ NaCl 0.9% 250ml | ml | fix | 250"
 <script src="js/protocol-editor.js"></script>
 <script src="js/app-polish.js"></script>
 <script src="js/requested-improvements.js"></script>
-<script src="js/final-improvements.js?v=20260514i"></script>
+<script src="js/final-improvements.js?v=20260515a"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

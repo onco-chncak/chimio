@@ -235,8 +235,22 @@
     printHtml(fullDoc);
   };
 
-  window.printPreparation = function(){
-    const proto = (window.PROTOCOLS || []).find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
+  function resolvePreparationProtocol(){
+    const protocols = window.PROTOCOLS || [];
+    const currentId = typeof selId !== 'undefined' ? selId : '';
+    let proto = protocols.find(p => p.id === currentId);
+    if(proto) return proto;
+    const selectedCard = document.querySelector('.proto-card.selected');
+    const cardName = selectedCard?.querySelector('.pname')?.textContent || '';
+    proto = protocols.find(p => norm(p.name) === norm(cardName));
+    if(proto) return proto;
+    const subtitleName = (document.getElementById('prep-subtitle')?.textContent || '').split('—')[0].trim();
+    proto = protocols.find(p => norm(p.name) === norm(subtitleName));
+    return proto || null;
+  }
+
+  window.printPreparationFinal = function(){
+    const proto = resolvePreparationProtocol();
     const patient = {
       prenom: document.getElementById('prenom')?.value || '',
       nom: document.getElementById('nom')?.value || '',
@@ -251,6 +265,7 @@
     const localSc = Number(typeof sc !== 'undefined' && sc > 0 ? sc : (Number(patient.poids) && Number(patient.taille) ? Math.sqrt((Number(patient.poids) * Number(patient.taille)) / 3600) : 0));
     if(!proto) return alert('Selectionner un protocole avant impression.');
     if(!localSc) return alert('Renseigner poids et taille avant impression de la fiche.');
+    if(typeof selId !== 'undefined' && !selId) selId = proto.id;
     if(typeof calcSC === 'function') calcSC();
     let n = 0;
     const rows = (proto.drugs || []).map(d => {
@@ -283,11 +298,12 @@
     </body></html>`;
     printHtml(html);
   };
+  window.printPreparation = window.printPreparationFinal;
 
   function ensurePreparationPrintReady(){
     const btn = document.getElementById('prep-print-btn');
     if(!btn) return;
-    const proto = (window.PROTOCOLS || []).find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
+    const proto = resolvePreparationProtocol();
     const poids = Number(document.getElementById('poids')?.value || 0);
     const taille = Number(document.getElementById('taille')?.value || 0);
     const localSc = Number(typeof sc !== 'undefined' && sc > 0 ? sc : (poids && taille ? Math.sqrt((poids * taille) / 3600) : 0));
