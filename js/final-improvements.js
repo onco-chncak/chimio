@@ -34,9 +34,17 @@
     try {
       if(Array.isArray(PROTOCOLS)){
         window.PROTOCOLS = PROTOCOLS;
+        for(let i = PROTOCOLS.length - 1; i >= 0; i--){
+          if(!PROTOCOLS[i]) PROTOCOLS.splice(i, 1);
+        }
         return PROTOCOLS;
       }
     } catch(e){}
+    if(Array.isArray(window.PROTOCOLS)){
+      for(let i = window.PROTOCOLS.length - 1; i >= 0; i--){
+        if(!window.PROTOCOLS[i]) window.PROTOCOLS.splice(i, 1);
+      }
+    }
     return Array.isArray(window.PROTOCOLS) ? window.PROTOCOLS : [];
   }
   const protocolNameFor = p => {
@@ -128,20 +136,50 @@
     });
   }
 
-  function requireCode(message){
-    const code = prompt(message || 'Code de confirmation a 4 chiffres :');
-    if(code === null) return false;
-    if(code !== CODE_ADMIN){
-      alert('Code incorrect. Action annulee.');
-      return false;
-    }
-    return true;
+  function askAdminCode(actionLabel, onOk){
+    document.getElementById('secure-code-modal')?.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'secure-code-modal';
+    wrap.innerHTML = `
+      <div class="secure-code-backdrop"></div>
+      <div class="secure-code-card" role="dialog" aria-modal="true">
+        <h3>Code d'acces requis</h3>
+        <p>${esc(actionLabel || 'Confirmer cette action')}</p>
+        <input id="secure-code-input" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="****">
+        <div class="secure-code-error" id="secure-code-error"></div>
+        <div class="secure-code-actions">
+          <button type="button" id="secure-code-cancel">Annuler</button>
+          <button type="button" id="secure-code-confirm">Confirmer</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    const input = document.getElementById('secure-code-input');
+    const confirmBtn = document.getElementById('secure-code-confirm');
+    const cancelBtn = document.getElementById('secure-code-cancel');
+    const error = document.getElementById('secure-code-error');
+    const submit = () => {
+      if(input.value !== CODE_ADMIN){
+        error.textContent = 'Code incorrect. Action annulee.';
+        input.value = '';
+        input.focus();
+        return;
+      }
+      if(!confirm(`Confirmer definitivement : ${actionLabel} ?`)) return;
+      close();
+      if(typeof onOk === 'function') onOk();
+    };
+    confirmBtn.addEventListener('click', submit);
+    cancelBtn.addEventListener('click', close);
+    input.addEventListener('keydown', event => {
+      if(event.key === 'Enter') submit();
+      if(event.key === 'Escape') close();
+    });
+    setTimeout(() => input.focus(), 30);
   }
 
-  function doubleConfirm(actionLabel){
-    if(!requireCode(`Code a 4 chiffres requis pour ${actionLabel} :`)) return false;
-    return confirm(`Confirmer definitivement : ${actionLabel} ?`);
-  }
+  window.askAdminCode = askAdminCode;
 
   function showToastSafe(message, type){
     if(typeof showToast === 'function') showToast(message, type || 'info');
@@ -796,37 +834,41 @@
   };
 
   window.clearClinicalModuleData = function(module){
-    if(!doubleConfirm(`effacer l'historique ${module}`)) return;
-    if(module === 'suivi'){ localStorage.removeItem(STORAGE.suivi); localStorage.removeItem('suivi'); window.renderSuivi?.(); }
-    if(module === 'biologie'){ localStorage.removeItem(STORAGE.biologie); localStorage.removeItem('biologie'); window.renderBiologie?.(); }
+    askAdminCode(`effacer l'historique ${module}`, () => {
+      if(module === 'suivi'){ localStorage.removeItem(STORAGE.suivi); localStorage.removeItem('suivi'); window.renderSuivi?.(); }
+      if(module === 'biologie'){ localStorage.removeItem(STORAGE.biologie); localStorage.removeItem('biologie'); window.renderBiologie?.(); }
+    });
   };
 
   const nativeImportAllData = window.importAllData;
   if(!nativeImportAllData?.requiresAccessCode){
     window.importAllData = function(file){
       if(!file) return;
-      if(!doubleConfirm('restaurer une sauvegarde')) return;
-      if(typeof nativeImportAllData === 'function') return nativeImportAllData(file);
+      askAdminCode('restaurer une sauvegarde', () => {
+        if(typeof nativeImportAllData === 'function') nativeImportAllData(file);
+      });
     };
   }
 
   window.clearHistory = function(){
-    if(!doubleConfirm("effacer l'historique")) return;
-    localStorage.removeItem(STORAGE.historique);
-    if(typeof historique !== 'undefined') try { historique = []; } catch(e) {}
-    window.renderStats?.();
-    if(typeof renderHistory === 'function') renderHistory();
+    askAdminCode("effacer l'historique", () => {
+      localStorage.removeItem(STORAGE.historique);
+      if(typeof historique !== 'undefined') try { historique = []; } catch(e) {}
+      window.renderStats?.();
+      if(typeof renderHistory === 'function') renderHistory();
+    });
   };
 
   window.clearAllHistory = function(){
-    if(!doubleConfirm("effacer tout l'historique")) return;
-    localStorage.removeItem(STORAGE.historique);
-    localStorage.removeItem(STORAGE.sorties);
-    localStorage.removeItem(STORAGE.okchimio);
-    if(typeof historique !== 'undefined') try { historique = []; } catch(e) {}
-    window.renderStats?.();
-    if(typeof renderHistory === 'function') renderHistory();
-    window.renderOkChimio?.();
+    askAdminCode("effacer tout l'historique", () => {
+      localStorage.removeItem(STORAGE.historique);
+      localStorage.removeItem(STORAGE.sorties);
+      localStorage.removeItem(STORAGE.okchimio);
+      if(typeof historique !== 'undefined') try { historique = []; } catch(e) {}
+      window.renderStats?.();
+      if(typeof renderHistory === 'function') renderHistory();
+      window.renderOkChimio?.();
+    });
   };
 
   function syncCatalogGlobal(list){
@@ -869,31 +911,33 @@
   };
 
   window.clearDay = function(){
-    if(!doubleConfirm('effacer le jour du programme')) return;
-    const semaine = document.getElementById('prog-semaine')?.value;
-    if(!semaine) return;
-    const data = readJson('chncak_programme', {});
-    const active = document.querySelector('#page-programme .prog-day-btn.active');
-    const day = Number((active?.id || 'day-btn-0').replace('day-btn-', '')) || 0;
-    if(data[semaine]) data[semaine][day] = [];
-    writeJson('chncak_programme', data);
-    window.renderProgramme?.();
+    askAdminCode('effacer le jour du programme', () => {
+      const semaine = document.getElementById('prog-semaine')?.value;
+      if(!semaine) return;
+      const data = readJson('chncak_programme', {});
+      const active = document.querySelector('#page-programme .prog-day-btn.active');
+      const day = Number((active?.id || 'day-btn-0').replace('day-btn-', '')) || 0;
+      if(data[semaine]) data[semaine][day] = [];
+      writeJson('chncak_programme', data);
+      window.renderProgramme?.();
+    });
   };
 
   window.handleDashboardTeamPhoto = function(input){
     const file = input.files?.[0];
     if(!file) return;
-    if(!doubleConfirm('changer la photo de l equipe')){ input.value = ''; return; }
-    const reader = new FileReader();
-    reader.onload = event => {
-      localStorage.setItem('chncak_dashboard_team_photo', event.target.result);
-      const img = document.querySelector('.dashboard-team-panel img');
-      if(img) img.src = event.target.result;
-      window.renderDashboard?.();
-      setTimeout(() => window.renderDashboard?.(), 80);
-    };
-    reader.readAsDataURL(file);
-    input.value = '';
+    askAdminCode('changer la photo de l equipe', () => {
+      const reader = new FileReader();
+      reader.onload = event => {
+        localStorage.setItem('chncak_dashboard_team_photo', event.target.result);
+        const img = document.querySelector('.dashboard-team-panel img');
+        if(img) img.src = event.target.result;
+        window.renderDashboard?.();
+        setTimeout(() => window.renderDashboard?.(), 80);
+      };
+      reader.readAsDataURL(file);
+      input.value = '';
+    });
   };
 
   function makeWorkbook(rows, sheet, filename){
@@ -1519,6 +1563,16 @@
       .unit-input{display:flex;align-items:center;gap:4px}
       .unit-input span{font-size:10px;color:#607080}
       .proto-remove{height:32px;border:1px solid #f0b5b5;background:#fdeaea;color:#a33131;border-radius:6px;cursor:pointer;font-weight:800}
+      #secure-code-modal{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;font-family:var(--font,Arial,sans-serif)}
+      .secure-code-backdrop{position:absolute;inset:0;background:rgba(10,20,30,.46);backdrop-filter:blur(2px)}
+      .secure-code-card{position:relative;width:min(360px,calc(100vw - 32px));background:#fff;border-radius:8px;box-shadow:0 24px 60px rgba(0,0,0,.28);padding:20px;border:1px solid #dbe5f2}
+      .secure-code-card h3{margin:0 0 6px;color:#17324d;font-size:18px}
+      .secure-code-card p{margin:0 0 14px;color:#5d6d7e;font-size:13px;line-height:1.35}
+      .secure-code-card input{width:100%;box-sizing:border-box;border:1px solid #b8c7d9;border-radius:7px;padding:11px 12px;font-size:22px;text-align:center;letter-spacing:6px}
+      .secure-code-error{min-height:18px;color:#b42318;font-size:12px;margin-top:8px}
+      .secure-code-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+      .secure-code-actions button{border:1px solid #ccd8e6;border-radius:6px;padding:9px 14px;font-weight:700;cursor:pointer;background:#f8fbff;color:#17324d}
+      .secure-code-actions button:last-child{background:#0B5E3C;color:#fff;border-color:#0B5E3C}
       @media (max-width:900px){.dash-final-hero,.dash-final-main,.proto-editor-grid{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}.proto-drug-line{grid-template-columns:1fr 1fr}.proto-remove{grid-column:1/-1}}
       @media print{.protocol-print-fit{font-size:6.2px!important}.protocol-print-fit *{line-height:.9!important}.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:4.3px!important;line-height:.68!important;margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important}.protocol-print-fit table:first-child img{max-height:28px!important}}
     `;
