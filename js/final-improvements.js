@@ -209,6 +209,9 @@
       .replace(/font-size:9px/g, 'font-size:6.8px')
       .replace(/font-size:10px/g, 'font-size:7.4px')
       .replace(/font-size:11px/g, 'font-size:8px')
+      .replace(/font-size:12px/g, 'font-size:8.4px')
+      .replace(/line-height:1\.2/g, 'line-height:.88')
+      .replace(/line-height:1\.15/g, 'line-height:.88')
       .replace(/line-height:1\.9/g, 'line-height:1')
       .replace(/line-height:1\.8/g, 'line-height:1')
       .replace(/line-height:1\.55/g, 'line-height:1')
@@ -227,7 +230,7 @@
     const proto = (window.PROTOCOLS || []).find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
     const fullDoc = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
       <title>Protocole ${esc(proto?.name || '')}</title>
-      <style>@page{size:A4;margin:4mm 7mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:7.2px;color:#000;background:#fff}.protocol-print-fit{font-size:7px}.protocol-print-fit *{line-height:1!important}.protocol-print-fit table{page-break-inside:avoid}table{max-width:100%}.protocol-print-fit td,.protocol-print-fit th{padding-top:1px!important;padding-bottom:1px!important}.protocol-print-fit table:first-child td{font-size:5.8px!important;line-height:.95!important;padding-top:0!important;padding-bottom:0!important}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
+      <style>@page{size:A4;margin:3.5mm 6mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:6.8px;color:#000;background:#fff}.protocol-print-fit{font-size:6.8px}.protocol-print-fit *{line-height:.96!important}.protocol-print-fit table{page-break-inside:avoid}table{max-width:100%}.protocol-print-fit td,.protocol-print-fit th{padding-top:1px!important;padding-bottom:1px!important}.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:5px!important;line-height:.82!important;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important}.protocol-print-fit table:first-child img{max-height:34px!important;width:auto!important}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
     </head><body class="protocol-print-fit">${html}</body></html>`;
     printHtml(fullDoc);
   };
@@ -280,6 +283,22 @@
     </body></html>`;
     printHtml(html);
   };
+
+  function ensurePreparationPrintReady(){
+    const btn = document.getElementById('prep-print-btn');
+    if(!btn) return;
+    const proto = (window.PROTOCOLS || []).find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
+    const poids = Number(document.getElementById('poids')?.value || 0);
+    const taille = Number(document.getElementById('taille')?.value || 0);
+    const localSc = Number(typeof sc !== 'undefined' && sc > 0 ? sc : (poids && taille ? Math.sqrt((poids * taille) / 3600) : 0));
+    if(proto && localSc){
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+      document.getElementById('prep-empty')?.style && (document.getElementById('prep-empty').style.display = 'none');
+      document.getElementById('prep-content')?.style && (document.getElementById('prep-content').style.display = '');
+    }
+  }
 
   function renderStatsFinal(){
     const host = document.getElementById('stats-content') || document.getElementById('page-stats');
@@ -676,11 +695,13 @@
   };
 
   const nativeImportAllData = window.importAllData;
-  window.importAllData = function(file){
-    if(!file) return;
-    if(!doubleConfirm('restaurer une sauvegarde')) return;
-    if(typeof nativeImportAllData === 'function') return nativeImportAllData(file);
-  };
+  if(!nativeImportAllData?.requiresAccessCode){
+    window.importAllData = function(file){
+      if(!file) return;
+      if(!doubleConfirm('restaurer une sauvegarde')) return;
+      if(typeof nativeImportAllData === 'function') return nativeImportAllData(file);
+    };
+  }
 
   window.clearHistory = function(){
     if(!doubleConfirm("effacer l'historique")) return;
@@ -1042,6 +1063,15 @@
       const head = document.querySelector('#suivi-content .dashboard-head');
       head?.insertAdjacentHTML('beforeend', '<div id="suivi-import-final" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn-secondary" onclick="downloadSuiviTemplate()">Modele Excel</button><label class="btn-secondary" style="cursor:pointer">Importer suivi<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importSuiviExcel(this)"></label><button class="btn-primary" style="width:auto" onclick="exportSuiviExcel()">Exporter Excel</button></div>');
     }
+    document.querySelector('#page-medecins .enhance-panel[data-enhance="medecins"]')?.remove();
+    document.querySelector('#page-stats button[onclick="clearAllHistory()"]')?.remove();
+    const programmeHeader = document.querySelector('#page-programme > div[style*="max-width"] > div[style*="justify-content:space-between"]');
+    if(programmeHeader){
+      programmeHeader.style.marginBottom = '8px';
+      programmeHeader.querySelector('h2')?.style && (programmeHeader.querySelector('h2').style.fontSize = '13px');
+      const intro = programmeHeader.querySelector('p');
+      if(intro) intro.style.display = 'none';
+    }
     removeSupportChangeIdea();
     installApercuSearch();
   }
@@ -1098,11 +1128,13 @@
   const nativeShowPage = window.showPage;
   window.showPage = function(id, btn){
     const out = typeof nativeShowPage === 'function' ? nativeShowPage.apply(this, arguments) : undefined;
-    if(id === 'stats') setTimeout(renderStatsFinal, 20);
+    if(id === 'stats') setTimeout(() => { cleanupLoginAndButtons(); renderStatsFinal(); }, 20);
     if(id === 'patients') setTimeout(() => { cleanupLoginAndButtons(); renderPatientsListFinal(); }, 20);
+    if(id === 'medecins') setTimeout(cleanupLoginAndButtons, 60);
     if(id === 'apercu') setTimeout(installApercuSearch, 20);
     if(id === 'suivi') setTimeout(() => { renderSuiviFinal(); cleanupLoginAndButtons(); }, 80);
     if(id === 'programme') setTimeout(cleanupLoginAndButtons, 20);
+    if(id === 'preparation') setTimeout(ensurePreparationPrintReady, 80);
     if(id === 'dashboard') setTimeout(() => { window.renderDashboard?.(); cleanupLoginAndButtons(); }, 20);
     if(id === 'support') {
       setTimeout(cleanupLoginAndButtons, 20);
@@ -1124,21 +1156,23 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     cleanupLoginAndButtons();
+    ensurePreparationPrintReady();
     installSupportCleanupWatcher();
     const style = document.createElement('style');
     style.textContent = `
       .dashboard-photo-btn{opacity:.28!important;padding:5px 8px!important;font-size:10px!important}
       .dashboard-team-panel:hover .dashboard-photo-btn{opacity:.9!important}
+      .page{max-width:1320px}
       .dash-card{border-left:3px solid var(--blue);box-shadow:0 8px 20px rgba(10,61,122,.08)}
       .dash-final{display:flex;flex-direction:column;gap:14px}
-      .dash-final-hero{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(240px,.8fr);gap:14px;align-items:stretch;background:#fff;border:1px solid #dbe5f2;border-radius:8px;padding:14px;box-shadow:0 10px 24px rgba(10,61,122,.08)}
-      .dash-final-title{display:flex;gap:14px;align-items:center}
-      .dash-final-title img{width:58px;height:58px;object-fit:contain;border:1px solid #dbe5f2;border-radius:8px;padding:5px;background:#f8fbff}
-      .dash-final-title span{display:block;font-size:11px;color:#0A3D7A;font-weight:700;text-transform:uppercase}
-      .dash-final-title h2{margin:2px 0;font-size:24px;color:#17324d;letter-spacing:0}
-      .dash-final-title p{margin:0;color:#607080;font-size:13px;line-height:1.45;max-width:680px}
-      .dash-final-photo{min-height:132px;border-radius:8px;overflow:hidden;background:#eef4fd;border:1px solid #dbe5f2;position:relative}
-      .dash-final-photo img{width:100%;height:100%;min-height:132px;object-fit:cover;display:block}
+      .dash-final-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.8fr);gap:16px;align-items:stretch;background:#fff;border:1px solid #dbe5f2;border-radius:8px;padding:18px;box-shadow:0 10px 24px rgba(10,61,122,.08)}
+      .dash-final-title{display:flex;gap:18px;align-items:center}
+      .dash-final-title img{width:78px;height:78px;object-fit:contain;border:1px solid #dbe5f2;border-radius:8px;padding:6px;background:#f8fbff}
+      .dash-final-title span{display:block;font-size:12px;color:#0A3D7A;font-weight:700;text-transform:uppercase}
+      .dash-final-title h2{margin:3px 0;font-size:30px;color:#17324d;letter-spacing:0}
+      .dash-final-title p{margin:0;color:#607080;font-size:14px;line-height:1.42;max-width:760px}
+      .dash-final-photo{min-height:150px;border-radius:8px;overflow:hidden;background:#eef4fd;border:1px solid #dbe5f2;position:relative}
+      .dash-final-photo img{width:100%;height:100%;min-height:150px;object-fit:cover;display:block}
       .dash-final-grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px}
       .dash-final-kpi{background:#fff;border:1px solid #dbe5f2;border-radius:8px;padding:12px;box-shadow:0 8px 18px rgba(10,61,122,.06)}
       .dash-final-kpi span{display:block;font-size:11px;color:#607080;text-transform:uppercase;font-weight:700}
@@ -1152,6 +1186,11 @@
       .stats-bar-row{display:grid;grid-template-columns:minmax(120px,1fr) 3fr 42px;gap:10px;align-items:center;margin:8px 0;font-size:12px}
       .stats-bar-row div{height:12px;background:#eef2f6;border-radius:4px;overflow:hidden}
       .stats-bar-row i{display:block;height:100%;background:#0A3D7A}
+      #page-medecins .enhance-panel[data-enhance="medecins"]{display:none!important}
+      #page-stats button[onclick="clearAllHistory()"]{display:none!important}
+      #page-programme > div[style*="max-width"] > div[style*="justify-content:space-between"]{margin-bottom:8px!important}
+      #page-programme > div[style*="max-width"] > div[style*="justify-content:space-between"] p{display:none!important}
+      #page-programme > div[style*="max-width"] > div[style*="justify-content:space-between"] h2{font-size:13px!important}
       .cloud-sync-panel{position:fixed;right:12px;bottom:12px;z-index:9998;font-family:var(--font);color:#17324d}
       #cloud-sync-toggle{background:#0A3D7A;color:#fff;border:none;border-radius:20px;padding:8px 14px;font-size:12px;font-weight:700;box-shadow:0 8px 20px rgba(10,61,122,.22);cursor:pointer}
       .cloud-sync-panel.cloud-connected #cloud-sync-toggle{background:#0B5E3C}
@@ -1165,7 +1204,7 @@
       .cloud-actions button.danger{grid-column:1/-1;background:#FDEAEA;color:#C0392B;border-color:#F5AAAA}
       #logout-btn-forced{top:10px!important;right:10px!important;padding:8px 12px!important;font-size:12px!important}
       @media (max-width:900px){.dash-final-hero,.dash-final-main{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}}
-      @media print{.protocol-print-fit{font-size:7px!important}.protocol-print-fit *{line-height:1!important}.protocol-print-fit table:first-child *{font-size:5.8px!important;line-height:.95!important}}
+      @media print{.protocol-print-fit{font-size:6.8px!important}.protocol-print-fit *{line-height:.96!important}.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:5px!important;line-height:.82!important;margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important}}
     `;
     document.head.appendChild(style);
     setTimeout(() => {

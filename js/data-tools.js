@@ -56,6 +56,13 @@
 
   function importAllData(file){
     if(!file) return;
+    const code = prompt('Code a 4 chiffres requis pour restaurer une sauvegarde :');
+    if(code === null) return;
+    if(code !== '2026'){
+      alert('Code incorrect. Restauration annulee.');
+      return;
+    }
+    if(!confirm('Confirmer definitivement la restauration de la sauvegarde ?')) return;
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -223,11 +230,13 @@
       <button class="data-tools-btn" type="button" data-tool-action="export" title="Exporter toutes les données locales">Sauvegarder</button>
       <label class="data-tools-btn" title="Restaurer une sauvegarde JSON">Restaurer<input type="file" accept=".json" style="display:none" onchange="window.importAllData(this.files[0]);this.value=''"></label>
       <button class="data-tools-btn" type="button" data-tool-action="health" title="Voir l'état des données">Etat</button>
+      <button class="data-tools-btn" type="button" data-tool-action="official-reset" title="Initialisation officielle avant demarrage">Initialiser</button>
     `;
     navTop.appendChild(bar);
   }
 
   window.exportAllData = exportAllData;
+  importAllData.requiresAccessCode = true;
   window.importAllData = importAllData;
   window.openQuickSearch = openQuickSearch;
   window.closeQuickSearch = closeQuickSearch;
@@ -240,12 +249,11 @@
     const action = actionButton.dataset.toolAction;
     if(action === 'search') openQuickSearch();
     if(action === 'export') exportAllData();
-    if(action === 'health') renderHealthPanel(true);
-  });
-
-  document.addEventListener('pointerdown', event => {
-    const actionButton = event.target.closest('[data-tool-action="health"]');
-    if(actionButton) renderHealthPanel(true);
+    if(action === 'health') toggleHealthPanel();
+    if(action === 'official-reset'){
+      if(typeof window.chimioproOfficialReset === 'function') window.chimioproOfficialReset();
+      else alert('Le module Supabase n est pas encore charge. Rechargez la page puis reessayez.');
+    }
   });
 
   document.addEventListener('keydown', event => {
