@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chimiopro-v20260515a';
+const CACHE_NAME = 'chimiopro-v20260515b';
 
 const ASSETS = [
   './',

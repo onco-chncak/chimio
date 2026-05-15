@@ -30,12 +30,103 @@
   const patientName = p => `${val(p?.prenom)} ${val(p?.nom)}`.trim() || val(p?.patientName, p?.patient, p?.name);
   const patientCode = p => val(p?.codegratuite, p?.codeGratuite, p?.code, p?.dossier, p?.id);
   const todayIso = () => new Date().toISOString().slice(0, 10);
+  function protocolsList(){
+    try {
+      if(Array.isArray(PROTOCOLS)){
+        window.PROTOCOLS = PROTOCOLS;
+        return PROTOCOLS;
+      }
+    } catch(e){}
+    return Array.isArray(window.PROTOCOLS) ? window.PROTOCOLS : [];
+  }
   const protocolNameFor = p => {
     const protoId = val(p?.protoId, p?.protocolId, p?.protocoleId);
     const direct = val(p?.protocole, p?.proto, p?.protoName, p?.protocol, p?.protocolName, p?.chimio, p?.chimiotherapie);
     if(direct) return direct;
-    return val((window.PROTOCOLS || []).find(proto => proto.id === protoId)?.name, '-');
+    return val(protocolsList().find(proto => proto.id === protoId)?.name, '-');
   };
+
+  function slugify(text){
+    return norm(text).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || ('proto_' + Date.now());
+  }
+
+  function canonicalDrugName(name){
+    const raw = norm(name);
+    if(raw.includes('epirub')) return 'ÉPIRUBICINE';
+    if(raw.includes('cyclophosph')) return 'CYCLOPHOSPHAMIDE';
+    if(raw.includes('trastuz') || raw.includes('herceptin')) return 'TRASTUZUMAB';
+    if(raw.includes('bevaciz') || raw.includes('avastin')) return 'AVASTIN (Bévacizumab)';
+    if(raw.includes('gemcitab')) return 'GEMCITABINE';
+    if(raw.includes('zometa') || raw.includes('zoledron') || raw.includes('zolédron')) return 'ZOMETA';
+    if(raw.includes('irinotec')) return 'IRINOTÉCAN';
+    if(raw.includes('capecitab')) return 'Capécitabine per os';
+    if(raw.includes('nacl') || raw.includes('na cl') || raw.includes('chlorure')) return 'NaCl 0.9%';
+    if(raw.includes('glucose') || raw.includes('g5')) return 'G5%';
+    return String(name || '').trim();
+  }
+
+  function defaultPreForProtocol(proto){
+    const names = (proto?.drugs || []).map(d => norm(d.name || d.label)).join(' ');
+    const items = new Set(['NFS plaquettes']);
+    if(/cisplat|carbo|zometa|zoledron|méthotrexate|methotrexate|gemcitab/.test(names)) items.add('créatinine');
+    if(/avastin|bevaciz/.test(names)){ items.add('TA'); items.add('protéinurie'); }
+    if(/doxorub|epirub|trastuz|herceptin/.test(names)){ items.add('ECG'); items.add('FEVG'); }
+    if(/irinotec|capecitab|5-fluoro|gemcitab/.test(names)) items.add('bilan hépatique');
+    if(/zometa|zoledron/.test(names)){ items.add('calcémie'); items.add('bilan dentaire'); }
+    return Array.from(items).join(', ');
+  }
+
+  function normalizeProtocolDrug(d){
+    if(!d || typeof d !== 'object') return d;
+    const out = {...d};
+    if(out.t && !out.name) return out;
+    out.name = canonicalDrugName(out.name || out.label);
+    const calc = norm(val(out.calc, out.type_calcul));
+    const base = norm(out.base);
+    const coef = Number(val(out.coef, out.dose, out.val));
+    if(calc && Number.isFinite(coef) && coef > 0){
+      delete out.calc; delete out.coef; delete out.base;
+      if(calc.includes('sc') || calc.includes('surface') || base.includes('m2')) out.mgm2 = coef;
+      else if(calc.includes('poids') || calc.includes('kg')) out.mgkg = coef;
+      else if(calc.includes('avastin') || norm(out.name).includes('avastin')) out.avastin = true;
+      else if(calc.includes('carbo') || norm(out.name).includes('carboplatine')) out.carbo = true;
+      else out.fix = coef;
+    }
+    if(norm(out.name).includes('avastin') && !out.mgkg && !out.avastin && Number.isFinite(coef) && coef > 0) out.mgkg = coef;
+    if(out.name === 'ZOMETA' && !out.fix && Number.isFinite(coef) && coef > 0) out.fix = coef;
+    out.unit = out.unit || (out.name === 'ZOMETA' ? 'mg' : 'mg');
+    out.sol = val(out.sol, out.solvant, out.name === 'ZOMETA' ? '100 cc SSI 0.9%' : '');
+    out.dur = val(out.dur, out.duree, out.name === 'ZOMETA' ? '15 mn' : '');
+    out.ryt = val(out.ryt, out.jours, out.rythme, '');
+    if(!out.oral && !out.t && (out.mgm2 || out.mgkg || out.fix || out.avastin || out.carbo)) out.hl = true;
+    return out;
+  }
+
+  function normalizeProtocol(proto){
+    if(!proto || typeof proto !== 'object') return proto;
+    proto.id = val(proto.id, slugify(proto.name));
+    proto.name = val(proto.name, proto.nom, proto.id).toUpperCase();
+    proto.rythme = val(proto.rythme, proto.badge, 'J21');
+    proto.badge = val(proto.badge, proto.rythme);
+    proto.badgeClass = val(proto.badgeClass, proto.badge_class, proto.rythme.includes('28') ? 'b28' : proto.rythme.includes('14') ? 'b14' : 'b21');
+    proto.drugs = (proto.drugs || []).map(normalizeProtocolDrug).filter(Boolean);
+    proto.pre = val(proto.pre, proto.bilan, defaultPreForProtocol(proto));
+    proto.post = val(proto.post, proto.surveillance, 'Surveillance clinique et biologique selon protocole du service');
+    return proto;
+  }
+
+  function normalizeAllProtocols(){
+    const list = protocolsList();
+    if(!Array.isArray(list) || !list.length) return;
+    list.forEach(normalizeProtocol);
+    const custom = readJson('chncak_custom_protocols', []);
+    custom.forEach(proto => {
+      const normalized = normalizeProtocol(proto);
+      const idx = list.findIndex(p => p.id === normalized.id);
+      if(idx >= 0) list[idx] = {...list[idx], ...normalized};
+      else list.push(normalized);
+    });
+  }
 
   function requireCode(message){
     const code = prompt(message || 'Code de confirmation a 4 chiffres :');
@@ -90,7 +181,7 @@
   function findProtocolByPatient(patient){
     const protoId = val(patient?.protoId, patient?.protocolId);
     const protoName = norm(val(patient?.proto, patient?.protocole, patient?.protoName));
-    return (window.PROTOCOLS || []).find(p => p.id === protoId || norm(p.name) === protoName);
+    return protocolsList().find(p => p.id === protoId || norm(p.name) === protoName);
   }
 
   function doseForDrug(drug, patient){
@@ -227,16 +318,16 @@
   window.printFromApercu = function(){
     const html = typeof buildDocumentHTML === 'function' ? compactPrintableProtocol(buildDocumentHTML()) : '';
     if(!html) return alert('Aucun apercu a imprimer.');
-    const proto = (window.PROTOCOLS || []).find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
+    const proto = protocolsList().find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
     const fullDoc = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
       <title>Protocole ${esc(proto?.name || '')}</title>
-      <style>@page{size:A4;margin:3.5mm 6mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:6.8px;color:#000;background:#fff}.protocol-print-fit{font-size:6.8px}.protocol-print-fit *{line-height:.96!important}.protocol-print-fit table{page-break-inside:avoid}table{max-width:100%}.protocol-print-fit td,.protocol-print-fit th{padding-top:1px!important;padding-bottom:1px!important}.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:5px!important;line-height:.82!important;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important}.protocol-print-fit table:first-child img{max-height:34px!important;width:auto!important}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
+      <style>@page{size:A4;margin:3mm 5mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:6.2px;color:#000;background:#fff}.protocol-print-fit{font-size:6.2px}.protocol-print-fit *{line-height:.9!important}.protocol-print-fit table{page-break-inside:avoid}table{max-width:100%}.protocol-print-fit td,.protocol-print-fit th{padding-top:.5px!important;padding-bottom:.5px!important}.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:4.3px!important;line-height:.68!important;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important}.protocol-print-fit table:first-child img{max-height:28px!important;width:auto!important}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
     </head><body class="protocol-print-fit">${html}</body></html>`;
     printHtml(fullDoc);
   };
 
   function resolvePreparationProtocol(){
-    const protocols = window.PROTOCOLS || [];
+    const protocols = protocolsList();
     const currentId = typeof selId !== 'undefined' ? selId : '';
     let proto = protocols.find(p => p.id === currentId);
     if(proto) return proto;
@@ -357,7 +448,7 @@
     });
     if(!Object.keys(meds).length){
       hist.forEach(h => {
-        const proto = (window.PROTOCOLS || []).find(p => p.id === h.protoId || norm(p.name) === norm(h.protoName));
+        const proto = protocolsList().find(p => p.id === h.protoId || norm(p.name) === norm(h.protoName));
         (proto?.drugs || []).filter(d => !d.t && !d.oral && (d.mgm2 || d.mgkg || d.avastin || typeof d.fix === 'number')).forEach(d => {
           const med = ensureMed(d.name);
           med.seances += 1;
@@ -575,7 +666,7 @@
     modal.dataset.editId = editId || '';
     document.getElementById('patient-modal-title').textContent = editId ? 'Modifier patient' : 'Nouveau patient';
     const protoSel = document.getElementById('pm-proto');
-    if(protoSel) protoSel.innerHTML = '<option value="">Selectionner</option>' + (window.PROTOCOLS || []).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+    if(protoSel) protoSel.innerHTML = '<option value="">Selectionner</option>' + protocolsList().map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
     const medSel = document.getElementById('pm-medecin');
     const meds = readJson('chncak_medecins', window.medecins || []);
     if(medSel) medSel.innerHTML = '<option value="">Selectionner</option>' + meds.map(m => `<option value="${esc(m.name || `${m.prenom || ''} ${m.nom || ''}`.trim())}">${esc(m.name || `${m.prenom || ''} ${m.nom || ''}`.trim())}</option>`).join('');
@@ -602,7 +693,7 @@
     const nom = document.getElementById('pm-nom')?.value.trim();
     if(!prenom || !nom) return alert('Prenom et nom obligatoires.');
     const protoId = document.getElementById('pm-proto')?.value || '';
-    const proto = (window.PROTOCOLS || []).find(p => p.id === protoId);
+    const proto = protocolsList().find(p => p.id === protoId);
     const entry = {
       id: editId || Date.now().toString(), prenom, nom,
       age: document.getElementById('pm-age')?.value || '', sexe: document.getElementById('pm-sexe')?.value || 'F',
@@ -629,7 +720,7 @@
     const q = norm(document.getElementById('patients-search')?.value || '');
     const list = readJson(STORAGE.patients, []).filter(p => !q || norm(`${p.prenom} ${p.nom} ${p.dossier} ${p.proto} ${p.protocole} ${p.medecin}`).includes(q));
     const rows = list.map((p, i) => {
-      const proto = val(p.proto, p.protocole, p.protoName, (window.PROTOCOLS || []).find(x => x.id === p.protoId)?.name, '-');
+      const proto = val(p.proto, p.protocole, p.protoName, protocolsList().find(x => x.id === p.protoId)?.name, '-');
       return `<tr style="${i%2?'background:white':'background:#FAFBFD'}"><td>${esc(p.dossier || '-')}</td><td><b>${esc(patientName(p))}</b><div class="dash-muted">${esc(val(p.age) ? p.age + ' ans' : '')}</div></td><td>${esc(p.tel || p.contact || '-')}</td><td><span class="pbadge b21">${esc(proto)}</span></td><td>${esc(p.localisation || p.diagnostic || '-')}</td><td>${esc(val(p.cure, '-'))}/${esc(val(p.totalCures, '-'))}</td><td>${esc(p.medecin || '-')}</td><td>${esc(p.statut || 'actif')}</td><td><button class="btn-secondary" onclick="showAddPatientModal('${esc(p.id)}')">Modifier</button> <button class="btn-secondary" onclick="setStatut('${esc(p.id)}','Traité')">Traité</button></td></tr>`;
     }).join('');
     document.getElementById('patients-subtitle') && (document.getElementById('patients-subtitle').textContent = `${list.length} patient(s)`);
@@ -638,7 +729,7 @@
   window.renderPatientsList = renderPatientsListFinal;
 
   function currentProtocolFormPatient(){
-    const proto = (window.PROTOCOLS || []).find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
+    const proto = protocolsList().find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
     return {
       prenom: document.getElementById('prenom')?.value?.trim() || '',
       nom: document.getElementById('nom')?.value?.trim() || '',
@@ -1008,6 +1099,204 @@
     return null;
   }
 
+  function doseLabelForDrug(drug){
+    if(!drug || drug.t) return '-';
+    if(drug.mgm2) return `${drug.mgm2} mg/m2`;
+    if(drug.mgkg) return `${drug.mgkg} mg/kg`;
+    if(drug.avastin) return '15 mg/kg';
+    if(drug.carbo) return 'AUC carboplatine';
+    if(typeof drug.fix === 'number') return `${drug.fix} ${drug.unit || 'mg'}`;
+    if(drug.oral) return val(drug.pos, drug.dose, 'per os');
+    return '-';
+  }
+
+  function protocolDrugRows(proto){
+    return (proto.drugs || []).filter(d => !d.t).map(drug => `
+      <tr>
+        <td>${esc(drug.name || drug.label || '-')}</td>
+        <td>${esc(doseLabelForDrug(drug))}</td>
+        <td>${esc(val(drug.ryt, drug.jours, '-'))}</td>
+        <td>${esc(val(drug.sol, drug.solvant, '-'))}</td>
+        <td>${esc(val(drug.dur, drug.duree, '-'))}</td>
+      </tr>
+    `).join('');
+  }
+
+  function upsertCustomProtocol(proto){
+    const list = readJson('chncak_custom_protocols', []);
+    const normalized = normalizeProtocol(proto);
+    const idx = list.findIndex(p => p.id === normalized.id || norm(p.name) === norm(normalized.name));
+    if(idx >= 0) list[idx] = {...list[idx], ...normalized};
+    else list.push(normalized);
+    writeJson('chncak_custom_protocols', list);
+    const protoList = protocolsList();
+    const baseIdx = protoList.findIndex(p => p.id === normalized.id || norm(p.name) === norm(normalized.name));
+    if(baseIdx >= 0) protoList[baseIdx] = {...protoList[baseIdx], ...normalized};
+    else protoList.push(normalized);
+    return normalized;
+  }
+
+  function collectProtocolDrugRows(){
+    const rows = Array.from(document.querySelectorAll('#proto-drugs-list .proto-drug-line'));
+    return rows.map(row => {
+      const name = row.querySelector('[data-field="name"]')?.value.trim();
+      const calc = row.querySelector('[data-field="calc"]')?.value;
+      const coef = Number(row.querySelector('[data-field="coef"]')?.value || 0);
+      const jours = row.querySelector('[data-field="jours"]')?.value.trim();
+      const sol = row.querySelector('[data-field="sol"]')?.value.trim();
+      const dur = row.querySelector('[data-field="dur"]')?.value.trim();
+      const out = {name, ryt: jours, sol, dur, hl:true};
+      if(calc === 'mgm2') out.mgm2 = coef;
+      else if(calc === 'mgkg') out.mgkg = coef;
+      else if(calc === 'fix') out.fix = coef;
+      else if(calc === 'auc') out.carbo = true;
+      else if(calc === 'oral'){ out.oral = true; out.pos = `${coef || ''} mg`.trim(); delete out.hl; }
+      return out;
+    }).filter(d => d.name);
+  }
+
+  window.addProtocolDrugRow = function(data){
+    const root = document.getElementById('proto-drugs-list');
+    if(!root) return;
+    const d = data || {};
+    const calc = d.mgm2 ? 'mgm2' : d.mgkg ? 'mgkg' : d.carbo ? 'auc' : d.oral ? 'oral' : 'fix';
+    const coef = d.mgm2 || d.mgkg || d.fix || Number(String(d.pos || '').match(/\d+([.,]\d+)?/)?.[0]?.replace(',', '.') || 0) || '';
+    root.insertAdjacentHTML('beforeend', `
+      <div class="proto-drug-line">
+        <input data-field="name" placeholder="Medicament" value="${esc(d.name || '')}">
+        <select data-field="calc">
+          <option value="mgm2" ${calc === 'mgm2' ? 'selected' : ''}>mg/m2</option>
+          <option value="mgkg" ${calc === 'mgkg' ? 'selected' : ''}>mg/kg</option>
+          <option value="fix" ${calc === 'fix' ? 'selected' : ''}>dose fixe mg</option>
+          <option value="auc" ${calc === 'auc' ? 'selected' : ''}>AUC</option>
+          <option value="oral" ${calc === 'oral' ? 'selected' : ''}>per os</option>
+        </select>
+        <div class="unit-input"><input data-field="coef" type="number" step="0.01" placeholder="Dose" value="${esc(coef)}"><span>unite</span></div>
+        <input data-field="jours" placeholder="Jours (ex: J1 J8)" value="${esc(d.ryt || d.jours || '')}">
+        <input data-field="sol" placeholder="Solvant" value="${esc(d.sol || d.solvant || '')}">
+        <input data-field="dur" placeholder="Duree" value="${esc(d.dur || d.duree || '')}">
+        <button type="button" class="proto-remove" title="Retirer" onclick="this.closest('.proto-drug-line').remove()">x</button>
+      </div>
+    `);
+  };
+
+  function renderProtocolCardsFinal(){
+    normalizeAllProtocols();
+    const grid = document.getElementById('proto-grid') || document.getElementById('protoGrid');
+    if(!grid) return;
+    grid.innerHTML = protocolsList().map(proto => `
+      <div class="proto-card${typeof selId !== 'undefined' && selId === proto.id ? ' selected' : ''}" onclick="selectProto('${esc(proto.id)}')">
+        <div class="proto-radio"></div>
+        <div>
+          <div class="pname">${esc(proto.name)}</div>
+          <span class="pbadge ${esc(proto.badgeClass || 'b21')}">${esc(proto.badge || proto.rythme || '')}</span>
+          <div class="pdetail">${esc((proto.drugs || []).filter(d => !d.t).map(d => d.name || d.label).join(' + '))}</div>
+          <div style="font-size:10.5px;color:#5f6f62;margin-top:5px"><b>Bilan utile :</b> ${esc(proto.pre || defaultPreForProtocol(proto))}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+  window.renderProtos = renderProtocolCardsFinal;
+  try { renderProtos = renderProtocolCardsFinal; } catch(e){}
+
+  window.showAddProtocoleModal = function(){
+    const modal = document.getElementById('modal');
+    const modalBody = document.getElementById('modal-body');
+    if(!modal || !modalBody) return;
+    modalBody.innerHTML = `
+      <h2 style="margin:0 0 14px;color:#0B5E3C">Ajouter un protocole</h2>
+      <div class="proto-editor-final">
+        <div class="proto-editor-grid">
+          <label>Nom du protocole<input id="new-proto-name" placeholder="Ex: FOLFOX"></label>
+          <label>Rythme<input id="new-proto-rythme" placeholder="Ex: J14, J21, J28" value="J21"></label>
+          <label>Bilan utile<input id="new-proto-pre" placeholder="NFS, plaquettes, creatinine..."></label>
+          <label>Surveillance / remarques<input id="new-proto-post" placeholder="Surveillance selon protocole du service"></label>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px">
+          <h3 style="margin:0;color:#173b2f;font-size:15px">Elements du protocole</h3>
+          <button type="button" class="btn-secondary" style="width:auto;padding:8px 12px" onclick="addProtocolDrugRow()">+ Ligne medicament</button>
+        </div>
+        <div id="proto-drugs-list" class="proto-drug-grid"></div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+        <button onclick="closeModal()" style="background:#6c757d;color:white;border:none;padding:10px 18px;border-radius:4px;cursor:pointer">Annuler</button>
+        <button onclick="saveNewProtocole()" style="background:linear-gradient(135deg,#0B5E3C,#16a085);color:white;border:none;padding:10px 22px;border-radius:4px;cursor:pointer;font-weight:600">Enregistrer</button>
+      </div>
+    `;
+    modal.classList.add('show');
+    addProtocolDrugRow();
+  };
+
+  window.saveNewProtocole = function(){
+    const name = document.getElementById('new-proto-name')?.value.trim();
+    if(!name) return alert('Nom du protocole obligatoire.');
+    const drugs = collectProtocolDrugRows();
+    if(!drugs.length) return alert('Ajouter au moins un medicament.');
+    const proto = upsertCustomProtocol({
+      id: slugify(name),
+      name,
+      rythme: document.getElementById('new-proto-rythme')?.value.trim() || 'J21',
+      pre: document.getElementById('new-proto-pre')?.value.trim(),
+      post: document.getElementById('new-proto-post')?.value.trim(),
+      drugs
+    });
+    if(typeof renderProtos === 'function') renderProtos();
+    if(typeof closeModal === 'function') closeModal();
+    showToastSafe(`Protocole ${proto.name} ajoute.`, 'success');
+  };
+
+  window.downloadProtocolImportTemplate = function(){
+    const rows = [
+      ['Nom protocole','Rythme','Bilan utile','Surveillance','Medicament','Type calcul','Dose','Unite','Jours','Solvant','Duree','Oral'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Oxaliplatine','mg/m2','85','mg/m2','J1','G5% 500 ml','2 h','NON'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','5-FU','mg/m2','400','mg/m2','J1','NaCl 0.9% 100 ml','Bolus','NON'],
+      ['EXEMPLE ORAL','J21','NFS plaquettes, bilan hepatique','Surveillance clinique','Capecitabine','per os','1250','mg','J1-J14','','','OUI']
+    ];
+    const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(';')).join('\n');
+    downloadTextFile('modele_import_protocoles_complet.csv', csv, 'text/csv;charset=utf-8');
+  };
+
+  window.importProtocolExcel = function(input){
+    const file = input?.files?.[0];
+    if(!file) return;
+    if(typeof XLSX === 'undefined') return alert('Module Excel indisponible.');
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+        const grouped = new Map();
+        rows.forEach(row => {
+          const name = val(row['Nom protocole'], row.Protocole, row.Nom, row.name);
+          const med = val(row.Medicament, row.Med, row.Molecule);
+          if(!name || !med) return;
+          const key = slugify(name);
+          if(!grouped.has(key)) grouped.set(key, {id:key, name, rythme:val(row.Rythme,row.Badge,'J21'), pre:val(row['Bilan utile'],row.Bilan), post:val(row.Surveillance,row.Remarques), drugs:[]});
+          const type = norm(val(row['Type calcul'], row.Type, row.Calcul));
+          const dose = Number(String(val(row.Dose,row.Coef)).replace(',', '.'));
+          const drug = {name:med, ryt:val(row.Jours,row.Rythme_medicament), sol:val(row.Solvant,row.Sol), dur:val(row.Duree,row.Durée), hl:true};
+          if(type.includes('m2') || type.includes('surface')) drug.mgm2 = dose;
+          else if(type.includes('kg') || type.includes('poids')) drug.mgkg = dose;
+          else if(type.includes('auc')) drug.carbo = true;
+          else if(type.includes('oral') || norm(row.Oral) === 'oui'){ drug.oral = true; drug.pos = `${dose || ''} ${val(row.Unite,'mg')}`.trim(); delete drug.hl; }
+          else drug.fix = dose;
+          grouped.get(key).drugs.push(drug);
+        });
+        let count = 0;
+        grouped.forEach(proto => { upsertCustomProtocol(proto); count++; });
+        if(typeof renderProtos === 'function') renderProtos();
+        alert(count ? `${count} protocole(s) importe(s).` : 'Aucun protocole importe. Utilisez le modele complet.');
+      } catch(err){ alert('Erreur import protocoles: ' + err.message); }
+      input.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+  };
+  try { showAddProtocoleModal = window.showAddProtocoleModal; } catch(e){}
+  try { saveNewProtocole = window.saveNewProtocole; } catch(e){}
+  try { downloadProtocolImportTemplate = window.downloadProtocolImportTemplate; } catch(e){}
+  try { importProtocolExcel = window.importProtocolExcel; } catch(e){}
+
   function savedProtocolEntries(){
     const hist = readJson(STORAGE.historique, []);
     const ok = readJson(STORAGE.okchimio, []).map(item => ({...(item.patient || {}), ...item}));
@@ -1044,7 +1333,7 @@
     set('age', entry.age); set('poids', entry.poids); set('taille', entry.taille);
     set('dossier', entry.dossier); set('cubix', entry.cubix); set('codegratuite', patientCode(entry));
     set('localisation', val(entry.localisation, entry.diagnostic)); set('indication', entry.indication);
-    const protoId = val(entry.protoId, (window.PROTOCOLS || []).find(p => norm(p.name) === norm(val(entry.protoName, entry.protocole, entry.protocolName)))?.id);
+    const protoId = val(entry.protoId, protocolsList().find(p => norm(p.name) === norm(val(entry.protoName, entry.protocole, entry.protocolName)))?.id);
     if(protoId && typeof selectProto === 'function') selectProto(protoId);
     if(typeof calcSC === 'function') calcSC();
     if(typeof update === 'function') update();
@@ -1171,6 +1460,8 @@
   };
 
   document.addEventListener('DOMContentLoaded', () => {
+    normalizeAllProtocols();
+    if(typeof renderProtos === 'function') renderProtos();
     cleanupLoginAndButtons();
     ensurePreparationPrintReady();
     installSupportCleanupWatcher();
@@ -1219,8 +1510,17 @@
       .cloud-actions button:first-child,.cloud-actions button:nth-child(2){background:#0A3D7A;color:#fff;border-color:#0A3D7A}
       .cloud-actions button.danger{grid-column:1/-1;background:#FDEAEA;color:#C0392B;border-color:#F5AAAA}
       #logout-btn-forced{top:10px!important;right:10px!important;padding:8px 12px!important;font-size:12px!important}
-      @media (max-width:900px){.dash-final-hero,.dash-final-main{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}}
-      @media print{.protocol-print-fit{font-size:6.8px!important}.protocol-print-fit *{line-height:.96!important}.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:5px!important;line-height:.82!important;margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important}}
+      .proto-editor-final input,.proto-editor-final select{width:100%;box-sizing:border-box;border:1px solid #ccd8e6;border-radius:6px;padding:8px 9px;font-size:12px;background:#fff}
+      .proto-editor-final label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#17324d}
+      .proto-editor-grid{display:grid;grid-template-columns:1fr 150px;gap:10px}
+      .proto-editor-grid label:nth-child(3),.proto-editor-grid label:nth-child(4){grid-column:1/-1}
+      .proto-drug-grid{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+      .proto-drug-line{display:grid;grid-template-columns:minmax(140px,1.2fr) 115px 105px 110px minmax(140px,1fr) 100px 28px;gap:7px;align-items:center;background:#f8fbff;border:1px solid #dbe5f2;border-radius:8px;padding:8px}
+      .unit-input{display:flex;align-items:center;gap:4px}
+      .unit-input span{font-size:10px;color:#607080}
+      .proto-remove{height:32px;border:1px solid #f0b5b5;background:#fdeaea;color:#a33131;border-radius:6px;cursor:pointer;font-weight:800}
+      @media (max-width:900px){.dash-final-hero,.dash-final-main,.proto-editor-grid{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}.proto-drug-line{grid-template-columns:1fr 1fr}.proto-remove{grid-column:1/-1}}
+      @media print{.protocol-print-fit{font-size:6.2px!important}.protocol-print-fit *{line-height:.9!important}.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:4.3px!important;line-height:.68!important;margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important}.protocol-print-fit table:first-child img{max-height:28px!important}}
     `;
     document.head.appendChild(style);
     setTimeout(() => {
