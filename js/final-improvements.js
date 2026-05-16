@@ -405,9 +405,25 @@
     const proto = protocolsList().find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
     const fullDoc = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
       <title>Protocole ${esc(proto?.name || '')}</title>
-      <style>@page{size:A4;margin:7mm 9mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:9px;color:#000;background:#fff}.protocol-print-fit table{page-break-inside:avoid}table{max-width:100%}.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:6px!important;line-height:.78!important;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important}.protocol-print-fit table:first-child img{max-height:34px!important;width:auto!important}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
-    </head><body class="protocol-print-fit">${html}</body></html>`;
-    printHtml(fullDoc);
+      <style>
+        @page{size:A4 landscape;margin:7mm}
+        *{box-sizing:border-box}
+        body{font-family:Arial,Helvetica,sans-serif;font-size:8.3px;color:#000;background:#fff;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+        .landscape-protocol-page{width:283mm;min-height:196mm;display:grid;grid-template-columns:1fr 1fr;gap:0;border:1.4px double #000;padding:3mm;background:#fff}
+        .landscape-copy{min-width:0;padding:0 4.2mm;overflow:hidden}
+        .landscape-copy:first-child{border-right:1.2px solid #000}
+        .landscape-copy table{max-width:100%!important;width:100%!important;page-break-inside:avoid;border-collapse:collapse}
+        .landscape-copy table:first-child,.landscape-copy table:first-child *{font-size:5.5px!important;line-height:.85!important;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important}
+        .landscape-copy table:first-child img{max-height:31px!important;width:auto!important}
+        .landscape-copy th,.landscape-copy td{padding-top:2px!important;padding-bottom:2px!important}
+        .landscape-copy [style*="font-size:12px"]{font-size:9px!important}
+        .landscape-copy [style*="font-size:11px"]{font-size:8.5px!important}
+        .landscape-copy [style*="font-size:10px"]{font-size:8px!important}
+        .landscape-copy [style*="margin-bottom:5px"]{margin-bottom:3px!important}
+        @media print{body{margin:0}.landscape-protocol-page{page-break-after:avoid}}
+      </style>
+    </head><body><div class="landscape-protocol-page"><section class="landscape-copy">${html}</section><section class="landscape-copy">${html}</section></div></body></html>`;
+    printHtml(fullDoc, '297mm', '210mm');
   };
 
   function resolvePreparationProtocol(){
