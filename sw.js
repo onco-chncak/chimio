@@ -1,4 +1,4 @@
-const APP_VERSION = '20260516v';
+const APP_VERSION = '20260516w';
 const CACHE_NAME = `chimiopro-v${APP_VERSION}`;
 
 const ASSETS = [

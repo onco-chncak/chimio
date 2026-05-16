@@ -380,6 +380,34 @@
     askAdminCode(actionLabel, onOk);
   }
 
+  window.setCodeGratuiteStart = function(){
+    requireAdminAction('regler le numero de depart du Code Gratuite', () => {
+      const currentNext = readCodeGratuiteCounter().value + 1;
+      const answer = prompt('Numero sequentiel du prochain patient officiel ?', String(currentNext));
+      if(answer === null) return;
+      const next = Number(String(answer).replace(/[^\d]/g, ''));
+      if(!Number.isFinite(next) || next < 1){
+        alert('Numero invalide. Exemple : 1, 100 ou 155.');
+        return;
+      }
+      const highestExisting = maxKnownCodeGratuiteSequence();
+      writeJson(CODE_GRATUITE_COUNTER_KEY, {
+        value: Math.max(0, next - 1),
+        updatedAt: new Date().toISOString(),
+        updatedBy: val(currentUser().username, currentUser().name, 'admin'),
+        officialStart: next
+      });
+      localStorage.setItem('chncak_code_gratuite_official_start', String(next));
+      setProtocolAutoCode(true);
+      setHematologieAutoCode(true);
+      if(highestExisting >= next){
+        alert(`Depart enregistre a ${next}. Attention : des donnees de test contiennent deja un numero jusqu'a ${highestExisting}. Apres initialisation officielle, le prochain code commencera bien a ${next}.`);
+      } else {
+        showToastSafe(`Prochain Code Gratuite regle sur ${next}.`, 'success');
+      }
+    });
+  };
+
   function requirePharmacienAction(actionLabel, onOk){
     if(!isPharmacienUser()){
       alert('Action reservee au compte pharmacien.');
@@ -2794,14 +2822,14 @@
     }
     const dashPage = document.getElementById('page-dashboard');
     if(dashPage && isAdminUser() && !document.getElementById('official-github-data-dashboard')){
-      document.getElementById('dashboard-content')?.insertAdjacentHTML('afterbegin', '<button id="official-github-data-dashboard" class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button>');
+      document.getElementById('dashboard-content')?.insertAdjacentHTML('afterbegin', '<div id="official-github-admin-tools" style="display:flex;gap:6px;flex-wrap:wrap"><button id="official-github-data-dashboard" class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button><button id="code-gratuite-start-dashboard" class="btn-secondary official-github-mini" onclick="setCodeGratuiteStart()">Depart Code</button></div>');
     }
     const pharmaPage = document.getElementById('page-pharmacie');
     if(pharmaPage && isAdminUser() && !document.getElementById('official-github-data-pharma')){
       pharmaPage.querySelector('h2')?.insertAdjacentHTML('afterend', '<button id="official-github-data-pharma" class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button>');
     }
     if(!isAdminUser()){
-      document.querySelectorAll('#official-github-data-btn,#official-github-data-dashboard,#official-github-data-pharma,.official-github-mini').forEach(el => el.remove());
+      document.querySelectorAll('#official-github-data-btn,#official-github-data-dashboard,#official-github-data-pharma,#official-github-admin-tools,.official-github-mini').forEach(el => el.remove());
     }
     if(!isAdminUser()){
       document.querySelectorAll('button,label').forEach(el => {
