@@ -325,6 +325,15 @@
         if(!localStorage.getItem('teamPhoto')) localStorage.setItem('teamPhoto', src);
       }
     });
+    if(Array.isArray(official.catalog) && official.catalog.length){
+      const currentOfficialCatalogVersion = localStorage.getItem('chncak_official_catalog_version');
+      if(currentOfficialCatalogVersion !== official.version){
+        writeJson(STORAGE.catalog, official.catalog);
+        localStorage.setItem('chncak_official_catalog_version', official.version || todayIso());
+        try { if(Array.isArray(window.catalog)) window.catalog = official.catalog; } catch(e) {}
+        try { if(typeof catalog !== 'undefined') catalog = official.catalog; } catch(e) {}
+      }
+    }
   }
 
   window.exportOfficialGitHubData = function(){
@@ -339,6 +348,7 @@
       const payload = {
         version: new Date().toISOString().slice(0,10).replace(/-/g,''),
         medecins: readJson('chncak_medecins', []).map(normalizeOfficialMedecin),
+        catalog: readJson(STORAGE.catalog, []),
         photos
       };
       const content = `(function(){\n  window.CHIMIOPRO_OFFICIAL_DATA = ${JSON.stringify(payload, null, 2)};\n})();\n`;
@@ -2187,6 +2197,10 @@
     const dashPage = document.getElementById('page-dashboard');
     if(dashPage && isAdminUser() && !document.getElementById('official-github-data-dashboard')){
       document.getElementById('dashboard-content')?.insertAdjacentHTML('afterbegin', '<button id="official-github-data-dashboard" class="btn-secondary" style="width:auto;margin:0 0 8px;padding:7px 11px;font-size:11px" onclick="exportOfficialGitHubData()">Exporter medecins/photos GitHub</button>');
+    }
+    const pharmaPage = document.getElementById('page-pharmacie');
+    if(pharmaPage && isAdminUser() && !document.getElementById('official-github-data-pharma')){
+      pharmaPage.querySelector('h2')?.insertAdjacentHTML('afterend', '<button id="official-github-data-pharma" class="btn-secondary" style="width:auto;margin:8px 0 10px;padding:8px 12px" onclick="exportOfficialGitHubData()">Exporter catalogue GitHub</button>');
     }
     if(!isAdminUser()){
       document.querySelectorAll('button,label').forEach(el => {
