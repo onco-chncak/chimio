@@ -1238,6 +1238,53 @@
     return normalized;
   }
 
+  const WEB_ONCOLOGY_DRUG_NAMES = [
+    'ABIRATERONE', 'AFATINIB', 'ATEZOLIZUMAB', 'AVELUMAB', 'BENDAMUSTINE', 'BEVACIZUMAB',
+    'BLEOMYCINE', 'BORTEZOMIB', 'CAPECITABINE', 'CARBOPLATINE', 'CETUXIMAB', 'CISPLATINE',
+    'CYCLOPHOSPHAMIDE', 'CYTARABINE', 'DACARBAZINE', 'DOCETAXEL', 'DOXORUBICINE',
+    'EPIRUBICINE', 'ERLOTINIB', 'ETOPOSIDE', 'FILGRASTIM', 'FLUOROURACILE', 'GEMCITABINE',
+    'GEFITINIB', 'HYDROXYCARBAMIDE', 'IFOSFAMIDE', 'IMATINIB', 'IRINOTECAN', 'LEUCOVORINE',
+    'MELPHALAN', 'METHOTREXATE', 'NIVOLUMAB', 'OXALIPLATINE', 'PACLITAXEL', 'PEMBROLIZUMAB',
+    'PEMETREXED', 'PERTUZUMAB', 'RITUXIMAB', 'TAMOXIFENE', 'TEMOZOLOMIDE', 'TRASTUZUMAB',
+    'VINBLASTINE', 'VINCRISTINE', 'VINORELBINE', 'ACIDE ZOLEDRONIQUE'
+  ];
+
+  function protocolDrugNameOptions(){
+    const names = new Set();
+    const add = name => {
+      const clean = String(name || '').trim();
+      if(clean) names.add(clean);
+    };
+    readJson(STORAGE.catalog, Array.isArray(window.DEFAULT_CATALOG) ? window.DEFAULT_CATALOG : []).forEach(item => {
+      add(item.name);
+      add(item.dci);
+    });
+    protocolsList().forEach(proto => (proto.drugs || []).forEach(drug => add(drug.name || drug.label)));
+    WEB_ONCOLOGY_DRUG_NAMES.forEach(add);
+    return Array.from(names).sort((a, b) => a.localeCompare(b, 'fr', {sensitivity:'base'}));
+  }
+
+  function refreshProtocolDrugDatalist(){
+    let datalist = document.getElementById('protocol-drug-options');
+    if(!datalist){
+      datalist = document.createElement('datalist');
+      datalist.id = 'protocol-drug-options';
+      document.body.appendChild(datalist);
+    }
+    datalist.innerHTML = protocolDrugNameOptions().map(name => `<option value="${esc(name)}"></option>`).join('');
+  }
+
+  function ensureProtocolDrugInCatalog(name){
+    const clean = canonicalDrugName(name);
+    if(!clean || /^(nacl|na cl|sg|g5|eau ppi|sans solvant)/i.test(norm(clean))) return;
+    const list = readJson(STORAGE.catalog, Array.isArray(window.DEFAULT_CATALOG) ? window.DEFAULT_CATALOG : []);
+    if(list.some(item => norm(item.name) === norm(clean) || norm(item.dci) === norm(clean))) return;
+    list.push({name:clean.toUpperCase(), dci:clean, dosages:[], forme:'A completer', cond:'', qteStock:0, prixUnit:0});
+    writeJson(STORAGE.catalog, list);
+    try { if(Array.isArray(window.catalog)) window.catalog = list; } catch(e) {}
+    try { if(typeof catalog !== 'undefined') catalog = list; } catch(e) {}
+  }
+
   function collectProtocolDrugRows(){
     const rows = Array.from(document.querySelectorAll('#proto-drugs-list .proto-drug-line'));
     return rows.map(row => {
@@ -1250,7 +1297,8 @@
       const dur = row.querySelector('[data-field="dur"]')?.value.trim();
       const freq = row.querySelector('[data-field="freq"]')?.value.trim();
       const sol = [solVol ? `${solVol} cc` : '', solvant].filter(Boolean).join(' ');
-      const out = {name, ryt: jours, sol, dur, freq, hl:true};
+      const durLabel = dur && /^\d+([.,]\d+)?$/.test(dur) ? `${dur} mn` : dur;
+      const out = {name, ryt: jours, sol, dur: durLabel, freq, hl:true};
       if(calc === 'mgm2') out.mgm2 = coef;
       else if(calc === 'mgkg') out.mgkg = coef;
       else if(calc === 'fix') out.fix = coef;
@@ -1263,15 +1311,17 @@
   window.addProtocolDrugRow = function(data){
     const root = document.getElementById('proto-drugs-list');
     if(!root) return;
+    refreshProtocolDrugDatalist();
     const d = data || {};
     const calc = d.mgm2 ? 'mgm2' : d.mgkg ? 'mgkg' : d.carbo ? 'auc' : d.oral ? 'oral' : 'fix';
     const coef = d.mgm2 || d.mgkg || d.fix || Number(String(d.pos || '').match(/\d+([.,]\d+)?/)?.[0]?.replace(',', '.') || 0) || '';
     const solText = String(d.sol || d.solvant || '');
     const solVol = solText.match(/(\d+(?:[.,]\d+)?)\s*(?:cc|ml)/i)?.[1] || '';
     const selectedSol = norm(solText).includes('g5') || norm(solText).includes('sg') ? 'SG 5%' : norm(solText).includes('nacl') || norm(solText).includes('ssi') ? 'NaCl 0.9%' : '';
+    const durValue = String(d.dur || d.duree || '').match(/^\s*(\d+(?:[.,]\d+)?)\s*(?:mn|min|minutes?)?\s*$/i)?.[1] || String(d.dur || d.duree || '');
     root.insertAdjacentHTML('beforeend', `
       <div class="proto-drug-line">
-        <input data-field="name" placeholder="Medicament" value="${esc(d.name || '')}">
+        <input data-field="name" list="protocol-drug-options" placeholder="Medicament" value="${esc(d.name || '')}" title="Choisir dans la liste ou taper un nouveau medicament">
         <select data-field="calc">
           <option value="mgm2" ${calc === 'mgm2' ? 'selected' : ''}>mg/m2</option>
           <option value="mgkg" ${calc === 'mgkg' ? 'selected' : ''}>mg/kg</option>
@@ -1289,8 +1339,8 @@
           <option value="Sans solvant">Sans solvant</option>
         </select>
         <div class="unit-input"><input data-field="solvol" type="number" step="1" placeholder="Vol." value="${esc(solVol)}"><span>cc</span></div>
-        <input data-field="dur" placeholder="Duree" value="${esc(d.dur || d.duree || '')}">
-        <input data-field="freq" placeholder="Frequence / remarque" value="${esc(d.freq || d.frequence || '')}">
+        <div class="unit-input"><input data-field="dur" placeholder="Duree" value="${esc(durValue)}"><span>mn</span></div>
+        <input data-field="freq" placeholder="Ex: hebdo, J1-J8, proteger lumiere" title="A remplir si une precision n'entre pas dans les champs jours/solvant/duree : rythme particulier, dose max, protection lumiere, ordre de perfusion..." value="${esc(d.freq || d.frequence || '')}">
         <button type="button" class="proto-remove" title="Retirer" onclick="this.closest('.proto-drug-line').remove()">x</button>
       </div>
     `);
@@ -1319,6 +1369,7 @@
   window.showAddProtocoleModal = function(){
     const modal = document.getElementById('add-protocole-modal');
     if(!modal) return;
+    refreshProtocolDrugDatalist();
     modal.innerHTML = `
       <div style="max-width:980px;margin:28px auto;background:white;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);overflow:hidden">
       <div style="padding:16px 20px;background:linear-gradient(135deg,#0B5E3C,#16a085);color:white;display:flex;justify-content:space-between;align-items:center">
@@ -1332,7 +1383,7 @@
           <label>Nom du protocole<input id="new-proto-name" placeholder="Ex: FOLFOX"></label>
           <label>Rythme<input id="new-proto-rythme" placeholder="Ex: J14, J21, J28" value="J21"></label>
           <label>Indication<input id="new-proto-indication" placeholder="Ex: cancer colorectal"></label>
-          <label>Reference scientifique<input id="new-proto-reference" placeholder="Ex: NCCN, ESMO, protocole service valide..."></label>
+          <label>Reference scientifique <span style="color:#b42318">*</span><input id="new-proto-reference" required placeholder="Ex: NCCN, ESMO, protocole service valide..."></label>
           <label>Bilan utile<input id="new-proto-pre" placeholder="NFS, plaquettes, creatinine..."></label>
           <label>Surveillance / remarques<input id="new-proto-post" placeholder="Surveillance selon protocole du service"></label>
         </div>
@@ -1360,14 +1411,18 @@
   window.saveNewProtocole = function(){
     const name = document.getElementById('new-proto-name')?.value.trim();
     if(!name) return alert('Nom du protocole obligatoire.');
+    const reference = document.getElementById('new-proto-reference')?.value.trim();
+    if(!reference) return alert('Reference scientifique obligatoire.');
     const drugs = collectProtocolDrugRows();
     if(!drugs.length) return alert('Ajouter au moins un medicament.');
+    drugs.forEach(drug => ensureProtocolDrugInCatalog(drug.name));
+    refreshProtocolDrugDatalist();
     const proto = upsertCustomProtocol({
       id: document.getElementById('new-proto-id')?.value.trim() || slugify(name),
       name,
       rythme: document.getElementById('new-proto-rythme')?.value.trim() || 'J21',
       indication: document.getElementById('new-proto-indication')?.value.trim(),
-      reference: document.getElementById('new-proto-reference')?.value.trim(),
+      reference,
       pre: document.getElementById('new-proto-pre')?.value.trim(),
       post: document.getElementById('new-proto-post')?.value.trim(),
       drugs
