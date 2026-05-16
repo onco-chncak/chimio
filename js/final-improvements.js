@@ -659,6 +659,11 @@
     const catalog = readJson(STORAGE.catalog, []);
     const responsables = readJson('chncak_responsables', {});
     const teamPhoto = localStorage.getItem('chncak_dashboard_team_photo') || localStorage.getItem('dashboardTeamPhoto') || localStorage.getItem('teamPhoto') || '';
+    const leaderPhoto = key => localStorage.getItem(`chncak_dashboard_photo_${key}`) || '';
+    const photoBlock = (key, label, initials) => {
+      const img = leaderPhoto(key);
+      return `<div class="leader-photo" ondblclick="chooseDashboardPhoto('${esc(key)}')" title="Double-clic discret pour changer la photo">${img ? `<img src="${img}" alt="${esc(label)}">` : `<span>${esc(initials)}</span>`}</div>`;
+    };
     if(teamPhoto && !localStorage.getItem('chncak_dashboard_team_photo')) localStorage.setItem('chncak_dashboard_team_photo', teamPhoto);
     const now = new Date();
     const timeText = now.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
@@ -702,18 +707,17 @@
               <p>Vue de pilotage du service : activité, rendez-vous, protocoles, suivi, biologie et pharmacie centrale.</p>
             </div>
           </div>
-          <div class="dashboard-team-panel dash-final-photo">
+          <div class="dashboard-team-panel dash-final-photo" ondblclick="chooseDashboardPhoto('team')" title="Double-clic discret pour changer la photo de l'equipe">
             ${teamPhoto ? `<img src="${teamPhoto}" alt="Equipe CHNCAK">` : '<div class="dashboard-team-empty">Photo de l equipe</div>'}
-            <label class="dashboard-photo-btn" title="Changer la photo">Photo<input type="file" accept="image/*" onchange="handleDashboardTeamPhoto(this)"></label>
           </div>
         </div>
         <div class="dash-clock-lead">
           <div class="dash-clock-card"><span>Heure locale</span><strong id="dashboard-live-clock">${esc(timeText)}</strong><em>${esc(dateText)}</em></div>
           <div class="dash-leadership">
-            <div class="lead-director"><span>Directrice de l'hopital</span><strong>Dr Bineta Diabel Ba MBACKE</strong></div>
-            <div><span>Chef du service Oncologie-Radiotherapie</span><strong>Dr MAIMOUNA MANE</strong><em>Oncologue-radiotherapeute</em></div>
-            <div><span>Chef de service Pharmacie</span><strong>Dr Abdoulahi NDIAYE</strong></div>
-            <div><span>Surveillant du service Oncologie-Radiotherapie</span><strong>SERIGNE MOR SAMB GUEYE</strong></div>
+            <div class="lead-director">${photoBlock('directrice','Directrice','BB')}<div><span>Directrice de l'hopital</span><strong>Dr Bineta Diabel Ba MBACKE</strong></div></div>
+            <div>${photoBlock('oncologie','Chef oncologie','MM')}<div><span>Chef du service Oncologie-Radiotherapie</span><strong>Dr MAIMOUNA MANE</strong><em>Oncologue-radiotherapeute</em></div></div>
+            <div>${photoBlock('pharmacie','Chef pharmacie','AN')}<div><span>Chef de service Pharmacie</span><strong>Dr Abdoulahi NDIAYE</strong></div></div>
+            <div>${photoBlock('surveillant','Surveillant','SM')}<div><span>Surveillant du service Oncologie-Radiotherapie</span><strong>SERIGNE MOR SAMB GUEYE</strong></div></div>
           </div>
         </div>
         <div class="dash-final-grid">
@@ -1039,6 +1043,34 @@
       };
       reader.readAsDataURL(file);
       input.value = '';
+    });
+  };
+
+  window.chooseDashboardPhoto = function(slot){
+    askAdminCode('changer une photo du dashboard', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      input.addEventListener('change', () => {
+        const file = input.files?.[0];
+        if(!file){ input.remove(); return; }
+        const reader = new FileReader();
+        reader.onload = event => {
+          if(slot === 'team'){
+            localStorage.setItem('chncak_dashboard_team_photo', event.target.result);
+            localStorage.setItem('dashboardTeamPhoto', event.target.result);
+            localStorage.setItem('teamPhoto', event.target.result);
+          } else {
+            localStorage.setItem(`chncak_dashboard_photo_${slot}`, event.target.result);
+          }
+          input.remove();
+          window.renderDashboard?.();
+        };
+        reader.readAsDataURL(file);
+      });
+      input.click();
     });
   };
 
@@ -1849,7 +1881,7 @@
     }
     if(document.getElementById('suivi-content') && !document.getElementById('suivi-import-final')){
       const head = document.querySelector('#suivi-content .dashboard-head');
-      head?.insertAdjacentHTML('beforeend', '<div id="suivi-import-final" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn-secondary" onclick="downloadSuiviTemplate()">Modele tableau</button><label class="btn-secondary" style="cursor:pointer">Importer tableau<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importSuiviExcel(this)"></label><button class="btn-primary" style="width:auto" onclick="exportSuiviExcel()">Exporter tableau</button></div>');
+      head?.insertAdjacentHTML('beforeend', '<div id="suivi-import-final" class="suivi-actions-final"><button class="btn-secondary" onclick="downloadSuiviTemplate()">Modele tableau</button><label class="btn-secondary suivi-import-label">Importer tableau<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importSuiviExcel(this)"></label><button class="btn-primary" onclick="exportSuiviExcel()">Exporter tableau</button></div>');
     }
     installPatientSearchBox('page-preparation', 'preparation-patient-loader', 'loadPatientForPreparation');
     installPatientSearchBox('page-support', 'support-patient-loader', 'loadPatientForSupport');
@@ -1972,8 +2004,7 @@
     setInterval(updateLiveClocks, 30000);
     const style = document.createElement('style');
     style.textContent = `
-      .dashboard-photo-btn{opacity:.28!important;padding:5px 8px!important;font-size:10px!important}
-      .dashboard-team-panel:hover .dashboard-photo-btn{opacity:.9!important}
+      .dashboard-photo-btn{display:none!important}
       .page{max-width:1480px}
       #page-preparation > div,#page-support > div,#page-stats > div,#page-programme > div[style*="max-width"]{max-width:1380px!important}
       .dash-card{border-left:3px solid var(--blue);box-shadow:0 8px 20px rgba(10,61,122,.08)}
@@ -1986,6 +2017,8 @@
       .dash-final-title p{margin:0;color:#607080;font-size:14px;line-height:1.42;max-width:760px}
       .dash-final-photo{min-height:150px;border-radius:8px;overflow:hidden;background:#eef4fd;border:1px solid #dbe5f2;position:relative}
       .dash-final-photo img{width:100%;height:100%;min-height:150px;object-fit:cover;display:block}
+      .dash-final-photo,.leader-photo{cursor:default}
+      .dash-final-photo:hover:after,.leader-photo:hover:after{content:"";position:absolute;inset:0;border:2px solid rgba(10,61,122,.18);border-radius:inherit;pointer-events:none}
       .dash-final-grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px}
       .dash-final-kpi{background:#fff;border:1px solid #dbe5f2;border-radius:8px;padding:12px;box-shadow:0 8px 18px rgba(10,61,122,.06)}
       .dash-final-kpi span{display:block;font-size:11px;color:#607080;text-transform:uppercase;font-weight:700}
@@ -2061,15 +2094,21 @@
       .dash-clock-card strong,.login-clock-card strong{display:block;font-size:44px;line-height:1;font-weight:900;margin:7px 0 5px;font-family:Arial,Helvetica,sans-serif}
       .dash-clock-card em,.login-clock-card em{display:block;font-style:normal;font-size:12px;line-height:1.25;opacity:.9;text-transform:capitalize}
       .dash-leadership{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:8px}
-      .dash-leadership>div{background:#fff;border:1px solid #c9d8eb;border-radius:8px;padding:10px 12px;box-shadow:0 8px 18px rgba(10,61,122,.07)}
+      .dash-leadership>div{background:#fff;border:1px solid #c9d8eb;border-radius:8px;padding:10px 12px;box-shadow:0 8px 18px rgba(10,61,122,.07);display:flex;gap:10px;align-items:center;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+      .dash-leadership>div:hover{transform:translateY(-2px);box-shadow:0 14px 26px rgba(10,61,122,.13);border-color:#0A3D7A}
       .dash-leadership .lead-director{grid-row:span 2;background:#f8fbff;border-left:4px solid #0A3D7A}
+      .leader-photo{width:54px;height:54px;border-radius:8px;position:relative;flex:0 0 54px;background:linear-gradient(135deg,#eef4fd,#e9f7ef);border:1px solid #b9cbe3;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#0A3D7A;font-weight:900;font-size:15px}
+      .leader-photo img{width:100%;height:100%;object-fit:cover;display:block}
       .dash-leadership span{display:block;font-size:10px;color:#607080;text-transform:uppercase;font-weight:800;line-height:1.25}
       .dash-leadership strong{display:block;color:#17324d;font-size:13px;margin-top:5px;line-height:1.25}
       .dash-leadership em{display:block;color:#0B5E3C;font-size:11px;font-style:normal;margin-top:3px}
+      .suivi-actions-final{display:grid;grid-template-columns:repeat(3,minmax(130px,1fr));gap:8px;align-items:center;justify-content:end;min-width:min(100%,500px)}
+      .suivi-actions-final button,.suivi-actions-final label{height:38px;display:flex!important;align-items:center;justify-content:center;text-align:center;width:100%!important;margin:0!important;padding:8px 12px!important;border-radius:7px!important;font-size:12px!important;font-weight:800!important;line-height:1.1;white-space:nowrap;box-sizing:border-box}
+      .suivi-import-label{cursor:pointer}
       .login-clock-card{position:absolute;top:24px;right:24px;min-width:230px;background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.38);border-radius:10px;padding:16px 18px;box-shadow:0 16px 38px rgba(0,0,0,.18);backdrop-filter:blur(8px);text-align:left}
       .login-clock-card strong{font-size:38px}
       @media (max-width:900px){.dash-final-hero,.dash-final-main,.proto-editor-grid{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}.proto-drug-line{grid-template-columns:1fr 1fr}.proto-remove{grid-column:1/-1}}
-      @media (max-width:900px){.dash-clock-lead,.dash-leadership{grid-template-columns:1fr}.dash-leadership .lead-director{grid-row:auto}.login-clock-card{position:static;margin:0 0 12px;background:rgba(255,255,255,.18)}}
+      @media (max-width:900px){.dash-clock-lead,.dash-leadership,.suivi-actions-final{grid-template-columns:1fr}.dash-leadership .lead-director{grid-row:auto}.login-clock-card{position:static;margin:0 0 12px;background:rgba(255,255,255,.18)}}
       @media print{.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:6px!important;line-height:.78!important;margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important}.protocol-print-fit table:first-child img{max-height:34px!important}}
     `;
     document.head.appendChild(style);
