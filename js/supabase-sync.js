@@ -19,6 +19,7 @@
     'chncak_sorties',
     'chncak_hematologie_sorties',
     'chncak_hematologie_patients',
+    'chncak_code_gratuite_counter',
     'chncak_suivi',
     'chncak_biologie',
     'chncak_medecins',
@@ -41,6 +42,7 @@
     'chncak_sorties',
     'chncak_hematologie_sorties',
     'chncak_hematologie_patients',
+    'chncak_code_gratuite_counter',
     'chncak_suivi',
     'chncak_biologie',
     'chncak_medecins',
@@ -56,6 +58,7 @@
     'chncak_medecins',
     'chncak_responsables',
     'chncak_prog_config',
+    'chncak_code_gratuite_counter',
     'chncak_dashboard_team_photo',
     'chncak_cloud_device_id',
     'chncak_dark',
@@ -87,6 +90,12 @@
     return String(value ?? '').replace(/[&<>"']/g, ch => ({
       '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
     }[ch]));
+  }
+
+  function valNewestDate(a, b){
+    const at = Date.parse(a || '') || 0;
+    const bt = Date.parse(b || '') || 0;
+    return bt >= at ? (b || a || new Date().toISOString()) : (a || b || new Date().toISOString());
   }
 
   function notify(message, type){
@@ -142,6 +151,15 @@
     if(cloudRaw === null || cloudRaw === undefined || cloudRaw === '') return localRaw;
     const cloud = readJsonValue(cloudRaw, null);
     const local = readJsonValue(localRaw, null);
+    if(key === 'chncak_code_gratuite_counter'){
+      const cloudValue = Number(cloud?.value || cloud?.global || 0);
+      const localValue = Number(local?.value || local?.global || 0);
+      return JSON.stringify({
+        value: Math.max(cloudValue, localValue, 0),
+        updatedAt: valNewestDate(cloud?.updatedAt, local?.updatedAt),
+        updatedBy: valNewestDate(cloud?.updatedAt, local?.updatedAt) === local?.updatedAt ? local?.updatedBy : cloud?.updatedBy
+      });
+    }
     if(ARRAY_KEYS.has(key) && Array.isArray(cloud) && Array.isArray(local)){
       return JSON.stringify(mergeArrays(cloud, local));
     }

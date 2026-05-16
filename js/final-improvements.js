@@ -32,6 +32,138 @@
   const patientShortCode = p => val(p?.dossier, p?.numeroDossier, p?.codegratuite, p?.codeGratuite, p?.code, p?.id);
   const patientBarcode = p => val(p?.codeBarre, p?.codebarre, p?.codegratuite, p?.codeGratuite, p?.code, p?.dossier);
   const todayIso = () => new Date().toISOString().slice(0, 10);
+  const CODE_GRATUITE_COUNTER_KEY = 'chncak_code_gratuite_counter';
+
+  function codeYearFromDate(value){
+    const d = value ? new Date(value) : new Date();
+    const year = Number.isFinite(d.getTime()) ? d.getFullYear() : new Date().getFullYear();
+    return String(year).slice(-2);
+  }
+
+  function codeSexLetter(value){
+    const n = norm(value);
+    if(n.startsWith('f')) return 'F';
+    if(n.startsWith('m')) return 'M';
+    return 'X';
+  }
+
+  function parseCodeGratuiteSequence(code){
+    const match = String(code || '').trim().match(/^(\d+)[A-Za-z]\d{2}$/);
+    return match ? Number(match[1]) : 0;
+  }
+
+  function codeGratuiteFrom(seq, sexe, dateValue){
+    const n = Number(seq);
+    if(!n || n < 1) return '';
+    return `${n}${codeSexLetter(sexe)}${codeYearFromDate(dateValue)}`;
+  }
+
+  function allStoredCodeGratuiteValues(){
+    const keys = [
+      STORAGE.patients,
+      STORAGE.historique,
+      STORAGE.okchimio,
+      'chncak_okchimio',
+      'chncak_hematologie_patients',
+      'chncak_hematologie_sorties'
+    ];
+    const out = [];
+    keys.forEach(key => {
+      const rows = readJson(key, []);
+      if(!Array.isArray(rows)) return;
+      rows.forEach(item => {
+        out.push(val(item?.codegratuite, item?.codeGratuite, item?.code, item?.patient?.codegratuite, item?.patient?.codeGratuite));
+      });
+    });
+    return out.filter(Boolean);
+  }
+
+  function maxKnownCodeGratuiteSequence(){
+    return allStoredCodeGratuiteValues().reduce((max, code) => Math.max(max, parseCodeGratuiteSequence(code)), 0);
+  }
+
+  function readCodeGratuiteCounter(){
+    const raw = readJson(CODE_GRATUITE_COUNTER_KEY, {});
+    const value = Number(raw?.value || raw?.global || 0);
+    return {value: Math.max(value, maxKnownCodeGratuiteSequence(), 0), updatedAt: raw?.updatedAt || '', updatedBy: raw?.updatedBy || ''};
+  }
+
+  function writeCodeGratuiteCounter(value){
+    const user = typeof currentUser === 'function' ? currentUser() : {};
+    writeJson(CODE_GRATUITE_COUNTER_KEY, {
+      value: Math.max(Number(value) || 0, maxKnownCodeGratuiteSequence(), 0),
+      updatedAt: new Date().toISOString(),
+      updatedBy: val(user.username, user.name, 'local')
+    });
+  }
+
+  function codeGratuiteExists(code, ignoreCode){
+    const c = String(code || '').trim();
+    if(!c) return false;
+    const ignored = String(ignoreCode || '').trim();
+    return allStoredCodeGratuiteValues().some(item => String(item || '').trim() === c && (!ignored || String(item || '').trim() !== ignored));
+  }
+
+  function nextAvailableCodeGratuite(sexe, dateValue){
+    let seq = readCodeGratuiteCounter().value + 1;
+    let code = codeGratuiteFrom(seq, sexe, dateValue);
+    let guard = 0;
+    while(codeGratuiteExists(code) && guard < 200){
+      seq += 1;
+      code = codeGratuiteFrom(seq, sexe, dateValue);
+      guard += 1;
+    }
+    return {seq, code};
+  }
+
+  function reserveCodeGratuite(code){
+    const seq = parseCodeGratuiteSequence(code);
+    if(seq) writeCodeGratuiteCounter(seq);
+  }
+
+  function setProtocolAutoCode(forceNew){
+    const input = document.getElementById('codegratuite');
+    if(!input || input.dataset.manual === '1') return input?.value || '';
+    const seqInput = document.getElementById('num-seq');
+    const sexe = document.getElementById('sexe')?.value || '';
+    const dateValue = document.getElementById('date-protocole')?.value || todayIso();
+    let seq = Number(seqInput?.value || parseCodeGratuiteSequence(input.value) || 0);
+    let code = codeGratuiteFrom(seq, sexe, dateValue);
+    if(!forceNew && parseCodeGratuiteSequence(input.value) && !seqInput?.value){
+      code = input.value;
+    }
+    if(forceNew || !seq || !code){
+      const next = nextAvailableCodeGratuite(sexe, dateValue);
+      seq = next.seq;
+      code = next.code;
+    }
+    if(seqInput){
+      seqInput.value = seq;
+      seqInput.readOnly = true;
+      seqInput.dataset.auto = '1';
+      seqInput.title = 'Numero attribue automatiquement et synchronise par le cloud.';
+    }
+    input.value = code;
+    input.readOnly = true;
+    input.dataset.auto = '1';
+    return code;
+  }
+
+  function setHematologieAutoCode(forceNew){
+    const input = document.getElementById('hema-code');
+    if(!input || input.dataset.manual === '1') return input?.value || '';
+    const sexe = document.getElementById('hema-sexe')?.value || '';
+    const existingSeq = parseCodeGratuiteSequence(input.value);
+    const existingAutoCode = existingSeq ? codeGratuiteFrom(existingSeq, sexe, todayIso()) : '';
+    const next = forceNew || !existingSeq || codeGratuiteExists(existingAutoCode)
+      ? nextAvailableCodeGratuite(sexe, todayIso())
+      : {code: existingAutoCode, seq: existingSeq};
+    input.value = next.code;
+    input.readOnly = true;
+    input.dataset.auto = '1';
+    input.title = 'Code attribue automatiquement et synchronise par le cloud.';
+    return next.code;
+  }
   function protocolsList(){
     try {
       if(Array.isArray(PROTOCOLS)){
@@ -1254,9 +1386,13 @@
   }
 
   window.saveProtocol = function(){
+    setProtocolAutoCode(false);
     const patient = currentProtocolFormPatient();
     if(!patient.prenom || !patient.nom) return alert('Veuillez renseigner au minimum prenom et nom.');
     if(!patient.dossier) return alert('Veuillez renseigner le numero de dossier.');
+    if(patient.codegratuite && savedCodeExists(patient.codegratuite) && document.getElementById('codegratuite')?.dataset.manual !== '1'){
+      patient.codegratuite = setProtocolAutoCode(true);
+    }
     if(patient.codegratuite && savedCodeExists(patient.codegratuite) && document.getElementById('codegratuite')?.dataset.manual !== '1'){
       alert('Code de gratuite deja utilise. Enregistrement refuse.');
       return;
@@ -1277,6 +1413,7 @@
     }
     window.renderPatientsList?.();
     window.renderOkChimio?.();
+    reserveCodeGratuite(patient.codegratuite);
     openValidationEmail(patient);
   };
 
@@ -2433,6 +2570,7 @@
 
   window.saveHematologiePatient = function(){
     const get = id => document.getElementById(id)?.value?.trim() || '';
+    if(!get('hema-code')) setHematologieAutoCode(false);
     const patient = {
       id: val(get('hema-code'), get('hema-nin'), Date.now()),
       nom: get('hema-nom'),
@@ -2447,12 +2585,21 @@
       savedAt: new Date().toISOString()
     };
     if(!patient.nom || !patient.prenom) return alert('Renseignez au minimum le nom et le prenom.');
+    if(patient.codegratuite && codeGratuiteExists(patient.codegratuite)){
+      const listForCheck = readJson('chncak_hematologie_patients', []);
+      const sameExisting = listForCheck.some(p => norm(val(p.codegratuite)) === norm(patient.codegratuite) && norm(`${p.prenom} ${p.nom}`) === norm(`${patient.prenom} ${patient.nom}`));
+      if(!sameExisting && document.getElementById('hema-code')?.dataset.manual !== '1'){
+        patient.codegratuite = setHematologieAutoCode(true);
+        patient.id = val(patient.codegratuite, patient.nin, Date.now());
+      }
+    }
     const list = readJson('chncak_hematologie_patients', []);
     const key = norm(val(patient.codegratuite, patient.nin, `${patient.prenom} ${patient.nom}`));
     const idx = list.findIndex(p => norm(val(p.codegratuite, p.nin, `${p.prenom} ${p.nom}`)) === key);
     if(idx >= 0) list[idx] = {...list[idx], ...patient};
     else list.unshift(patient);
     writeJson('chncak_hematologie_patients', list);
+    reserveCodeGratuite(patient.codegratuite);
     window.renderHematologie?.();
     showToastSafe('Patient hematologie enregistre.', 'success');
   };
@@ -2563,8 +2710,8 @@
               <div class="field"><label>Nom</label><input id="hema-nom"></div>
               <div class="field"><label>Prenom</label><input id="hema-prenom"></div>
               <div class="field"><label>Age</label><input id="hema-age" type="number" min="0"></div>
-              <div class="field"><label>Sexe</label><select id="hema-sexe"><option></option><option>F</option><option>M</option></select></div>
-              <div class="field"><label>Code gratuite</label><input id="hema-code"></div>
+              <div class="field"><label>Sexe</label><select id="hema-sexe" onchange="generateHematologieCodeGratuite()"><option></option><option>F</option><option>M</option></select></div>
+              <div class="field"><label>Code gratuite <span style="color:var(--blue);font-size:10px">(auto)</span></label><input id="hema-code" readonly style="background:var(--blue-pale);color:var(--blue);font-weight:600;font-family:var(--mono)"></div>
               <div class="field"><label>Nationalite</label><input id="hema-nationalite"></div>
               <div class="field"><label>NIN</label><input id="hema-nin"></div>
               <div class="field"><label>ID CUIBIX</label><input id="hema-cuibix"></div>
@@ -2599,6 +2746,12 @@
         </div>
       </div>
     `;
+    setHematologieAutoCode(false);
+    const hemaCode = document.getElementById('hema-code');
+    if(hemaCode){
+      hemaCode.title = 'Double-clic discret pour reutiliser un ancien code gratuite';
+      hemaCode.ondblclick = () => unlockHematologieCodeGratuiteManual();
+    }
   };
 
   function cleanupLoginAndButtons(){
@@ -2793,14 +2946,27 @@
       showToastSafe('Champ code gratuite debloque pour reprise d un ancien code.', 'info');
     });
   };
+  window.unlockHematologieCodeGratuiteManual = function(){
+    requireAdminAction('modifier manuellement le code gratuite hematologie', () => {
+      const input = document.getElementById('hema-code');
+      if(!input) return;
+      input.dataset.manual = '1';
+      input.readOnly = false;
+      input.focus();
+      showToastSafe('Code hematologie debloque pour reprise d un ancien code.', 'info');
+    });
+  };
   const nativeGenCodeGratuite = window.genCodeGratuite;
   if(typeof nativeGenCodeGratuite === 'function'){
     window.genCodeGratuite = function(){
       const input = document.getElementById('codegratuite');
       if(input?.dataset.manual === '1') return;
-      return nativeGenCodeGratuite.apply(this, arguments);
+      return setProtocolAutoCode(false);
     };
   }
+  window.generateHematologieCodeGratuite = function(){
+    return setHematologieAutoCode(false);
+  };
 
   function updateLiveClocks(){
     const now = new Date();
@@ -2827,6 +2993,7 @@
     document.body.classList.toggle('admin-session', isAdminUser());
     document.body.classList.toggle('pharmacien-session', isPharmacienUser());
     cleanMedecinsFinal();
+    setProtocolAutoCode(false);
     if(typeof renderProtos === 'function') renderProtos();
     cleanupLoginAndButtons();
     ensurePreparationPrintReady();

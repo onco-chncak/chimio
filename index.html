@@ -180,8 +180,8 @@
       <div class="fg g4">
         <div class="field"><label>ID Cubix</label><input id="cubix" type="text" placeholder="ex: 122456" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,6);update()" style="letter-spacing:0.1em;font-family:var(--mono)"></div>
         <div class="field">
-          <label>N° séquentiel (Code Gratuite)</label>
-          <input id="num-seq" type="number" placeholder="ex: 155" min="1" oninput="genCodeGratuite()">
+          <label>N° séquentiel <span style="color:var(--blue);font-size:10px">(auto cloud)</span></label>
+          <input id="num-seq" type="number" placeholder="auto" min="1" readonly oninput="genCodeGratuite()" title="Attribue automatiquement pour eviter les doublons entre utilisateurs">
         </div>
         <div class="field">
           <label>Code Gratuite <span style="color:var(--blue);font-size:10px">(auto)</span></label>
@@ -1151,11 +1151,11 @@ NaCl 0.9% 250ml | ml | fix | 250"
 <script src="js/protocol-editor.js"></script>
 <script src="js/app-polish.js"></script>
 <script src="js/requested-improvements.js"></script>
-<script src="js/site-official-data.js?v=20260516u"></script>
-<script src="js/final-improvements.js?v=20260516u"></script>
+<script src="js/site-official-data.js?v=20260516v"></script>
+<script src="js/final-improvements.js?v=20260516v"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const CHIMIOPRO_PUBLIC_VERSION = '20260516u';
+    const CHIMIOPRO_PUBLIC_VERSION = '20260516v';
     let chimioproReloadingForUpdate = false;
     const showChimioProUpdateNotice = () => {
       if (document.getElementById('chimiopro-update-notice')) return;
