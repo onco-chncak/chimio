@@ -1,4 +1,5 @@
-const CACHE_NAME = 'chimiopro-v20260516k';
+const APP_VERSION = '20260516l';
+const CACHE_NAME = `chimiopro-v${APP_VERSION}`;
 
 const ASSETS = [
   './',
@@ -27,10 +28,11 @@ const CDN_LIBS = [
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      cache.addAll(ASSETS);
+      const localAssets = cache.addAll(ASSETS.map(asset => `${asset}?v=${APP_VERSION}`)).catch(() => cache.addAll(ASSETS));
       CDN_LIBS.forEach(url => {
         fetch(url).then(r => { if (r.ok) cache.put(url, r); }).catch(() => {});
       });
+      return localAssets;
     })
   );
   self.skipWaiting();
@@ -38,11 +40,19 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({type:'window'}))
+      .then(clients => clients.forEach(client => client.postMessage({type:'CHIMIOPRO_VERSION_READY', version:APP_VERSION})))
   );
-  self.clients.claim();
+});
+
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'CHIMIOPRO_SKIP_WAITING') self.skipWaiting();
+  if (event.data && event.data.type === 'CHIMIOPRO_GET_VERSION') {
+    event.source?.postMessage({type:'CHIMIOPRO_VERSION', version:APP_VERSION, cache:CACHE_NAME});
+  }
 });
 
 self.addEventListener('fetch', event => {
@@ -50,6 +60,15 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(event.request.url);
   if (url.origin === self.location.origin) {
+    if (event.request.mode === 'navigate') {
+      event.respondWith(
+        fetch(event.request, {cache:'no-store'}).catch(() =>
+          caches.match(`./index.html?v=${APP_VERSION}`).then(cached => cached || caches.match('./index.html'))
+        )
+      );
+      return;
+    }
+
     event.respondWith(
       fetch(event.request).then(response => {
         if (response && response.status === 200) {

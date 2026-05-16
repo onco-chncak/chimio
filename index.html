@@ -1145,11 +1145,51 @@ NaCl 0.9% 250ml | ml | fix | 250"
 <script src="js/protocol-editor.js"></script>
 <script src="js/app-polish.js"></script>
 <script src="js/requested-improvements.js"></script>
-<script src="js/final-improvements.js?v=20260516k"></script>
+<script src="js/final-improvements.js?v=20260516l"></script>
 <script>
   if ('serviceWorker' in navigator) {
+    const CHIMIOPRO_PUBLIC_VERSION = '20260516l';
+    let chimioproReloadingForUpdate = false;
+    const showChimioProUpdateNotice = () => {
+      if (document.getElementById('chimiopro-update-notice')) return;
+      const notice = document.createElement('div');
+      notice.id = 'chimiopro-update-notice';
+      notice.textContent = 'Nouvelle version disponible, rechargement...';
+      notice.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:200000;background:#0B5E3C;color:#fff;border:1px solid #074b30;border-radius:8px;padding:10px 14px;font:700 12px Arial,sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.22)';
+      document.body.appendChild(notice);
+    };
+    const reloadForChimioProUpdate = () => {
+      if (chimioproReloadingForUpdate) return;
+      chimioproReloadingForUpdate = true;
+      showChimioProUpdateNotice();
+      setTimeout(() => window.location.reload(), 700);
+    };
+
+    navigator.serviceWorker.addEventListener('controllerchange', reloadForChimioProUpdate);
+    navigator.serviceWorker.addEventListener('message', event => {
+      if (event.data?.type === 'CHIMIOPRO_VERSION_READY' && event.data.version !== localStorage.getItem('chimiopro_public_version')) {
+        localStorage.setItem('chimiopro_public_version', event.data.version);
+        reloadForChimioProUpdate();
+      }
+    });
+
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js')
+      navigator.serviceWorker.register(`./sw.js?v=${CHIMIOPRO_PUBLIC_VERSION}`)
+        .then(registration => {
+          localStorage.setItem('chimiopro_public_version', CHIMIOPRO_PUBLIC_VERSION);
+          registration.update();
+          registration.addEventListener('updatefound', () => {
+            const worker = registration.installing;
+            if (!worker) return;
+            worker.addEventListener('statechange', () => {
+              if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                showChimioProUpdateNotice();
+                worker.postMessage({type:'CHIMIOPRO_SKIP_WAITING'});
+              }
+            });
+          });
+          setInterval(() => registration.update(), 10 * 60 * 1000);
+        })
         .catch(err => console.warn('Service worker non enregistré:', err));
     });
   }
