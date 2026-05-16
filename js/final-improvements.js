@@ -29,6 +29,8 @@
   };
   const patientName = p => `${val(p?.prenom)} ${val(p?.nom)}`.trim() || val(p?.patientName, p?.patient, p?.name);
   const patientCode = p => val(p?.codegratuite, p?.codeGratuite, p?.code, p?.dossier, p?.id);
+  const patientShortCode = p => val(p?.dossier, p?.numeroDossier, p?.codegratuite, p?.codeGratuite, p?.code, p?.id);
+  const patientBarcode = p => val(p?.codeBarre, p?.codebarre, p?.codegratuite, p?.codeGratuite, p?.code, p?.dossier);
   const todayIso = () => new Date().toISOString().slice(0, 10);
   function protocolsList(){
     try {
@@ -454,7 +456,8 @@
       const aspiration = steps?.length ? steps.map(s => `${s.volAspire} mL du fl. ${s.dosage} mg`).join('<br>') : 'Dose fixe / non injectable';
       const solvant = doseMg && typeof getSolvantVol === 'function' ? getSolvantVol(d.name, doseMg) : null;
       const sol = solvant ? `${solvant.vol} cc ${solvant.sol}` : val(dose.sol, d.sol, '-');
-      labelCards.push(`<div class="vial-label"><div class="vial-title">${esc(d.name || '')}</div><div><b>Patient:</b> ${esc(patient.prenom)} ${esc(patient.nom)}</div><div><b>Dose:</b> ${esc(dose.txt || '-')}</div><div><b>Solvant:</b> ${esc(sol)}</div><div><b>Date:</b> ${new Date().toLocaleDateString('fr-FR')} &nbsp; <b>Prep:</b> ____</div></div>`);
+      const barre = patientBarcode(patient);
+      labelCards.push(`<div class="vial-label"><div class="vial-title">${esc(d.name || '')}</div><div><b>Patient:</b> ${esc(patient.prenom)} ${esc(patient.nom)}</div><div><b>Code barre:</b> <span class="barcode-text">${esc(barre || '-')}</span></div><div><b>Dose:</b> ${esc(dose.txt || '-')}</div><div><b>Solvant:</b> ${esc(sol)}</div><div><b>Date:</b> ${new Date().toLocaleDateString('fr-FR')} &nbsp; <b>Prep:</b> ____</div></div>`);
       return `<tr>
         <td>${n}</td><td><b>${esc(d.name || d.label || '')}</b></td><td>${esc(dose.txt || '')}</td>
         <td>${aspiration}</td><td><b>${totalVol ? totalVol.toFixed(1) + ' mL' : '-'}</b></td>
@@ -462,7 +465,7 @@
       </tr>`;
     }).join('');
     const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Fiche preparation</title>
-      <style>@page{size:A4;margin:8mm 10mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#111}.head{display:grid;grid-template-columns:52px 1fr 120px;gap:7px;align-items:start;margin-bottom:5px}.head img{width:48px;height:48px;object-fit:contain}.ministry{font-size:7.2px;line-height:1.12}.right{font-size:8px;line-height:1.22;text-align:right}.title{background:#0A3D7A;color:white;padding:6px 9px;border-radius:3px;margin:6px 0;font-weight:700}.patient{display:grid;grid-template-columns:2fr repeat(4,1fr);gap:5px;background:#EEF4FD;border:1px solid #0A3D7A;padding:6px;margin-bottom:6px}.patient small{display:block;color:#555;font-size:7px;text-transform:uppercase}table{width:100%;border-collapse:collapse}th{background:#0A3D7A;color:white;font-size:8.5px;padding:4px;border:1px solid #7fa2d4}td{font-size:9px;padding:4px 5px;border:1px solid #bbb;vertical-align:top}.sep td{background:#f1f1f1;color:#555;font-style:italic}.sign{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}.box{height:28px;border:1px solid #aaa;margin-top:3px}.label-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-top:8px}.vial-label{border:1px dashed #333;border-radius:3px;padding:5px;font-size:7.8px;line-height:1.25;min-height:42px}.vial-title{font-weight:bold;color:#0A3D7A;font-size:8.4px;text-transform:uppercase;margin-bottom:2px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
+      <style>@page{size:A4;margin:8mm 10mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#111}.head{display:grid;grid-template-columns:52px 1fr 120px;gap:7px;align-items:start;margin-bottom:5px}.head img{width:48px;height:48px;object-fit:contain}.ministry{font-size:7.2px;line-height:1.12}.right{font-size:8px;line-height:1.22;text-align:right}.title{background:#0A3D7A;color:white;padding:6px 9px;border-radius:3px;margin:6px 0;font-weight:700}.patient{display:grid;grid-template-columns:2fr repeat(4,1fr);gap:5px;background:#EEF4FD;border:1px solid #0A3D7A;padding:6px;margin-bottom:6px}.patient small{display:block;color:#555;font-size:7px;text-transform:uppercase}table{width:100%;border-collapse:collapse}th{background:#0A3D7A;color:white;font-size:8.5px;padding:4px;border:1px solid #7fa2d4}td{font-size:9px;padding:4px 5px;border:1px solid #bbb;vertical-align:top}.sep td{background:#f1f1f1;color:#555;font-style:italic}.sign{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}.box{height:28px;border:1px solid #aaa;margin-top:3px}.label-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-top:8px}.vial-label{border:1px dashed #333;border-radius:3px;padding:5px;font-size:7.8px;line-height:1.25;min-height:48px}.vial-title{font-weight:bold;color:#0A3D7A;font-size:8.4px;text-transform:uppercase;margin-bottom:2px}.barcode-text{font-family:"Libre Barcode 39","Courier New",monospace;font-size:10px;letter-spacing:.08em}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
     </head><body>
       <div class="head"><img src="${document.querySelector('.nav-logo img')?.src || ''}"><div class="ministry">Republique du Senegal - Un peuple, un but, une foi<br>Ministere de la Sante et de l'Action Sociale<br><b>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba</b><br><b>Service d'Oncologie-Radiotherapie</b></div><div class="right">Dossier: <b>${esc(patient.dossier || '-')}</b><br>ID Cubix: <b>${esc(patient.cubix || '-')}</b><br>Code: <b>${esc(patient.codegratuite || '-')}</b><br>Date: <b>${new Date().toLocaleDateString('fr-FR')}</b></div></div>
       <div class="title">FICHE DE PREPARATION - ${esc(proto.name)} <span style="font-weight:400">(${esc(proto.detail || '')})</span></div>
@@ -618,6 +621,32 @@
   const nativeRenderSuiviFinal = window.renderSuivi;
   window.renderSuivi = renderSuiviFinal;
 
+  const nativeRenderBiologieFinal = window.renderBiologie;
+  window.renderBiologie = function(){
+    const out = typeof nativeRenderBiologieFinal === 'function' ? nativeRenderBiologieFinal.apply(this, arguments) : undefined;
+    const patients = readJson(STORAGE.patients, []);
+    const select = document.getElementById('bio-patient-select');
+    if(select){
+      Array.from(select.options).forEach((option, idx) => {
+        if(!option.value) return;
+        const p = patients[idx - 1];
+        if(!p) return;
+        const code = patientShortCode(p);
+        option.value = code;
+        option.textContent = `${code || '-'} - ${patientName(p) || '-'}`;
+      });
+    }
+    return out;
+  };
+
+  window.loadBiologiePatient = function(){
+    const code = document.getElementById('bio-patient-select')?.value;
+    const patients = readJson(STORAGE.patients, []);
+    const patient = patients.find(p => patientShortCode(p) === code || patientCode(p) === code);
+    const input = document.getElementById('bio-patient');
+    if(input) input.value = patient ? patientName(patient) : '';
+  };
+
   window.renderDashboard = function(){
     const el = document.getElementById('dashboard-content');
     if(!el) return;
@@ -629,7 +658,11 @@
     const bio = readJson(STORAGE.biologie, readJson('biologie', []));
     const catalog = readJson(STORAGE.catalog, []);
     const responsables = readJson('chncak_responsables', {});
-    const teamPhoto = localStorage.getItem('chncak_dashboard_team_photo') || '';
+    const teamPhoto = localStorage.getItem('chncak_dashboard_team_photo') || localStorage.getItem('dashboardTeamPhoto') || localStorage.getItem('teamPhoto') || '';
+    if(teamPhoto && !localStorage.getItem('chncak_dashboard_team_photo')) localStorage.setItem('chncak_dashboard_team_photo', teamPhoto);
+    const now = new Date();
+    const timeText = now.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+    const dateText = now.toLocaleDateString('fr-FR', {weekday:'long', day:'2-digit', month:'long', year:'numeric'});
     const today = new Date();
     today.setHours(0,0,0,0);
     const weekEnd = new Date(today);
@@ -672,6 +705,15 @@
           <div class="dashboard-team-panel dash-final-photo">
             ${teamPhoto ? `<img src="${teamPhoto}" alt="Equipe CHNCAK">` : '<div class="dashboard-team-empty">Photo de l equipe</div>'}
             <label class="dashboard-photo-btn" title="Changer la photo">Photo<input type="file" accept="image/*" onchange="handleDashboardTeamPhoto(this)"></label>
+          </div>
+        </div>
+        <div class="dash-clock-lead">
+          <div class="dash-clock-card"><span>Heure locale</span><strong id="dashboard-live-clock">${esc(timeText)}</strong><em>${esc(dateText)}</em></div>
+          <div class="dash-leadership">
+            <div class="lead-director"><span>Directrice de l'hopital</span><strong>Dr Bineta Diabel Ba MBACKE</strong></div>
+            <div><span>Chef du service Oncologie-Radiotherapie</span><strong>Dr MAIMOUNA MANE</strong><em>Oncologue-radiotherapeute</em></div>
+            <div><span>Chef de service Pharmacie</span><strong>Dr Abdoulahi NDIAYE</strong></div>
+            <div><span>Surveillant du service Oncologie-Radiotherapie</span><strong>SERIGNE MOR SAMB GUEYE</strong></div>
           </div>
         </div>
         <div class="dash-final-grid">
@@ -988,6 +1030,8 @@
       const reader = new FileReader();
       reader.onload = event => {
         localStorage.setItem('chncak_dashboard_team_photo', event.target.result);
+        localStorage.setItem('dashboardTeamPhoto', event.target.result);
+        localStorage.setItem('teamPhoto', event.target.result);
         const img = document.querySelector('.dashboard-team-panel img');
         if(img) img.src = event.target.result;
         window.renderDashboard?.();
@@ -1784,6 +1828,12 @@
       if(!document.getElementById('login-copyright')){
         login.querySelector('form')?.insertAdjacentHTML('afterend', '<div id="login-copyright" style="margin-top:18px;text-align:center;font-size:11px;color:#666;border-top:1px solid #eee;padding-top:12px">Copyright SMSG 2026 - Serigne Mor Samb Gueye<br>Service Oncologie - Radiotherapie CHNCAK Touba</div>');
       }
+      if(!document.getElementById('login-clock-card')){
+        const now = new Date();
+        const timeText = now.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+        const dateText = now.toLocaleDateString('fr-FR', {weekday:'long', day:'2-digit', month:'long', year:'numeric'});
+        login.querySelector('form')?.insertAdjacentHTML('beforebegin', `<div id="login-clock-card" class="login-clock-card"><span>CHNCAK Touba</span><strong id="login-live-clock">${esc(timeText)}</strong><em>${esc(dateText)}</em></div>`);
+      }
     }
     const patientTop = document.querySelector('#page-patients > div[style*="justify-content:space-between"]');
     if(patientTop) patientTop.style.display = 'none';
@@ -1894,6 +1944,24 @@
     return out;
   };
 
+  function updateLiveClocks(){
+    const now = new Date();
+    const timeText = now.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+    const dateText = now.toLocaleDateString('fr-FR', {weekday:'long', day:'2-digit', month:'long', year:'numeric'});
+    const dashClock = document.getElementById('dashboard-live-clock');
+    const loginClock = document.getElementById('login-live-clock');
+    if(dashClock){
+      dashClock.textContent = timeText;
+      const em = dashClock.parentElement?.querySelector('em');
+      if(em) em.textContent = dateText;
+    }
+    if(loginClock){
+      loginClock.textContent = timeText;
+      const em = loginClock.parentElement?.querySelector('em');
+      if(em) em.textContent = dateText;
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     normalizeAllProtocols();
     cleanMedecinsFinal();
@@ -1901,6 +1969,7 @@
     cleanupLoginAndButtons();
     ensurePreparationPrintReady();
     installSupportCleanupWatcher();
+    setInterval(updateLiveClocks, 30000);
     const style = document.createElement('style');
     style.textContent = `
       .dashboard-photo-btn{opacity:.28!important;padding:5px 8px!important;font-size:10px!important}
@@ -1986,7 +2055,21 @@
       .prog-input:focus{outline:2px solid rgba(10,61,122,.16);border-color:#0A3D7A}
       .prog-row-done{background:#eef8f2!important}
       .prog-delete-btn{border:1px solid #b83232;background:#fdeaea;color:#9d1c1c;border-radius:6px;padding:5px 8px;cursor:pointer;font-weight:800}
+      .dash-clock-lead{display:grid;grid-template-columns:260px minmax(0,1fr);gap:12px;align-items:stretch}
+      .dash-clock-card{background:linear-gradient(135deg,#0A3D7A,#0B5E3C);color:#fff;border-radius:8px;padding:18px 20px;box-shadow:0 14px 30px rgba(10,61,122,.18);border:1px solid #072946}
+      .dash-clock-card span,.login-clock-card span{display:block;font-size:11px;text-transform:uppercase;font-weight:800;opacity:.82;letter-spacing:.04em}
+      .dash-clock-card strong,.login-clock-card strong{display:block;font-size:44px;line-height:1;font-weight:900;margin:7px 0 5px;font-family:Arial,Helvetica,sans-serif}
+      .dash-clock-card em,.login-clock-card em{display:block;font-style:normal;font-size:12px;line-height:1.25;opacity:.9;text-transform:capitalize}
+      .dash-leadership{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:8px}
+      .dash-leadership>div{background:#fff;border:1px solid #c9d8eb;border-radius:8px;padding:10px 12px;box-shadow:0 8px 18px rgba(10,61,122,.07)}
+      .dash-leadership .lead-director{grid-row:span 2;background:#f8fbff;border-left:4px solid #0A3D7A}
+      .dash-leadership span{display:block;font-size:10px;color:#607080;text-transform:uppercase;font-weight:800;line-height:1.25}
+      .dash-leadership strong{display:block;color:#17324d;font-size:13px;margin-top:5px;line-height:1.25}
+      .dash-leadership em{display:block;color:#0B5E3C;font-size:11px;font-style:normal;margin-top:3px}
+      .login-clock-card{position:absolute;top:24px;right:24px;min-width:230px;background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.38);border-radius:10px;padding:16px 18px;box-shadow:0 16px 38px rgba(0,0,0,.18);backdrop-filter:blur(8px);text-align:left}
+      .login-clock-card strong{font-size:38px}
       @media (max-width:900px){.dash-final-hero,.dash-final-main,.proto-editor-grid{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}.proto-drug-line{grid-template-columns:1fr 1fr}.proto-remove{grid-column:1/-1}}
+      @media (max-width:900px){.dash-clock-lead,.dash-leadership{grid-template-columns:1fr}.dash-leadership .lead-director{grid-row:auto}.login-clock-card{position:static;margin:0 0 12px;background:rgba(255,255,255,.18)}}
       @media print{.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:6px!important;line-height:.78!important;margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important}.protocol-print-fit table:first-child img{max-height:34px!important}}
     `;
     document.head.appendChild(style);
