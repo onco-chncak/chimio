@@ -817,7 +817,7 @@
     const list = readJson(STORAGE.patients, []).filter(p => !q || norm(`${p.prenom} ${p.nom} ${p.dossier} ${p.proto} ${p.protocole} ${p.medecin}`).includes(q));
     const rows = list.map((p, i) => {
       const proto = val(p.proto, p.protocole, p.protoName, protocolsList().find(x => x.id === p.protoId)?.name, '-');
-      return `<tr style="${i%2?'background:white':'background:#FAFBFD'}"><td>${esc(p.dossier || '-')}</td><td><b>${esc(patientName(p))}</b><div class="dash-muted">${esc(val(p.age) ? p.age + ' ans' : '')}</div></td><td>${esc(p.tel || p.contact || '-')}</td><td><span class="pbadge b21">${esc(proto)}</span></td><td>${esc(p.localisation || p.diagnostic || '-')}</td><td>${esc(val(p.cure, '-'))}/${esc(val(p.totalCures, '-'))}</td><td>${esc(p.medecin || '-')}</td><td>${esc(p.statut || 'actif')}</td><td><button class="btn-secondary" onclick="showAddPatientModal('${esc(p.id)}')">Modifier</button> <button class="btn-secondary" onclick="setStatut('${esc(p.id)}','Traité')">Traité</button></td></tr>`;
+      return `<tr style="${i%2?'background:white':'background:#FAFBFD'}"><td>${esc(p.dossier || '-')}</td><td><b>${esc(patientName(p))}</b><div class="dash-muted">${esc(val(p.age) ? p.age + ' ans' : '')}</div></td><td>${esc(p.tel || p.contact || '-')}</td><td><span class="pbadge b21">${esc(proto)}</span></td><td>${esc(p.localisation || p.diagnostic || '-')}</td><td>${esc(val(p.cure, '-'))}/${esc(val(p.totalCures, '-'))}</td><td>${esc(p.medecin || '-')}</td><td>${esc(p.statut || 'actif')}</td><td><button class="btn-secondary" onclick="showAddPatientModal('${esc(p.id)}')">Modifier</button></td></tr>`;
     }).join('');
     document.getElementById('patients-subtitle') && (document.getElementById('patients-subtitle').textContent = `${list.length} patient(s)`);
     el.innerHTML = `<table class="dash-table"><thead><tr><th>Dossier</th><th>Patient</th><th>Contact</th><th>Protocole</th><th>Localisation</th><th>Cure</th><th>Medecin</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="9" class="dash-empty">Aucun patient.</td></tr>'}</tbody></table>`;
@@ -1007,35 +1007,59 @@
   }
 
   function suiviRowsForExport(){
-    return readJson(STORAGE.suivi, readJson('suivi', [])).map(item => ({
-      'Code patient': val(item.patientCode),
-      'Patient': val(item.patientName),
-      'Nombre de cures': val(item.cures),
-      'Traitement compliant': val(item.compliant),
-      'Reponse tumorale': val(item.reponse),
-      'Date debut traitement': val(item.dateDebut),
-      'Date reponse': val(item.date)
+    return readJson(STORAGE.patients, []).map(p => ({
+      'Prenom': val(p.prenom),
+      'Nom': val(p.nom),
+      'Age': val(p.age),
+      'Sexe': val(p.sexe),
+      'Antecedents': val(p.antecedents, p.antecedent, p.atcd),
+      'Localisation': val(p.localisations, p.localisation, p.diagnostic),
+      'Indication': val(p.indication),
+      'Code': val(p.codeGratuite, p.codegratuite, p.code),
+      'Code barre': val(p.codeBarre, p.codeGratuite, p.codegratuite),
+      'N dossier': val(p.numeroDossier, p.dossier),
+      'ID Cubix': val(p.cubix, p.idCubix, p.icCubix),
+      'Nationalite': val(p.nationalite),
+      'Contact': val(p.tel, p.contact, p.telephone),
+      'Protocole': protocolNameFor(p),
+      'Ligne': val(p.ligne, p.ligneTraitement, p.line),
+      'Cure': val(p.cure, p.cycle, p.numeroCure, p.numCure),
+      'Total': val(p.totalCures, p.totalCycles),
+      'Medecin': val(p.medecin),
+      'Statut': val(p.statut, 'actif')
     }));
   }
 
   window.downloadSuiviTemplate = function(){
     makeWorkbook([
       {
-        'Code patient':'155M24',
-        'Patient':'155M24 - Fatou Diallo',
-        'Nombre de cures':3,
-        'Traitement compliant':'Oui',
-        'Reponse tumorale':'Reponse partielle',
-        'Date debut traitement':'14/05/2026',
-        'Date reponse':'14/05/2026'
+        'Prenom':'Fatou',
+        'Nom':'Diallo',
+        'Age':45,
+        'Sexe':'F',
+        'Antecedents':'HTA',
+        'Localisation':'Cancer du sein',
+        'Indication':'Adjuvant',
+        'Code':'155F26',
+        'Code barre':'155F26',
+        'N dossier':'539/24',
+        'ID Cubix':'122456',
+        'Nationalite':'Senegalaise',
+        'Contact':'77 123 45 67',
+        'Protocole':'AC 60',
+        'Ligne':'Ligne I',
+        'Cure':1,
+        'Total':6,
+        'Medecin':'Dr Exemple',
+        'Statut':'actif'
       }
-    ], 'Suivi', 'Modele_Suivi_Therapeutique_CHNCAK.xlsx');
+    ], 'Tableau suivi', 'Modele_Tableau_Suivi_CHNCAK.xlsx');
   };
 
   window.exportSuiviExcel = function(){
     const rows = suiviRowsForExport();
-    if(!rows.length) return alert('Aucun suivi a exporter.');
-    makeWorkbook(rows, 'Suivi', `Suivi_Therapeutique_${new Date().toISOString().slice(0,10)}.xlsx`);
+    if(!rows.length) return alert('Aucun patient a exporter dans le tableau de suivi.');
+    makeWorkbook(rows, 'Tableau suivi', `Tableau_Suivi_Patients_${new Date().toISOString().slice(0,10)}.xlsx`);
   };
 
   window.importSuiviExcel = function(input){
@@ -1048,30 +1072,50 @@
         const wb = XLSX.read(event.target.result, {type:'array', cellDates:true});
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, {defval:'', raw:false});
-        const list = readJson(STORAGE.suivi, readJson('suivi', []));
+        const list = readJson(STORAGE.patients, []);
         rows.forEach(row => {
           const get = (...keys) => {
             const found = Object.keys(row).find(k => keys.some(key => norm(k).includes(norm(key))));
             return found ? row[found] : '';
           };
-          const code = val(get('code patient', 'code', 'dossier'));
-          if(!code) return;
-          list.push({
-            patientCode: code,
-            patientName: val(get('patient'), code),
-            cures: Number(get('nombre de cures', 'cures')) || '',
-            compliant: val(get('traitement compliant', 'compliant')),
-            reponse: val(get('reponse tumorale', 'reponse')),
-            dateDebut: val(get('date debut', 'debut')),
-            date: val(get('date reponse', 'date')),
-            dateTs: new Date().toISOString()
-          });
+          const prenom = val(get('prenom', 'prénom'));
+          const nom = val(get('nom'));
+          if(!prenom && !nom) return;
+          const code = val(get('code'), get('code gratuite'));
+          const dossier = val(get('n dossier', 'dossier'));
+          const protoName = val(get('protocole'));
+          const proto = protocolsList().find(p => norm(p.name) === norm(protoName) || norm(p.id) === norm(protoName));
+          const entry = {
+            id: val(code, dossier, Date.now() + '_' + Math.random().toString(16).slice(2)),
+            prenom, nom,
+            age: val(get('age')),
+            sexe: val(get('sexe')),
+            antecedents: val(get('antecedents', 'antécédents')),
+            localisation: val(get('localisation'), get('diagnostic')),
+            indication: val(get('indication')),
+            codegratuite: code,
+            codeBarre: val(get('code barre'), code),
+            dossier,
+            cubix: val(get('cubix')),
+            nationalite: val(get('nationalite', 'nationalité')),
+            tel: val(get('contact'), get('telephone')),
+            protoId: proto?.id || '',
+            proto: proto?.name || protoName,
+            ligne: val(get('ligne')),
+            cure: Number(get('cure')) || '',
+            totalCures: Number(get('total')) || '',
+            medecin: val(get('medecin', 'médecin')),
+            statut: val(get('statut'), 'actif'),
+            updatedAt: new Date().toISOString()
+          };
+          const idx = list.findIndex(p => (code && val(p.codegratuite, p.code) === code) || (dossier && p.dossier === dossier) || (norm(p.prenom) === norm(prenom) && norm(p.nom) === norm(nom)));
+          if(idx >= 0) list[idx] = {...list[idx], ...entry, id:list[idx].id || entry.id};
+          else list.push(entry);
         });
-        writeJson(STORAGE.suivi, list);
-        writeJson('suivi', list);
+        writeJson(STORAGE.patients, list);
         window.renderSuivi?.();
         cleanupLoginAndButtons();
-        alert(`${rows.length} ligne(s) importee(s) dans le suivi.`);
+        alert(`${rows.length} ligne(s) importee(s) dans le tableau de suivi.`);
       } catch(e){
         alert('Erreur import suivi: ' + e.message);
       }
@@ -1082,8 +1126,8 @@
 
   window.downloadProgrammeTemplate = function(){
     makeWorkbook([
-      {'DATE':'18/05/2026','N':'1','PRENOM':'FATOU','NOM':'DIALLO','CONTACT':'77 123 45 67','CHIMIOTHERAPIE':'FOLFOX','OBSERVATIONS':'','RESPONSABLE':'FATOUMATA FAYE'},
-      {'DATE':'19/05/2026','N':'2','PRENOM':'MAMADOU','NOM':'SOW','CONTACT':'76 987 65 43','CHIMIOTHERAPIE':'XELOX','OBSERVATIONS':'Bilan a verifier','RESPONSABLE':'BINTA SOW'}
+      {'N':'1','Prenom':'FATOU','Nom':'DIALLO','Contact':'77 123 45 67','Chimiotherapie':'FOLFOX','Observation':''},
+      {'N':'2','Prenom':'MAMADOU','Nom':'SOW','Contact':'76 987 65 43','Chimiotherapie':'XELOX','Observation':'Bilan a verifier'}
     ], 'Programme', 'Modele_Programme_ChimioPro.xlsx');
   };
 
@@ -1200,6 +1244,156 @@
     if(m) return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
     return null;
   }
+
+  function programmeList(){
+    try { return typeof programmeData !== 'undefined' ? programmeData : readJson('chncak_programme', {}); }
+    catch(e){ return readJson('chncak_programme', {}); }
+  }
+
+  window.renderProgramme = function(){
+    try { if(typeof initProgramme === 'function') initProgramme(); } catch(e){}
+    const tbody = document.getElementById('prog-tbody');
+    const title = document.getElementById('prog-day-title');
+    const count = document.getElementById('prog-count');
+    if(!tbody) return;
+    const week = document.getElementById('prog-semaine')?.value || getCurrentMondayIso();
+    if(document.getElementById('prog-semaine') && !document.getElementById('prog-semaine').value) document.getElementById('prog-semaine').value = week;
+    const data = programmeList();
+    const days = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];
+    const dayIdx = typeof currentDay !== 'undefined' ? currentDay : 0;
+    const rows = (data[week]?.[dayIdx] || []);
+    if(title) title.textContent = days[dayIdx] || 'Jour';
+    if(count) count.textContent = `${rows.filter(p => p.prenom || p.nom || p.chimio).length} patient(s)`;
+    tbody.innerHTML = rows.map((p, i) => `
+      <tr data-idx="${i}" class="${p.done ? 'prog-row-done' : ''}">
+        <td style="padding:6px 8px;text-align:center;border-bottom:1px solid #e2e8f0;font-weight:700">${i + 1}</td>
+        <td style="padding:4px;border-bottom:1px solid #e2e8f0"><input class="prog-input" oninput="autoSave()" value="${esc(p.prenom || '')}" placeholder="Prenom"></td>
+        <td style="padding:4px;border-bottom:1px solid #e2e8f0"><input class="prog-input" oninput="autoSave()" value="${esc(p.nom || '')}" placeholder="Nom"></td>
+        <td style="padding:4px;border-bottom:1px solid #e2e8f0"><input class="prog-input" oninput="autoSave()" value="${esc(p.contact || '')}" placeholder="Contact"></td>
+        <td style="padding:4px;border-bottom:1px solid #e2e8f0"><input class="prog-input" oninput="autoSave()" value="${esc(p.chimio || '')}" placeholder="Chimiotherapie"></td>
+        <td style="padding:4px;border-bottom:1px solid #e2e8f0"><input class="prog-input" oninput="autoSave()" value="${esc(p.obs || p.observation || '')}" placeholder="Observation"></td>
+        <td style="padding:4px;text-align:center;border-bottom:1px solid #e2e8f0"><input type="checkbox" ${p.done ? 'checked' : ''} onchange="toggleDone(${i},this)" title="Fait"></td>
+        <td style="padding:4px;text-align:center;border-bottom:1px solid #e2e8f0"><button class="prog-delete-btn" onclick="deleteRow(${i})" title="Supprimer">x</button></td>
+      </tr>
+    `).join('') || '<tr><td colspan="8" class="dash-empty">Aucune ligne. Utilisez Ajouter patient ou Importer fichier.</td></tr>';
+    try { renderWeekOverview(week, getWeekDates(week)); } catch(e){}
+  };
+
+  function cleanMedecinsFinal(){
+    const existing = readJson('chncak_medecins', []);
+    const cleaned = [];
+    existing.forEach(m => {
+      const nom = val(m.nom);
+      const prenom = val(m.prenom);
+      if(!nom && !prenom) return;
+      const key = norm(`${prenom} ${nom}`);
+      if(cleaned.some(x => norm(`${x.prenom} ${x.nom}`) === key)) return;
+      cleaned.push(m);
+    });
+    if(cleaned.length !== existing.length) writeJson('chncak_medecins', cleaned);
+    try { medecins = cleaned; } catch(e){}
+    return cleaned;
+  }
+
+  window.populateMedecinSelect = function(){
+    const sel = document.getElementById('medecin-select');
+    if(!sel) return;
+    const current = sel.value || localStorage.getItem('chncak_last_medecin') || '';
+    const list = cleanMedecinsFinal();
+    sel.innerHTML = '<option value="">— Choisir un médecin —</option>' + list.map(m => {
+      const fullName = `Dr ${val(m.prenom)} ${val(m.nom)}`.replace(/\s+/g, ' ').trim();
+      const display = `${fullName}${val(m.specialite) ? ' (' + esc(m.specialite) + ')' : ''}`;
+      return `<option value="${esc(fullName)}"${current === fullName ? ' selected' : ''}>${display}</option>`;
+    }).join('');
+  };
+
+  window.renderMedecins = function(){
+    const list = cleanMedecinsFinal();
+    window.populateMedecinSelect?.();
+    const host = document.getElementById('med-list');
+    if(!host) return;
+    host.innerHTML = list.length ? list.map((m, i) => {
+      const initials = `${val(m.prenom)[0] || ''}${val(m.nom)[0] || ''}`.toUpperCase();
+      return `<div class="med-item">
+        <div class="med-info">
+          <div class="med-avatar">${esc(initials || 'Dr')}</div>
+          <div>
+            <div class="med-name">Dr ${esc(val(m.prenom))} ${esc(val(m.nom))}</div>
+            <div class="med-grade">${esc(val(m.specialite, m.grade, '—'))}</div>
+            <div style="font-size:11px;color:#666;margin-top:4px">${esc(val(m.email))}${m.email && m.contact ? ' · ' : ''}${esc(val(m.contact))}</div>
+          </div>
+        </div>
+        <div class="med-actions"><button class="btn-sm danger" onclick="deleteMed(${i})">Supprimer</button></div>
+      </div>`;
+    }).join('') : '<p style="text-align:center;padding:20px;color:var(--gray-mid);font-size:13px">Aucun médecin enregistré</p>';
+  };
+  try { renderProgramme = window.renderProgramme; } catch(e){}
+  try { renderMedecins = window.renderMedecins; } catch(e){}
+  try { populateMedecinSelect = window.populateMedecinSelect; } catch(e){}
+
+  function getCurrentMondayIso(){
+    const today = new Date();
+    const day = today.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    today.setDate(today.getDate() + diff);
+    return today.toISOString().slice(0,10);
+  }
+
+  window.importProgramme = function(input){
+    const file = input.files?.[0];
+    if(!file) return;
+    if(typeof XLSX === 'undefined'){ alert('Bibliotheque Excel non chargee. Utilisez le modele apres rechargement.'); input.value=''; return; }
+    const reader = new FileReader();
+    reader.onload = event => {
+      try{
+        const wb = XLSX.read(event.target.result, {type:'array', cellDates:true});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, {defval:'', raw:false});
+        const programme = readJson('chncak_programme', {});
+        const activeWeek = document.getElementById('prog-semaine')?.value || getCurrentMondayIso();
+        const activeDay = typeof currentDay !== 'undefined' ? currentDay : 0;
+        let imported = 0;
+        rows.forEach(row => {
+          const get = (...keys) => {
+            const found = Object.keys(row).find(k => keys.some(key => norm(k) === norm(key) || norm(k).includes(norm(key))));
+            return found ? row[found] : '';
+          };
+          const d = parseFrDate(val(get('date')));
+          let week = activeWeek;
+          let idx = activeDay;
+          if(d){
+            const day = d.getDay();
+            if(day < 1 || day > 5) return;
+            const monday = new Date(d);
+            monday.setDate(d.getDate() - day + 1);
+            week = monday.toISOString().slice(0,10);
+            idx = day - 1;
+          }
+          const prenom = val(get('prenom', 'prénom'));
+          const nom = val(get('nom'));
+          const chimio = val(get('chimiotherapie', 'chimiothérapie', 'chimio', 'protocole'));
+          if(!prenom && !nom && !chimio) return;
+          programme[week] = programme[week] || {};
+          programme[week][idx] = programme[week][idx] || [];
+          programme[week][idx].push({
+            prenom, nom,
+            contact: val(get('contact')),
+            chimio,
+            obs: val(get('observation', 'observations')),
+            done:false
+          });
+          imported++;
+        });
+        writeJson('chncak_programme', programme);
+        try { programmeData = programme; } catch(e) {}
+        if(document.getElementById('prog-semaine') && !document.getElementById('prog-semaine').value) document.getElementById('prog-semaine').value = activeWeek;
+        window.renderProgramme?.();
+        alert(imported ? `${imported} ligne(s) importee(s) dans le programme.` : 'Aucune ligne importee. Colonnes attendues : N, Prenom, Nom, Contact, Chimiotherapie, Observation.');
+      } catch(e){ alert('Erreur import programme: ' + e.message); }
+      input.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+  };
 
   function doseLabelForDrug(drug){
     if(!drug || drug.t) return '-';
@@ -1605,7 +1799,7 @@
     }
     if(document.getElementById('suivi-content') && !document.getElementById('suivi-import-final')){
       const head = document.querySelector('#suivi-content .dashboard-head');
-      head?.insertAdjacentHTML('beforeend', '<div id="suivi-import-final" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn-secondary" onclick="downloadSuiviTemplate()">Modele Excel</button><label class="btn-secondary" style="cursor:pointer">Importer suivi<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importSuiviExcel(this)"></label><button class="btn-primary" style="width:auto" onclick="exportSuiviExcel()">Exporter Excel</button></div>');
+      head?.insertAdjacentHTML('beforeend', '<div id="suivi-import-final" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn-secondary" onclick="downloadSuiviTemplate()">Modele tableau</button><label class="btn-secondary" style="cursor:pointer">Importer tableau<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importSuiviExcel(this)"></label><button class="btn-primary" style="width:auto" onclick="exportSuiviExcel()">Exporter tableau</button></div>');
     }
     installPatientSearchBox('page-preparation', 'preparation-patient-loader', 'loadPatientForPreparation');
     installPatientSearchBox('page-support', 'support-patient-loader', 'loadPatientForSupport');
@@ -1702,6 +1896,7 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     normalizeAllProtocols();
+    cleanMedecinsFinal();
     if(typeof renderProtos === 'function') renderProtos();
     cleanupLoginAndButtons();
     ensurePreparationPrintReady();
@@ -1772,6 +1967,25 @@
       .secure-code-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
       .secure-code-actions button{border:1px solid #ccd8e6;border-radius:6px;padding:9px 14px;font-weight:700;cursor:pointer;background:#f8fbff;color:#17324d}
       .secure-code-actions button:last-child{background:#0B5E3C;color:#fff;border-color:#0B5E3C}
+      .tab-btn,.btn-primary,.btn-secondary,.btn-med-add,.prog-day-btn,#patients-add-final,#programme-template-btn{border:1.6px solid #12395b!important;box-shadow:0 2px 0 rgba(8,31,55,.22),0 8px 16px rgba(8,31,55,.08);transition:transform .18s ease,box-shadow .18s ease,filter .18s ease}
+      .tab-btn:hover,.btn-primary:hover,.btn-secondary:hover,.btn-med-add:hover,.prog-day-btn:hover,#patients-add-final:hover,#programme-template-btn:hover{transform:translateY(-1px);box-shadow:0 3px 0 rgba(8,31,55,.28),0 12px 22px rgba(8,31,55,.13);filter:saturate(1.08)}
+      .dashboard-shell.dash-final{animation:dashFadeIn .35s ease both}
+      @keyframes dashFadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+      .dash-final-hero{background:linear-gradient(135deg,#ffffff 0%,#f6fbff 52%,#eef8f2 100%);position:relative;overflow:hidden}
+      .dash-final-hero:before{content:"";position:absolute;inset:0;border-top:3px solid #0B5E3C;pointer-events:none}
+      .dash-final-title img{width:96px!important;height:96px!important;box-shadow:0 10px 22px rgba(10,61,122,.14)}
+      .dash-final-title h2{font-size:34px!important}
+      .dash-final-kpi{position:relative;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease}
+      .dash-final-kpi:after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:3px;background:linear-gradient(90deg,#0A3D7A,#0B5E3C);border-radius:3px 3px 0 0}
+      .dash-final-kpi:hover{transform:translateY(-3px);box-shadow:0 14px 28px rgba(10,61,122,.13);border-color:#9db6d3}
+      .dash-final-kpi strong{animation:dashCountPop .42s ease both}
+      @keyframes dashCountPop{0%{transform:scale(.94);opacity:.45}100%{transform:scale(1);opacity:1}}
+      .dash-table tbody tr{transition:background .18s ease,transform .18s ease}
+      .dash-table tbody tr:hover{background:#eef8f2!important;transform:translateX(2px)}
+      .prog-input{width:100%;box-sizing:border-box;border:1px solid #c7d4e4;border-radius:6px;padding:7px 8px;font-size:12px;background:#fff}
+      .prog-input:focus{outline:2px solid rgba(10,61,122,.16);border-color:#0A3D7A}
+      .prog-row-done{background:#eef8f2!important}
+      .prog-delete-btn{border:1px solid #b83232;background:#fdeaea;color:#9d1c1c;border-radius:6px;padding:5px 8px;cursor:pointer;font-weight:800}
       @media (max-width:900px){.dash-final-hero,.dash-final-main,.proto-editor-grid{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}.proto-drug-line{grid-template-columns:1fr 1fr}.proto-remove{grid-column:1/-1}}
       @media print{.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:6px!important;line-height:.78!important;margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important}.protocol-print-fit table:first-child img{max-height:34px!important}}
     `;
