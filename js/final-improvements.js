@@ -235,12 +235,26 @@
     return norm(user.role) === 'admin' || norm(user.username) === 'admin';
   }
 
+  function isPharmacienUser(){
+    const user = currentUser();
+    return norm(user.role) === 'pharmacien' || norm(user.username) === 'pharmacien';
+  }
+
   function requireAdminAction(actionLabel, onOk){
     if(!isAdminUser()){
       alert('Action reservee au compte administrateur.');
       return;
     }
     askAdminCode(actionLabel, onOk);
+  }
+
+  function requirePharmacienAction(actionLabel, onOk){
+    if(!isPharmacienUser()){
+      alert('Action reservee au compte pharmacien.');
+      return false;
+    }
+    if(typeof onOk === 'function') onOk();
+    return true;
   }
 
   function showToastSafe(message, type){
@@ -401,9 +415,12 @@
   }
 
   function calcDrugFlacons(name, dose){
-    if(typeof calcFlacons === 'function') return calcFlacons(name, dose);
+    if(typeof calcFlacons === 'function'){
+      const native = calcFlacons(name, dose);
+      if(native && native.drug) return native;
+    }
     const catalog = readJson(STORAGE.catalog, []);
-    const item = catalog.find(d => norm(d.name) === norm(name));
+    const item = findCatalogItem(name, catalog);
     const sizes = (item?.dosages || item?.flacons || []).map(Number).filter(Boolean).sort((a,b) => b-a);
     if(!item || !sizes.length || !dose) return null;
     let remaining = dose, totalMg = 0, flacons = [];
@@ -414,6 +431,88 @@
       remaining -= size;
     }
     return {drug:item, nbFlacons:flacons.length, flacons, totalMg, reliquat:Math.max(0, Math.round((totalMg - dose) * 10) / 10), stock:Number(item.qteStock ?? item.stock ?? 0)};
+  }
+
+  function catalogAliasKey(name){
+    const raw = norm(name);
+    if(!raw) return '';
+    if(raw.includes('kytril') || raw.includes('granisetron')) return 'kytril';
+    if(raw.includes('hydrocortisone')) return 'hydrocortisone';
+    if(raw.includes('epirub')) return 'epirubicine';
+    if(raw.includes('doxorub')) return 'doxorubicine';
+    if(raw.includes('cyclophosph')) return 'cyclophosphamide';
+    if(raw.includes('cisplatine hebdo')) return 'cisplatine hebdo';
+    if(raw.includes('cisplat')) return 'cisplatine';
+    if(raw.includes('carboplat')) return 'carboplatine';
+    if(raw.includes('taxol hebdo')) return 'taxol hebdo';
+    if(raw.includes('taxol') || raw.includes('paclitaxel')) return 'taxol';
+    if(raw.includes('taxot') || raw.includes('docetax')) return 'taxotere';
+    if(raw.includes('gemcitab')) return 'gemcitabine';
+    if(raw.includes('irinotec')) return 'irinotecan';
+    if(raw.includes('trastuz') || raw.includes('herceptin')) return 'trastuzumab';
+    if(raw.includes('bevaciz') || raw.includes('avastin')) return 'avastin';
+    if(raw.includes('zoledron') || raw.includes('zometa')) return 'zometa';
+    if(raw.includes('fluorouracile') || raw.includes('5-fu')) return raw.includes('perfusion') ? '5fu perfusion' : '5fu bolus';
+    if(raw.includes('leucovorine') || raw.includes('acide folinique') || raw.includes('folinate')) return 'leucovorine';
+    if(raw.includes('methotrex')) return 'methotrexate';
+    if(raw.includes('etopos')) return 'etoposide';
+    if(raw.includes('bleomyc')) return 'bleomycine';
+    if(raw.includes('vincrist')) return 'vincristine';
+    if(raw.includes('vinblast')) return 'vinblastine';
+    if(raw.includes('dacarb')) return 'dacarbazine';
+    if(raw.includes('ritux')) return 'rituximab';
+    if(raw.includes('magnesium')) return 'magnesium';
+    if(raw.includes('calcium')) return 'calcium';
+    if(raw.includes('prednisone')) return 'prednisone';
+    if(raw.includes('nacl') || raw.includes('ssi') || raw.includes('chlorure')) return 'nacl';
+    if(raw.includes('glucose') || raw.includes('g5')) return 'g5';
+    return raw.replace(/\b\d+(?:[.,]\d+)?\s*(mg|ml|ui|g|cc|amp|cp)\b/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  function findCatalogItem(name, list){
+    const catalog = list || readJson(STORAGE.catalog, []);
+    const target = norm(name);
+    const alias = catalogAliasKey(name);
+    return catalog.find(item => {
+      const itemName = norm(item.name);
+      const itemDci = norm(item.dci);
+      return itemName === target || itemDci === target || catalogAliasKey(item.name) === alias || catalogAliasKey(item.dci) === alias;
+    });
+  }
+
+  function protocolCatalogDefaults(){
+    const defaults = [
+      ['Magnésium 10%','Sulfate de magnesium',[10],'Ampoule'],
+      ['Calcium 10%','Gluconate de calcium',[10],'Ampoule'],
+      ['CISPLATINE HEBDO','Cisplatine',[50],'Injectable'],
+      ['TAXOL HEBDO','Paclitaxel',[100,300],'Injectable'],
+      ['Acide folinique','Acide folinique',[50],'Injectable'],
+      ['Prednisone per os','Prednisone',[20],'Comprime'],
+      ['RITUXIMAB','Rituximab',[100,500],'Injectable'],
+      ['NaCl 0.9% 250ml','Chlorure de sodium 0.9%',[250],'Solvant'],
+      ['NaCl 0.9% 500ml','Chlorure de sodium 0.9%',[500],'Solvant'],
+      ['Glucose 5% 250ml','Glucose 5%',[250],'Solvant']
+    ];
+    return defaults.map(([name,dci,dosages,forme]) => ({name,dci,dosages,forme,cond:'',qteStock:0,prixUnit:0}));
+  }
+
+  function ensureProtocolCatalogCompleteness(){
+    const list = readJson(STORAGE.catalog, []);
+    let changed = false;
+    protocolCatalogDefaults().forEach(item => {
+      if(!findCatalogItem(item.name, list)){
+        list.push(item);
+        changed = true;
+      }
+    });
+    protocolsList().forEach(proto => (proto.drugs || []).forEach(drug => {
+      if(!drug || drug.t || drug.oral || !(drug.name || drug.label)) return;
+      const name = drug.name || drug.label;
+      if(findCatalogItem(name, list)) return;
+      list.push({name, dci:name, dosages:[], forme:'A completer', cond:'', qteStock:0, prixUnit:0});
+      changed = true;
+    }));
+    if(changed) syncCatalogGlobal(list);
   }
 
   function deductStockForPatient(patient, sourceLabel){
@@ -427,7 +526,8 @@
       const dose = doseForDrug(drug, patient);
       if(!dose){ warnings.push(`${drug.name}: dose non calculable.`); return; }
       const calc = calcDrugFlacons(drug.name, dose);
-      const idx = catalog.findIndex(item => norm(item.name) === norm(drug.name));
+      const matchedItem = findCatalogItem(drug.name, catalog);
+      const idx = catalog.findIndex(item => item === matchedItem);
       if(!calc || idx < 0){ warnings.push(`${drug.name}: medicament non trouve dans Pharmacie Centrale.`); return; }
       const stock = Number(catalog[idx].qteStock ?? catalog[idx].stock ?? 0);
       if(stock < calc.nbFlacons){ warnings.push(`${drug.name}: stock insuffisant (${stock} flacon(s), besoin ${calc.nbFlacons}).`); return; }
@@ -674,6 +774,57 @@
       document.getElementById('prep-empty')?.style && (document.getElementById('prep-empty').style.display = 'none');
       document.getElementById('prep-content')?.style && (document.getElementById('prep-content').style.display = '');
     }
+    renderPreparationTodayList();
+  }
+
+  function rdvPatientForPreparation(rdv){
+    const patients = readJson(STORAGE.patients, []);
+    return patients.find(p => (p.dossier && p.dossier === rdv.dossier) || norm(patientName(p)) === norm(`${val(rdv.prenom)} ${val(rdv.nom)}`)) || rdv;
+  }
+
+  window.validatePreparationForRdv = function(id){
+    const rdv = readJson(STORAGE.rdv, []).find(r => String(r.id) === String(id));
+    if(!rdv) return alert('Rendez-vous introuvable.');
+    const patient = rdvPatientForPreparation(rdv);
+    const map = readJson('chncak_pharma_validations', {});
+    map[pharmaValidationKey(patient, rdv)] = {validatedAt:new Date().toISOString(), patient:patientName(patient), dossier:val(patient.dossier, rdv.dossier), protoId:val(patient.protoId, rdv.protoId), source:'preparation'};
+    writeJson('chncak_pharma_validations', map);
+    renderPreparationTodayList();
+    showToastSafe('Fiche de preparation validee.', 'success');
+  };
+
+  function renderPreparationTodayList(){
+    const page = document.getElementById('page-preparation');
+    if(!page) return;
+    let host = document.getElementById('prep-today-rdv-card');
+    if(!host){
+      host = document.createElement('div');
+      host.id = 'prep-today-rdv-card';
+      const target = document.getElementById('prep-sheet-wrapper') || document.getElementById('prep-content') || page.firstElementChild;
+      target?.parentNode?.insertBefore(host, target);
+    }
+    const today = todayIso();
+    const rows = readJson(STORAGE.rdv, []).filter(r => r.dateRdv === today).map(r => {
+      const patient = rdvPatientForPreparation(r);
+      const validated = hasPharmaValidation(patient, r);
+      return `<tr>
+        <td>${esc(val(r.heure, r.time, '-'))}</td>
+        <td><b>${esc(patientName(patient) || `${val(r.prenom)} ${val(r.nom)}`)}</b><div class="dash-muted">${esc(val(patient.dossier, r.dossier, patientCode(patient), ''))}</div></td>
+        <td>${esc(protocolNameFor({...patient, protoId:val(patient.protoId, r.protoId), proto:val(patient.proto, r.proto)}))}</td>
+        <td>${validated ? '<span class="clinical-pill ok">Fiche validee</span>' : '<span class="clinical-pill warn">En attente</span>'}</td>
+        <td>${validated ? '<button class="btn-sm" disabled>Validee</button>' : `<button class="btn-sm primary" onclick="validatePreparationForRdv(${esc(r.id)})">Valider la fiche</button>`}</td>
+      </tr>`;
+    }).join('');
+    host.innerHTML = `
+      <div class="card">
+        <div class="card-header"><div class="card-num" style="background:#0B5E3C">J</div><h2>Rendez-vous du jour a preparer</h2></div>
+        <div class="card-body dash-table-wrap">
+          <table class="dash-table prep-rdv-table">
+            <thead><tr><th>Heure</th><th>Patient</th><th>Protocole</th><th>Etat fiche</th><th>Action</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="5" class="dash-empty">Aucun rendez-vous programme ce jour.</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>`;
   }
 
   function renderStatsFinal(){
@@ -683,6 +834,7 @@
     const rdv = [...readJson(STORAGE.rdv, []), ...readJson('rdv', [])];
     const hist = [...readJson(STORAGE.historique, []), ...readJson('historique', [])];
     const sorties = [...readJson(STORAGE.sorties, []), ...readJson('chncak_stock_sorties', []), ...readJson('sorties', [])];
+    const hemaSorties = readJson('chncak_hematologie_sorties', []);
     const ok = [...readJson(STORAGE.okchimio, []), ...readJson('chncak_okchimio', [])];
     const meds = {};
     const ensureMed = name => {
@@ -728,6 +880,16 @@
     const medRows = Object.entries(meds).sort((a,b) => b[1].preparations - a[1].preparations).map(([name, d]) => `
       <tr><td>${esc(name)}</td><td>${d.preparations}</td><td>${d.seances}</td><td>${Math.round(d.dose).toLocaleString('fr-FR')} mg</td><td>${Math.round(d.wasteMg).toLocaleString('fr-FR')} mg</td><td>${d.wasteFlacons}</td><td>${d.flacons}</td></tr>
     `).join('');
+    const hemaByMed = hemaSorties.reduce((acc, row) => {
+      const key = val(row.medicament, 'Non renseigne');
+      acc[key] = acc[key] || {sorties:0, quantite:0};
+      acc[key].sorties += 1;
+      acc[key].quantite += Number(row.quantite || 0);
+      return acc;
+    }, {});
+    const hemaRows = Object.entries(hemaByMed).sort((a,b) => b[1].quantite - a[1].quantite).map(([name, data]) => `
+      <tr><td>${esc(name)}</td><td>${data.sorties}</td><td>${data.quantite}</td></tr>
+    `).join('');
     const countBy = (items, fn) => items.reduce((acc, item) => {
       const key = val(fn(item), 'Non renseigne');
       acc[key] = (acc[key] || 0) + 1;
@@ -762,10 +924,12 @@
           <div class="stats-box"><h3>Dose totale utilisee</h3><p>${Math.round(totalDose).toLocaleString('fr-FR')}</p><small>mg</small></div>
           <div class="stats-box"><h3>Dose totale jetee</h3><p>${Math.round(totalWaste).toLocaleString('fr-FR')}</p><small>mg</small></div>
           <div class="stats-box"><h3>Flacons utilises</h3><p>${totalFlacons}</p></div>
+          <div class="stats-box"><h3>Sorties hematologie</h3><p>${hemaSorties.length}</p></div>
         </div>
         <div class="stats-final-note">Statistiques issues des preparations validees, sorties de stock, OK Chimio et anciennes sauvegardes disponibles.</div>
         <div class="card stats-section-card"><div class="card-header"><h2>Graphique medicaments</h2></div><div class="card-body">${chartRows || '<div class="dash-empty">Aucune donnee medicament.</div>'}</div></div>
         <div class="card stats-section-card"><div class="card-header"><h2>Medicaments utilises</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Preparations</th><th>Seances</th><th>Dose totale utilisee</th><th>Dose totale jetee</th><th>Reliquat flacons</th><th>Flacons utilises</th></tr></thead><tbody>${medRows || '<tr><td colspan="7" class="dash-empty">Aucune sortie de stock validee.</td></tr>'}</tbody></table></div></div>
+        <div class="card stats-section-card"><div class="card-header"><h2>Hematologie - sorties medicaments</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Nombre de sorties</th><th>Quantite totale</th></tr></thead><tbody>${hemaRows || '<tr><td colspan="3" class="dash-empty">Aucune sortie hematologie.</td></tr>'}</tbody></table></div></div>
         <div class="clinical-report-grid">
           <div class="card"><div class="card-header"><h2>Protocoles</h2></div><div class="card-body">${miniRows(countBy(patients, p => val(p.proto, p.protocole, p.protoName)))}</div></div>
           <div class="card"><div class="card-header"><h2>Diagnostics</h2></div><div class="card-body">${miniRows(countBy(patients, p => val(p.localisation, p.diagnostic)))}</div></div>
@@ -1194,6 +1358,7 @@
   }
 
   window.addMissingDrugToCatalog = function(name){
+    if(!isPharmacienUser()) return alert('Action reservee au compte pharmacien.');
     const drugName = (name || visibleMissingDrugName() || prompt('Nom du medicament a ajouter au catalogue :') || '').trim().toUpperCase();
     if(!drugName) return;
     const list = readJson(STORAGE.catalog, Array.isArray(window.DEFAULT_CATALOG) ? window.DEFAULT_CATALOG : []);
@@ -1219,6 +1384,60 @@
     card?.scrollIntoView({behavior:'smooth', block:'start'});
     setTimeout(() => window.addMissingDrugToCatalog(visibleMissingDrugName()), 250);
   };
+
+  const nativeSaveCatalog = window.saveCatalog;
+  window.saveCatalog = function(){
+    return requirePharmacienAction('enregistrer le catalogue pharmacie', () => nativeSaveCatalog?.apply(this, arguments));
+  };
+
+  const nativeImportCatalogExcel = window.importCatalogExcel;
+  window.importCatalogExcel = function(){
+    if(!isPharmacienUser()){
+      alert('Action reservee au compte pharmacien.');
+      const input = arguments[0];
+      if(input && input.value !== undefined) input.value = '';
+      return;
+    }
+    return nativeImportCatalogExcel?.apply(this, arguments);
+  };
+
+  const nativeUpdateCatalogField = window.updateCatalogField;
+  window.updateCatalogField = function(){
+    return requirePharmacienAction('modifier le stock pharmacie', () => nativeUpdateCatalogField?.apply(this, arguments));
+  };
+
+  const nativeRenderCatalogTable = window.renderCatalogTable;
+  window.renderCatalogTable = function(){
+    const out = nativeRenderCatalogTable?.apply(this, arguments);
+    setTimeout(lockPharmacyStockControls, 20);
+    return out;
+  };
+
+  const nativeRenderPharmacie = window.renderPharmacie;
+  window.renderPharmacie = function(){
+    const out = nativeRenderPharmacie?.apply(this, arguments);
+    setTimeout(lockPharmacyStockControls, 20);
+    return out;
+  };
+
+  function lockPharmacyStockControls(){
+    const page = document.getElementById('page-pharmacie');
+    if(!page) return;
+    const allowed = isPharmacienUser();
+    page.querySelectorAll('#catalog-body input, button[onclick*="saveCatalog"], button[onclick*="scrollToCatalog"], button[onclick*="addMissingDrugToCatalog"], input[onchange*="importCatalogExcel"]').forEach(el => {
+      el.disabled = !allowed;
+      el.style.opacity = allowed ? '' : '0.48';
+      el.style.cursor = allowed ? '' : 'not-allowed';
+      el.title = allowed ? '' : 'Reserve au compte pharmacien';
+    });
+    page.querySelectorAll('button,label').forEach(el => {
+      const text = norm(el.textContent || '');
+      const onclick = el.getAttribute?.('onclick') || '';
+      if(text.includes('enregistrer le catalogue') || text.includes('importer') || onclick.includes('saveCatalog') || onclick.includes('scrollToCatalog') || onclick.includes('addMissingDrugToCatalog')){
+        el.style.display = allowed ? '' : 'none';
+      }
+    });
+  }
 
   window.clearDay = function(){
     askAdminCode('effacer le jour du programme', () => {
@@ -2157,8 +2376,14 @@
   };
 
   function hematologiePatientOptions(){
-    return readJson(STORAGE.patients, [])
+    return [...readJson('chncak_hematologie_patients', []), ...readJson(STORAGE.patients, [])]
       .map(p => `<option value="${esc(p.id)}">${esc(patientName(p))} - ${esc(val(p.dossier, p.codegratuite, p.codeGratuite, p.code, ''))}</option>`)
+      .join('');
+  }
+
+  function hematologieRegisteredPatientOptions(){
+    return readJson('chncak_hematologie_patients', [])
+      .map(p => `<option value="${esc(patientName(p))}">${esc(val(p.prenom))} ${esc(val(p.nom))} - ${esc(val(p.codegratuite, p.code, ''))}</option>`)
       .join('');
   }
 
@@ -2185,7 +2410,7 @@
   }
 
   window.fillHematologiePatient = function(patientId){
-    const p = readJson(STORAGE.patients, []).find(item => String(item.id) === String(patientId));
+    const p = [...readJson('chncak_hematologie_patients', []), ...readJson(STORAGE.patients, [])].find(item => String(item.id) === String(patientId));
     if(!p) return;
     const set = (id, value) => { const el = document.getElementById(id); if(el) el.value = value || ''; };
     set('hema-nom', val(p.nom));
@@ -2212,21 +2437,59 @@
     }
   };
 
+  window.saveHematologiePatient = function(){
+    const get = id => document.getElementById(id)?.value?.trim() || '';
+    const patient = {
+      id: val(get('hema-code'), get('hema-nin'), Date.now()),
+      nom: get('hema-nom'),
+      prenom: get('hema-prenom'),
+      age: get('hema-age'),
+      sexe: get('hema-sexe'),
+      codegratuite: get('hema-code'),
+      nationalite: get('hema-nationalite'),
+      nin: get('hema-nin'),
+      cuibix: get('hema-cuibix'),
+      protocole: get('hema-protocole'),
+      savedAt: new Date().toISOString()
+    };
+    if(!patient.nom || !patient.prenom) return alert('Renseignez au minimum le nom et le prenom.');
+    const list = readJson('chncak_hematologie_patients', []);
+    const key = norm(val(patient.codegratuite, patient.nin, `${patient.prenom} ${patient.nom}`));
+    const idx = list.findIndex(p => norm(val(p.codegratuite, p.nin, `${p.prenom} ${p.nom}`)) === key);
+    if(idx >= 0) list[idx] = {...list[idx], ...patient};
+    else list.unshift(patient);
+    writeJson('chncak_hematologie_patients', list);
+    window.renderHematologie?.();
+    showToastSafe('Patient hematologie enregistre.', 'success');
+  };
+
+  window.loadHematologieSortiePatient = function(name){
+    const p = readJson('chncak_hematologie_patients', []).find(item => norm(patientName(item)) === norm(name) || norm(`${patientName(item)} - ${val(item.codegratuite, item.code)}`) === norm(name));
+    if(!p) return;
+    ['nom','prenom','age','sexe','code','nationalite','nin','cuibix','protocole'].forEach(field => {
+      const value = field === 'code' ? val(p.codegratuite, p.code) : val(p[field]);
+      const el = document.getElementById(`hema-${field}`);
+      if(el) el.value = value || '';
+    });
+  };
+
   window.validateHematologieSortie = function(){
     const get = id => document.getElementById(id)?.value?.trim() || '';
     const medicament = get('hema-med-name');
     const dci = get('hema-med-dci');
     const quantite = Number(get('hema-med-quantite'));
+    const dateExp = get('hema-med-exp');
     if(!medicament || !quantite || quantite <= 0){
       alert('Renseignez le medicament et une quantite valide.');
       return;
     }
+    if(dateExp && dateExp < todayIso()){
+      alert(`Attention : ce medicament est expire depuis le ${dateExp}. Sortie non validee.`);
+      return;
+    }
     const catalog = readJson(STORAGE.catalog, []);
-    const idx = catalog.findIndex(item => {
-      const n = norm(medicament);
-      const d = norm(dci);
-      return (n && norm(item.name) === n) || (d && norm(item.dci) === d) || (n && norm(item.dci) === n) || (d && norm(item.name) === d);
-    });
+    const matched = findCatalogItem(dci || medicament, catalog) || findCatalogItem(medicament, catalog);
+    const idx = catalog.findIndex(item => item === matched);
     if(idx < 0){
       alert('Medicament introuvable dans la pharmacie centrale. Ajoutez-le au catalogue avant validation.');
       return;
@@ -2242,7 +2505,7 @@
       id: Date.now(),
       date: new Date().toLocaleDateString('fr-FR'),
       dateTs: new Date().toISOString(),
-      patient: `${get('hema-prenom')} ${get('hema-nom')}`.trim(),
+      patient: get('hema-sortie-patient') || `${get('hema-prenom')} ${get('hema-nom')}`.trim(),
       age: get('hema-age'),
       sexe: get('hema-sexe'),
       codegratuite: get('hema-code'),
@@ -2280,6 +2543,14 @@
     showToastSafe('Sortie hematologie validee et stock deduit.', 'success');
   };
 
+  window.clearHematologieHistory = function(){
+    requireAdminAction('effacer le registre hematologie', () => {
+      localStorage.removeItem('chncak_hematologie_sorties');
+      window.renderHematologie?.();
+      showToastSafe('Registre hematologie efface.', 'success');
+    });
+  };
+
   window.renderHematologie = function(){
     const root = document.getElementById('hematologie-content');
     if(!root) return;
@@ -2312,12 +2583,14 @@
               <div class="field"><label>ID CUIBIX</label><input id="hema-cuibix"></div>
               <div class="field hematologie-wide"><label>Protocole</label><input id="hema-protocole"></div>
             </div>
+            <button class="btn-primary hematologie-validate" onclick="saveHematologiePatient()">Enregistrer le patient</button>
           </div>
         </div>
         <div class="card">
           <div class="card-header"><div class="card-num" style="background:#0B5E3C">S</div><h2>Registre journalier de sorties des medicaments</h2></div>
           <div class="card-body">
             <div class="hematologie-sortie-grid">
+              <div class="field"><label>Prenom et nom du patient</label><input id="hema-sortie-patient" list="hema-patient-list" onchange="loadHematologieSortiePatient(this.value)"><datalist id="hema-patient-list">${hematologieRegisteredPatientOptions()}</datalist></div>
               <div class="field"><label>Medicament</label><input id="hema-med-name" list="hema-med-list" onchange="fillHematologieDrug()" oninput="fillHematologieDrug()"><datalist id="hema-med-list">${hematologieCatalogOptions()}</datalist></div>
               <div class="field"><label>DCI</label><input id="hema-med-dci"></div>
               <div class="field"><label>Numero lot</label><input id="hema-med-lot"></div>
@@ -2329,7 +2602,7 @@
           </div>
         </div>
         <div class="card">
-          <div class="card-header"><div class="card-num" style="background:#5A4A8A">J</div><h2>Journal des dernieres sorties</h2></div>
+          <div class="card-header"><div class="card-num" style="background:#5A4A8A">J</div><h2>Journal des dernieres sorties</h2>${isAdminUser() ? '<button class="btn-secondary official-github-mini" onclick="clearHematologieHistory()">Effacer historique</button>' : ''}</div>
           <div class="card-body dash-table-wrap">
             <table class="dash-table hematologie-table">
               <thead><tr><th>Date</th><th>Patient</th><th>Medicament</th><th>DCI</th><th>Lot</th><th>Exp</th><th>Dosage</th><th>Quantite</th><th>Utilisateur</th></tr></thead>
@@ -2478,6 +2751,7 @@
     if(id === 'hematologie') setTimeout(() => { window.renderHematologie?.(); cleanupLoginAndButtons(); }, 50);
     if(id === 'programme') setTimeout(cleanupLoginAndButtons, 20);
     if(id === 'preparation') setTimeout(ensurePreparationPrintReady, 80);
+    if(id === 'pharmacie') setTimeout(lockPharmacyStockControls, 80);
     if(id === 'dashboard') setTimeout(() => { window.renderDashboard?.(); cleanupLoginAndButtons(); }, 20);
     if(id === 'support') {
       setTimeout(cleanupLoginAndButtons, 20);
@@ -2562,7 +2836,9 @@
   document.addEventListener('DOMContentLoaded', () => {
     normalizeAllProtocols();
     applyOfficialSiteData();
+    ensureProtocolCatalogCompleteness();
     document.body.classList.toggle('admin-session', isAdminUser());
+    document.body.classList.toggle('pharmacien-session', isPharmacienUser());
     cleanMedecinsFinal();
     if(typeof renderProtos === 'function') renderProtos();
     cleanupLoginAndButtons();
@@ -2575,6 +2851,10 @@
       .page{max-width:1580px}
       #page-apercu > div,#page-preparation > div,#page-support > div,#page-stats > div,#page-programme > div[style*="max-width"],#page-patients > div,#patients-rdv-list,#page-rdv > div{max-width:1460px!important}
       body:not(.admin-session) .official-github-mini{display:none!important}
+      body:not(.pharmacien-session) #page-pharmacie #catalog-body input,
+      body:not(.pharmacien-session) #page-pharmacie button[onclick*="saveCatalog"],
+      body:not(.pharmacien-session) #page-pharmacie button[onclick*="scrollToCatalog"],
+      body:not(.pharmacien-session) #page-pharmacie button[onclick*="addMissingDrugToCatalog"]{display:none!important}
       .official-github-mini{width:auto!important;margin:6px 0 8px!important;padding:4px 8px!important;font-size:10px!important;line-height:1.1!important;border-radius:6px!important;box-shadow:none!important;display:inline-flex!important;align-items:center!important;gap:4px!important}
       .hematologie-shell{max-width:1460px;margin:0 auto}
       .hematologie-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px}
@@ -2582,6 +2862,7 @@
       .hematologie-sortie-grid{display:grid;grid-template-columns:minmax(190px,1.4fr) minmax(150px,1fr) repeat(4,minmax(120px,.8fr));gap:10px;align-items:end}
       .hematologie-validate{width:auto!important;margin-top:14px;padding:11px 18px!important;background:#0B5E3C!important}
       .hematologie-table{min-width:980px}
+      .prep-rdv-table{min-width:780px}
       @media (max-width:900px){.hematologie-grid,.hematologie-sortie-grid{grid-template-columns:1fr 1fr}.hematologie-wide{grid-column:1/-1}}
       @media (max-width:580px){.hematologie-grid,.hematologie-sortie-grid{grid-template-columns:1fr}}
       .dash-card{border-left:3px solid var(--blue);box-shadow:0 8px 20px rgba(10,61,122,.08)}
