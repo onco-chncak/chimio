@@ -167,6 +167,10 @@
   function normalizeAllProtocols(){
     const list = protocolsList();
     if(!Array.isArray(list) || !list.length) return;
+    const deleted = new Set(readJson('chncak_deleted_protocols', []));
+    for(let i = list.length - 1; i >= 0; i--){
+      if(deleted.has(list[i]?.id)) list.splice(i, 1);
+    }
     list.forEach(normalizeProtocol);
     const custom = readJson('chncak_custom_protocols', []);
     custom.forEach(proto => {
@@ -222,32 +226,51 @@
 
   window.askAdminCode = askAdminCode;
 
+  function currentUser(){
+    return readJson('chncak_currentUser', {});
+  }
+
+  function isAdminUser(){
+    const user = currentUser();
+    return norm(user.role) === 'admin' || norm(user.username) === 'admin';
+  }
+
+  function requireAdminAction(actionLabel, onOk){
+    if(!isAdminUser()){
+      alert('Action reservee au compte administrateur.');
+      return;
+    }
+    askAdminCode(actionLabel, onOk);
+  }
+
   function showToastSafe(message, type){
     if(typeof showToast === 'function') showToast(message, type || 'info');
     else alert(message);
   }
 
   window.editProtocolReference = function(defaultNumber){
-    normalizeAllProtocols();
-    const list = protocolsList();
-    const numberText = prompt('Numero du protocole a modifier :', defaultNumber || '');
-    if(numberText === null) return;
-    const idx = Number(numberText) - 1;
-    const proto = list[idx];
-    if(!proto){
-      alert('Numero de protocole introuvable.');
-      return;
-    }
-    const current = val(proto.reference, proto.ref, proto.source, defaultReferenceForProtocol(proto));
-    const next = prompt(`Reference scientifique pour ${proto.name} :`, current);
-    if(next === null) return;
-    const refs = readJson('chncak_protocol_references', {});
-    refs[proto.id] = next.trim() || 'A renseigner / validation service CHNCAK.';
-    writeJson('chncak_protocol_references', refs);
-    proto.reference = refs[proto.id];
-    window.renderProtocolReferenceTable?.();
-    if(typeof renderProtos === 'function') renderProtos();
-    showToastSafe('Reference scientifique mise a jour.', 'success');
+    requireAdminAction('modifier la reference scientifique', () => {
+      normalizeAllProtocols();
+      const list = protocolsList();
+      const numberText = prompt('Numero du protocole a modifier :', defaultNumber || '');
+      if(numberText === null) return;
+      const idx = Number(numberText) - 1;
+      const proto = list[idx];
+      if(!proto){
+        alert('Numero de protocole introuvable.');
+        return;
+      }
+      const current = val(proto.reference, proto.ref, proto.source, defaultReferenceForProtocol(proto));
+      const next = prompt(`Reference scientifique pour ${proto.name} :`, current);
+      if(next === null) return;
+      const refs = readJson('chncak_protocol_references', {});
+      refs[proto.id] = next.trim() || 'A renseigner / validation service CHNCAK.';
+      writeJson('chncak_protocol_references', refs);
+      proto.reference = refs[proto.id];
+      window.renderProtocolReferenceTable?.();
+      if(typeof renderProtos === 'function') renderProtos();
+      showToastSafe('Reference scientifique mise a jour.', 'success');
+    });
   };
 
   function downloadTextFile(filename, content, type){
@@ -406,24 +429,67 @@
     const fullDoc = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
       <title>Protocole ${esc(proto?.name || '')}</title>
       <style>
-        @page{size:A4 landscape;margin:7mm}
+        @page{size:A4 landscape;margin:5mm}
         *{box-sizing:border-box}
-        body{font-family:Arial,Helvetica,sans-serif;font-size:8.3px;color:#000;background:#fff;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-        .landscape-protocol-page{width:283mm;min-height:196mm;display:grid;grid-template-columns:1fr 1fr;gap:0;border:1.4px double #000;padding:3mm;background:#fff}
-        .landscape-copy{min-width:0;padding:0 4.2mm;overflow:hidden}
+        body{font-family:Arial,Helvetica,sans-serif;font-size:9.2px;line-height:1.18;color:#000;background:#fff;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+        .landscape-protocol-page{width:287mm;min-height:200mm;display:grid;grid-template-columns:1fr 1fr;gap:0;border:1.4px double #000;padding:2mm;background:#fff}
+        .landscape-copy{min-width:0;padding:0 2.8mm;overflow:hidden}
         .landscape-copy:first-child{border-right:1.2px solid #000}
         .landscape-copy table{max-width:100%!important;width:100%!important;page-break-inside:avoid;border-collapse:collapse}
-        .landscape-copy table:first-child,.landscape-copy table:first-child *{font-size:5.5px!important;line-height:.85!important;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important}
-        .landscape-copy table:first-child img{max-height:31px!important;width:auto!important}
-        .landscape-copy th,.landscape-copy td{padding-top:2px!important;padding-bottom:2px!important}
-        .landscape-copy [style*="font-size:12px"]{font-size:9px!important}
-        .landscape-copy [style*="font-size:11px"]{font-size:8.5px!important}
-        .landscape-copy [style*="font-size:10px"]{font-size:8px!important}
+        .landscape-copy table:first-child,.landscape-copy table:first-child *{font-size:6.3px!important;line-height:.98!important;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important}
+        .landscape-copy table:first-child img{max-height:35px!important;width:auto!important}
+        .landscape-copy th,.landscape-copy td{padding-top:3px!important;padding-bottom:3px!important}
+        .landscape-copy [style*="font-size:12px"]{font-size:10px!important}
+        .landscape-copy [style*="font-size:11px"]{font-size:9.5px!important}
+        .landscape-copy [style*="font-size:10px"]{font-size:9px!important}
         .landscape-copy [style*="margin-bottom:5px"]{margin-bottom:3px!important}
         @media print{body{margin:0}.landscape-protocol-page{page-break-after:avoid}}
       </style>
     </head><body><div class="landscape-protocol-page"><section class="landscape-copy">${html}</section><section class="landscape-copy">${html}</section></div></body></html>`;
     printHtml(fullDoc, '297mm', '210mm');
+  };
+
+  window.printDoc = function(){
+    return window.printFromApercu();
+  };
+
+  window.printBonRDV = function(){
+    const proto = protocolsList().find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
+    const get = id => document.getElementById(id)?.value || '';
+    const prenom = get('prenom');
+    const nom = get('nom');
+    if(!prenom || !nom) return alert('Renseignez le patient avant d imprimer le bon de rendez-vous.');
+    const rdvInput = get('date-rdv');
+    const rdvText = rdvInput ? rdvInput.split('-').reverse().join('/') : '___/___/______';
+    const protoDate = get('date-protocole');
+    const dateProto = protoDate ? protoDate.split('-').reverse().join('/') : new Date().toLocaleDateString('fr-FR');
+    const logo = document.querySelector('.nav-logo img')?.src || '';
+    const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Bon de rendez-vous</title>
+      <style>
+        @page{size:A4 portrait;margin:12mm}
+        *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+        .rdv-page{min-height:272mm;display:flex;align-items:center;justify-content:center}
+        .rdv-card{width:178mm;min-height:176mm;border:2px solid #0A3D7A;border-radius:8px;padding:12mm 13mm;display:flex;flex-direction:column;gap:9mm}
+        .rdv-head{display:grid;grid-template-columns:56px 1fr 56px;gap:8px;align-items:start;text-align:center}
+        .rdv-head img{width:52px;height:52px;object-fit:contain}
+        .ministry{font-size:10.5px;line-height:1.22}.ministry b{font-size:11px}
+        .title{background:#0A3D7A;color:#fff;text-align:center;font-weight:900;letter-spacing:.08em;font-size:21px;padding:8px;border-radius:4px}
+        .line{display:flex;gap:8px;align-items:flex-end;font-size:18px;line-height:1.8}
+        .line span:first-child{font-weight:800;min-width:58mm;color:#17324d}.line b{flex:1;border-bottom:1.5px dotted #333;min-height:30px;padding-left:6px}
+        .rdv-date{border:2px solid #0B5E3C;border-radius:8px;padding:8mm;text-align:center;background:#f3fbf7}
+        .rdv-date span{display:block;font-size:14px;text-transform:uppercase;color:#0B5E3C;font-weight:800}.rdv-date strong{display:block;font-size:32px;margin-top:4px;color:#111}
+        .foot{margin-top:auto;font-size:13px;line-height:1.45;color:#4b5563;text-align:center}
+      </style></head><body><main class="rdv-page"><section class="rdv-card">
+        <div class="rdv-head"><img src="${logo}"><div class="ministry">Republique du Senegal<br><b>Un peuple - un but - une foi</b><br>Ministere de la Sante et de l'Action Sociale<br><b>Centre Hospitalier National Cheikh Ahmadoul Khadim</b><br><b>Service d'Oncologie - Radiotherapie</b></div><img src="${logo}"></div>
+        <div class="title">BON DE RENDEZ-VOUS</div>
+        <div class="line"><span>Prenom et nom</span><b>${esc(`${prenom} ${nom}`.toUpperCase())}</b></div>
+        <div class="line"><span>Numero dossier</span><b>${esc(val(get('dossier'), get('cubix'), '-'))}</b></div>
+        <div class="line"><span>Protocole</span><b>${esc(proto?.name || '-')}</b></div>
+        <div class="line"><span>Date protocole</span><b>${esc(dateProto)}</b></div>
+        <div class="rdv-date"><span>Date du prochain rendez-vous</span><strong>${esc(rdvText)} a 07h30</strong></div>
+        <div class="foot">Merci de venir avec les resultats de biologie demandes et de se presenter au service d'oncologie-radiotherapie.</div>
+      </section></main></body></html>`;
+    printHtml(html);
   };
 
   function resolvePreparationProtocol(){
@@ -495,9 +561,32 @@
   };
   window.printPreparation = window.printPreparationFinal;
 
+  function pharmaValidationKey(patient, rdv){
+    return norm(val(patient?.dossier, rdv?.dossier, patient?.codegratuite, rdv?.codegratuite, patientName(patient), patientName(rdv)));
+  }
+
+  function hasPharmaValidation(patient, rdv){
+    const key = pharmaValidationKey(patient, rdv);
+    return !!(key && readJson('chncak_pharma_validations', {})[key]);
+  }
+
+  window.validatePharmacistPreparation = function(){
+    const patient = currentProtocolFormPatient();
+    if(!patient.prenom || !patient.nom) return alert('Chargez ou renseignez le patient avant validation.');
+    requireAdminAction('validation pharmacien', () => {
+      const map = readJson('chncak_pharma_validations', {});
+      map[pharmaValidationKey(patient)] = {validatedAt:new Date().toISOString(), patient:patientName(patient), dossier:patient.dossier, protoId:patient.protoId};
+      writeJson('chncak_pharma_validations', map);
+      showToastSafe('Validation pharmacien enregistree.', 'success');
+    });
+  };
+
   function ensurePreparationPrintReady(){
     const btn = document.getElementById('prep-print-btn');
     if(!btn) return;
+    if(!document.getElementById('prep-pharma-validation-btn')){
+      btn.insertAdjacentHTML('afterend', '<button id="prep-pharma-validation-btn" type="button" class="btn-primary" style="width:auto;margin-left:8px;padding:10px 14px;background:#0B5E3C" onclick="validatePharmacistPreparation()">Validation pharmacien</button>');
+    }
     const proto = resolvePreparationProtocol();
     const poids = Number(document.getElementById('poids')?.value || 0);
     const taille = Number(document.getElementById('taille')?.value || 0);
@@ -736,6 +825,7 @@
             <div>${photoBlock('surveillant','Surveillant','SM')}<div><span>Surveillant du service Oncologie-Radiotherapie</span><strong>SERIGNE MOR SAMB GUEYE</strong></div></div>
           </div>
         </div>
+        <div class="dash-online-card"><div><span>Comptes connectes</span><strong>${esc(val(currentUser().name, currentUser().username, 'Utilisateur local'))}</strong></div><em>Emplacement pret pour le temps reel. La synchronisation multi-postes passera par Supabase.</em></div>
         <div class="dash-final-grid">
           <div class="dash-final-kpi"><span>Patients</span><strong>${patients.length}</strong><em>${active} en cours</em></div>
           <div class="dash-final-kpi"><span>RDV 7 jours</span><strong>${upcoming.length}</strong><em>${treated} traites</em></div>
@@ -763,6 +853,15 @@
     if((rdv.status || '') === 'traite' || rdv.validatedAt) return alert('Patient deja traite.');
     const patients = readJson(STORAGE.patients, []);
     const patient = patients.find(p => (p.dossier && p.dossier === rdv.dossier) || norm(patientName(p)) === norm(`${rdv.prenom || ''} ${rdv.nom || ''}`)) || {...rdv, proto:rdv.proto, protoId:rdv.protoId};
+    if(!hasPharmaValidation(patient, rdv)){
+      alert('Validation pharmacien obligatoire avant de marquer le patient traite.');
+      if(typeof showPage === 'function') showPage('preparation', document.querySelector(".tab-btn[onclick*=\"preparation\"]"));
+      setTimeout(() => {
+        loadEntryIntoForm({...patient, ...rdv});
+        ensurePreparationPrintReady();
+      }, 150);
+      return;
+    }
     const bio = latestBiologieForPatient(patient, rdv);
     if(!bio){
       alert('Veuillez renseigner la biologie du patient avant de le marquer traite.');
@@ -918,7 +1017,7 @@
     const patient = currentProtocolFormPatient();
     if(!patient.prenom || !patient.nom) return alert('Veuillez renseigner au minimum prenom et nom.');
     if(!patient.dossier) return alert('Veuillez renseigner le numero de dossier.');
-    if(patient.codegratuite && savedCodeExists(patient.codegratuite)){
+    if(patient.codegratuite && savedCodeExists(patient.codegratuite) && document.getElementById('codegratuite')?.dataset.manual !== '1'){
       alert('Code de gratuite deja utilise. Enregistrement refuse.');
       return;
     }
@@ -929,6 +1028,13 @@
     if(idx >= 0) list[idx] = {...list[idx], ...entry, id:list[idx].id || Date.now().toString()};
     else list.push({...entry, id:Date.now().toString()});
     writeJson(STORAGE.patients, list);
+    const okList = readJson(STORAGE.okchimio, []);
+    const okExists = okList.some(item => (patient.dossier && item.dossier === patient.dossier) || (patient.codegratuite && patientCode(item) === patient.codegratuite));
+    if(!okExists){
+      okList.push({...entry, id:Date.now().toString(), patient:entry, statut:'En attente', dateCreation:new Date().toISOString()});
+      writeJson(STORAGE.okchimio, okList);
+      writeJson('chncak_okchimio', okList);
+    }
     window.renderPatientsList?.();
     window.renderOkChimio?.();
     openValidationEmail(patient);
@@ -1054,7 +1160,7 @@
   window.handleDashboardTeamPhoto = function(input){
     const file = input.files?.[0];
     if(!file) return;
-    askAdminCode('changer la photo de l equipe', () => {
+    requireAdminAction('changer la photo de l equipe', () => {
       const reader = new FileReader();
       reader.onload = event => {
         localStorage.setItem('chncak_dashboard_team_photo', event.target.result);
@@ -1071,7 +1177,7 @@
   };
 
   window.chooseDashboardPhoto = function(slot){
-    askAdminCode('changer une photo du dashboard', () => {
+    requireAdminAction('changer une photo du dashboard', () => {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
@@ -1423,13 +1529,47 @@
             <div style="font-size:11px;color:#666;margin-top:4px">${esc(val(m.email))}${m.email && m.contact ? ' · ' : ''}${esc(val(m.contact))}</div>
           </div>
         </div>
-        <div class="med-actions"><button class="btn-sm danger" onclick="deleteMed(${i})">Supprimer</button></div>
+        <div class="med-actions"><button class="btn-sm" onclick="editMedecinFinal(${i})">Modifier</button><button class="btn-sm danger" onclick="deleteMed(${i})">Supprimer</button></div>
       </div>`;
     }).join('') : '<p style="text-align:center;padding:20px;color:var(--gray-mid);font-size:13px">Aucun médecin enregistré</p>';
+  };
+  window.editMedecinFinal = function(index){
+    requireAdminAction('modifier un medecin', () => {
+      const list = cleanMedecinsFinal();
+      const med = list[index];
+      if(!med) return alert('Medecin introuvable.');
+      const prenom = prompt('Prenom :', val(med.prenom)); if(prenom === null) return;
+      const nom = prompt('Nom :', val(med.nom)); if(nom === null) return;
+      const specialite = prompt('Specialite / grade :', val(med.specialite, med.grade)); if(specialite === null) return;
+      const contact = prompt('Contact :', val(med.contact)); if(contact === null) return;
+      const email = prompt('Email :', val(med.email)); if(email === null) return;
+      list[index] = {...med, prenom:prenom.trim(), nom:nom.trim(), specialite:specialite.trim(), contact:contact.trim(), email:email.trim(), updatedAt:new Date().toISOString()};
+      writeJson('chncak_medecins', list);
+      window.renderMedecins?.();
+      showToastSafe('Medecin modifie.', 'success');
+    });
+  };
+  window.deleteMed = function(index){
+    requireAdminAction('supprimer un medecin', () => {
+      const list = cleanMedecinsFinal();
+      if(!list[index]) return;
+      list.splice(index, 1);
+      writeJson('chncak_medecins', list);
+      window.renderMedecins?.();
+      window.populateMedecinSelect?.();
+    });
+  };
+  const nativeAddMedecinFromForm = window.addMedecinFromForm;
+  window.addMedecinFromForm = function(){
+    requireAdminAction('ajouter un medecin', () => {
+      if(typeof nativeAddMedecinFromForm === 'function') nativeAddMedecinFromForm.apply(this, arguments);
+      else alert('Formulaire medecin indisponible.');
+    });
   };
   try { renderProgramme = window.renderProgramme; } catch(e){}
   try { renderMedecins = window.renderMedecins; } catch(e){}
   try { populateMedecinSelect = window.populateMedecinSelect; } catch(e){}
+  try { deleteMed = window.deleteMed; } catch(e){}
 
   function getCurrentMondayIso(){
     const today = new Date();
@@ -1544,10 +1684,12 @@
   ];
 
   function protocolDrugNameOptions(){
-    const names = new Set();
+    const names = new Map();
+    const excluded = /^(nacl|na cl|sg|g5|ssi|eau ppi|sans solvant|serum|glucose|hydrocortisone|granisetron|kytril|ondansetron|calcium|magnesium|ringer|rinçage|rincage)/i;
     const add = name => {
       const clean = String(name || '').trim();
-      if(clean) names.add(clean);
+      const key = norm(clean).replace(/[^a-z0-9]/g, '');
+      if(clean && !excluded.test(norm(clean)) && !names.has(key)) names.set(key, canonicalDrugName(clean).toUpperCase());
     };
     readJson(STORAGE.catalog, Array.isArray(window.DEFAULT_CATALOG) ? window.DEFAULT_CATALOG : []).forEach(item => {
       add(item.name);
@@ -1555,7 +1697,7 @@
     });
     protocolsList().forEach(proto => (proto.drugs || []).forEach(drug => add(drug.name || drug.label)));
     WEB_ONCOLOGY_DRUG_NAMES.forEach(add);
-    return Array.from(names).sort((a, b) => a.localeCompare(b, 'fr', {sensitivity:'base'}));
+    return Array.from(names.values()).sort((a, b) => a.localeCompare(b, 'fr', {sensitivity:'base'}));
   }
 
   function refreshProtocolDrugDatalist(){
@@ -1581,7 +1723,7 @@
 
   function collectProtocolDrugRows(){
     const rows = Array.from(document.querySelectorAll('#proto-drugs-list .proto-drug-line'));
-    return rows.map(row => {
+    const drugs = rows.map(row => {
       const name = row.querySelector('[data-field="name"]')?.value.trim();
       const calc = row.querySelector('[data-field="calc"]')?.value;
       const coef = Number(row.querySelector('[data-field="coef"]')?.value || 0);
@@ -1590,9 +1732,16 @@
       const solVol = row.querySelector('[data-field="solvol"]')?.value.trim();
       const dur = row.querySelector('[data-field="dur"]')?.value.trim();
       const freq = row.querySelector('[data-field="freq"]')?.value.trim();
+      const doseLimit = row.querySelector('[data-field="limit"]')?.value.trim();
+      const light = row.querySelector('[data-field="light"]')?.checked;
       const sol = [solVol ? `${solVol} cc` : '', solvant].filter(Boolean).join(' ');
       const durLabel = dur && /^\d+([.,]\d+)?$/.test(dur) ? `${dur} mn` : dur;
-      const out = {name, ryt: jours, sol, dur: durLabel, freq, hl:true};
+      const notes = [];
+      if(freq) notes.push(freq);
+      if(doseLimit) notes.push(`Alerte dose limite: ${doseLimit} mg`);
+      if(light) notes.push('Proteger contre la lumiere');
+      if(/cisplat|carbo|oxali/i.test(norm(name))) notes.push('Surveillance ions: Na+, K+, Mg2+, Ca2+');
+      const out = {name, ryt: jours, sol, dur: durLabel, freq:notes.join(' - '), note:notes.join(' - '), hl:true};
       if(calc === 'mgm2') out.mgm2 = coef;
       else if(calc === 'mgkg') out.mgkg = coef;
       else if(calc === 'fix') out.fix = coef;
@@ -1600,6 +1749,12 @@
       else if(calc === 'oral'){ out.oral = true; out.pos = `${coef || ''} mg`.trim(); delete out.hl; }
       return out;
     }).filter(d => d.name);
+    const withRinsing = [];
+    drugs.forEach((drug, index) => {
+      if(index > 0 && drug.hl && drugs[index - 1]?.hl) withRinsing.push({t:'r', label:'Rincage 250 cc SSI 0.9% - faire passer en 30 mn', dur:'30 mn'});
+      withRinsing.push(drug);
+    });
+    return withRinsing;
   }
 
   window.addProtocolDrugRow = function(data){
@@ -1634,7 +1789,9 @@
         </select>
         <div class="unit-input"><input data-field="solvol" type="number" step="1" placeholder="Vol." value="${esc(solVol)}"><span>cc</span></div>
         <div class="unit-input"><input data-field="dur" placeholder="Duree" value="${esc(durValue)}"><span>mn</span></div>
-        <input data-field="freq" placeholder="Ex: hebdo, J1-J8, proteger lumiere" title="A remplir si une precision n'entre pas dans les champs jours/solvant/duree : rythme particulier, dose max, protection lumiere, ordre de perfusion..." value="${esc(d.freq || d.frequence || '')}">
+        <input data-field="freq" placeholder="Frequence / remarque" title="Rythme particulier, ordre de perfusion, remarque clinique..." value="${esc(d.freq || d.frequence || '')}">
+        <div class="unit-input"><input data-field="limit" type="number" step="0.01" placeholder="Dose limite" value="${esc(d.maxDose || '')}"><span>mg</span></div>
+        <label class="light-check"><input data-field="light" type="checkbox" ${norm(d.note || d.freq).includes('lumiere') ? 'checked' : ''}> Lumiere</label>
         <button type="button" class="proto-remove" title="Retirer" onclick="this.closest('.proto-drug-line').remove()">x</button>
       </div>
     `);
@@ -1653,6 +1810,7 @@
           <div class="pdetail">${esc((proto.drugs || []).filter(d => !d.t).map(d => d.name || d.label).join(' + '))}</div>
           <div style="font-size:10.5px;color:#5f6f62;margin-top:5px"><b>Bilan utile :</b> ${esc(proto.pre || defaultPreForProtocol(proto))}</div>
           <div style="font-size:10.5px;color:#6b5b38;margin-top:4px"><b>Reference :</b> ${esc(proto.reference || proto.ref || proto.source || 'A renseigner / validation service')}</div>
+          <div class="proto-card-actions"><button type="button" onclick="event.stopPropagation(); editProtocolCard('${esc(proto.id)}')">Modifier</button><button type="button" class="danger" onclick="event.stopPropagation(); deleteProtocolCard('${esc(proto.id)}')">Supprimer</button></div>
         </div>
       </div>
     `).join('');
@@ -1660,7 +1818,48 @@
   window.renderProtos = renderProtocolCardsFinal;
   try { renderProtos = renderProtocolCardsFinal; } catch(e){}
 
+  window.editProtocolCard = function(id){
+    requireAdminAction('modifier le protocole', () => {
+      const proto = protocolsList().find(p => p.id === id);
+      if(!proto) return alert('Protocole introuvable.');
+      const name = prompt('Nom du protocole :', proto.name); if(name === null) return;
+      const rythme = prompt('Rythme :', val(proto.rythme, proto.badge, 'J21')); if(rythme === null) return;
+      const pre = prompt('Bilan utile :', val(proto.pre)); if(pre === null) return;
+      const reference = prompt('Reference scientifique :', val(proto.reference, proto.ref, proto.source, defaultReferenceForProtocol(proto))); if(reference === null) return;
+      const updated = upsertCustomProtocol({...proto, name:name.trim(), rythme:rythme.trim(), badge:rythme.trim(), pre:pre.trim(), reference:reference.trim()});
+      normalizeAllProtocols();
+      renderProtocolCardsFinal();
+      window.renderProtocolReferenceTable?.();
+      showToastSafe(`Protocole ${updated.name} modifie.`, 'success');
+    });
+  };
+
+  window.deleteProtocolCard = function(id){
+    requireAdminAction('supprimer le protocole', () => {
+      const proto = protocolsList().find(p => p.id === id);
+      if(!proto) return;
+      if(!confirm(`Supprimer le protocole ${proto.name} ?`)) return;
+      writeJson('chncak_deleted_protocols', Array.from(new Set([...readJson('chncak_deleted_protocols', []), id])));
+      const custom = readJson('chncak_custom_protocols', []).filter(p => p.id !== id);
+      writeJson('chncak_custom_protocols', custom);
+      const list = protocolsList();
+      const idx = list.findIndex(p => p.id === id);
+      if(idx >= 0) list.splice(idx, 1);
+      renderProtocolCardsFinal();
+      window.renderProtocolReferenceTable?.();
+      showToastSafe('Protocole supprime de la liste.', 'success');
+    });
+  };
+
   window.showAddProtocoleModal = function(){
+    if(!window.__protoAddAuthorized){
+      requireAdminAction('ajouter un protocole', () => {
+        window.__protoAddAuthorized = true;
+        window.showAddProtocoleModal();
+        window.__protoAddAuthorized = false;
+      });
+      return;
+    }
     const modal = document.getElementById('add-protocole-modal');
     if(!modal) return;
     refreshProtocolDrugDatalist();
@@ -1728,10 +1927,10 @@
 
   window.downloadProtocolImportTemplate = function(){
     const rows = [
-      ['Nom protocole','Rythme','Bilan utile','Surveillance','Reference scientifique','Medicament','Type calcul','Dose','Unite','Jours','Solvant','Volume solvant cc','Duree','Frequence / remarque','Oral'],
-      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','Oxaliplatine','mg/m2','85','mg/m2','J1','SG 5%','500','2 h','','NON'],
-      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','5-FU','mg/m2','400','mg/m2','J1','NaCl 0.9%','100','Bolus','','NON'],
-      ['EXEMPLE ORAL','J21','NFS plaquettes, bilan hepatique','Surveillance clinique','Reference service / guideline validee','Capecitabine','per os','1250','mg','J1-J14','','','','OUI']
+      ['Nom protocole','Rythme','Bilan utile','Surveillance','Reference scientifique','Medicament','Type calcul','Dose','Unite','Jours','Solvant','Volume solvant cc','Duree','Frequence / remarque','Alerte dose limite mg','Protection lumiere','Oral'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','Oxaliplatine','mg/m2','85','mg/m2','J1','SG 5%','500','2 h','','','','NON'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','5-FU','mg/m2','400','mg/m2','J1','NaCl 0.9%','100','Bolus','','','','NON'],
+      ['EXEMPLE ORAL','J21','NFS plaquettes, bilan hepatique','Surveillance clinique','Reference service / guideline validee','Capecitabine','per os','1250','mg','J1-J14','','','','','','OUI']
     ];
     const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(';')).join('\n');
     downloadTextFile('modele_import_protocoles_complet.csv', csv, 'text/csv;charset=utf-8');
@@ -1741,6 +1940,14 @@
     const file = input?.files?.[0];
     if(!file) return;
     if(typeof XLSX === 'undefined') return alert('Module Excel indisponible.');
+    if(!window.__protoImportAuthorized){
+      requireAdminAction('importer des protocoles', () => {
+        window.__protoImportAuthorized = true;
+        window.importProtocolExcel(input);
+        window.__protoImportAuthorized = false;
+      });
+      return;
+    }
     const reader = new FileReader();
     reader.onload = e => {
       try {
@@ -1907,6 +2114,18 @@
       const head = document.querySelector('#suivi-content .dashboard-head');
       head?.insertAdjacentHTML('beforeend', '<div id="suivi-import-final" class="suivi-actions-final"><button class="btn-secondary" onclick="downloadSuiviTemplate()">Modele tableau</button><label class="btn-secondary suivi-import-label">Importer tableau<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importSuiviExcel(this)"></label><button class="btn-primary" onclick="exportSuiviExcel()">Exporter tableau</button></div>');
     }
+    if(!isAdminUser()){
+      document.querySelectorAll('button,label').forEach(el => {
+        const text = norm(el.textContent || '');
+        if(text.includes('effacer historique') || text === 'effacer' || text.includes('restaurer') || text.includes('ajouter un protocole') || text.includes('importer un protocole')) el.style.display = 'none';
+      });
+    }
+    const codeInput = document.getElementById('codegratuite');
+    if(codeInput && codeInput.dataset.unlockReady !== '1'){
+      codeInput.dataset.unlockReady = '1';
+      codeInput.title = 'Double-clic discret pour reutiliser un ancien code gratuite';
+      codeInput.addEventListener('dblclick', window.unlockCodeGratuiteManual);
+    }
     installPatientSearchBox('page-preparation', 'preparation-patient-loader', 'loadPatientForPreparation');
     installPatientSearchBox('page-support', 'support-patient-loader', 'loadPatientForSupport');
     document.querySelector('#page-medecins .enhance-panel[data-enhance="medecins"]')?.remove();
@@ -2001,6 +2220,50 @@
     return out;
   };
 
+  const nativeSaveRdvAndConfirm = window.saveRdvAndConfirm;
+  window.saveRdvAndConfirm = function(){
+    const rdvVal = document.getElementById('date-rdv')?.value;
+    if(rdvVal){
+      const list = readJson(STORAGE.rdv, []);
+      const currentDossier = document.getElementById('dossier')?.value || '';
+      const existingSameDay = list.filter(r => r.dateRdv === rdvVal && (!currentDossier || r.dossier !== currentDossier));
+      if(existingSameDay.length >= 2 && !confirm('Attention : il y a deja 2 nouveaux rendez-vous ce jour-la. Continuer quand meme ?')) return;
+    }
+    return typeof nativeSaveRdvAndConfirm === 'function' ? nativeSaveRdvAndConfirm.apply(this, arguments) : undefined;
+  };
+
+  const nativeValidateStockFromRdv = window.validateStockFromRdv;
+  window.validateStockFromRdv = function(id){
+    const rdv = readJson(STORAGE.rdv, []).find(r => String(r.id) === String(id));
+    const patient = rdv ? readJson(STORAGE.patients, []).find(p => (p.dossier && p.dossier === rdv.dossier) || norm(patientName(p)) === norm(patientName(rdv))) || rdv : null;
+    if(patient && !hasPharmaValidation(patient, rdv)){
+      alert('Validation pharmacien obligatoire avant de traiter ce rendez-vous.');
+      if(typeof showPage === 'function') showPage('preparation', document.querySelector(".tab-btn[onclick*=\"preparation\"]"));
+      setTimeout(() => { loadEntryIntoForm({...patient, ...rdv}); ensurePreparationPrintReady(); }, 150);
+      return;
+    }
+    return typeof nativeValidateStockFromRdv === 'function' ? nativeValidateStockFromRdv.apply(this, arguments) : undefined;
+  };
+
+  window.unlockCodeGratuiteManual = function(){
+    requireAdminAction('modifier manuellement le code gratuite', () => {
+      const input = document.getElementById('codegratuite');
+      if(!input) return;
+      input.dataset.manual = '1';
+      input.readOnly = false;
+      input.focus();
+      showToastSafe('Champ code gratuite debloque pour reprise d un ancien code.', 'info');
+    });
+  };
+  const nativeGenCodeGratuite = window.genCodeGratuite;
+  if(typeof nativeGenCodeGratuite === 'function'){
+    window.genCodeGratuite = function(){
+      const input = document.getElementById('codegratuite');
+      if(input?.dataset.manual === '1') return;
+      return nativeGenCodeGratuite.apply(this, arguments);
+    };
+  }
+
   function updateLiveClocks(){
     const now = new Date();
     const timeText = now.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
@@ -2080,10 +2343,17 @@
       .proto-editor-grid{display:grid;grid-template-columns:1fr 150px;gap:10px}
       .proto-editor-grid label:nth-child(3),.proto-editor-grid label:nth-child(4){grid-column:1/-1}
       .proto-drug-grid{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-      .proto-drug-line{display:grid;grid-template-columns:minmax(150px,1.2fr) 105px 95px 105px 110px 90px 95px minmax(130px,1fr) 28px;gap:7px;align-items:center;background:#f8fbff;border:1px solid #dbe5f2;border-radius:8px;padding:8px}
+      .proto-drug-line{display:grid;grid-template-columns:minmax(150px,1.2fr) 105px 95px 105px 110px 90px 95px minmax(130px,1fr) 95px 74px 28px;gap:7px;align-items:center;background:#f8fbff;border:1px solid #dbe5f2;border-radius:8px;padding:8px}
       .unit-input{display:flex;align-items:center;gap:4px}
       .unit-input span{font-size:10px;color:#607080}
+      .light-check{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center;gap:5px;font-size:11px!important;font-weight:800!important;color:#17324d!important}
+      .light-check input{width:auto!important}
       .proto-remove{height:32px;border:1px solid #f0b5b5;background:#fdeaea;color:#a33131;border-radius:6px;cursor:pointer;font-weight:800}
+      .proto-card{position:relative}
+      .proto-card-actions{display:flex;gap:5px;justify-content:flex-end;margin-top:7px;opacity:.55;transition:opacity .16s ease}
+      .proto-card:hover .proto-card-actions{opacity:1}
+      .proto-card-actions button{border:1px solid #c9d8eb;background:#f8fbff;color:#0A3D7A;border-radius:5px;padding:4px 7px;font-size:10px;font-weight:800;cursor:pointer}
+      .proto-card-actions button.danger{border-color:#f1b0b0;background:#fdeaea;color:#9d1c1c}
       #secure-code-modal{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;font-family:var(--font,Arial,sans-serif)}
       .secure-code-backdrop{position:absolute;inset:0;background:rgba(10,20,30,.46);backdrop-filter:blur(2px)}
       .secure-code-card{position:relative;width:min(360px,calc(100vw - 32px));background:#fff;border-radius:8px;box-shadow:0 24px 60px rgba(0,0,0,.28);padding:20px;border:1px solid #dbe5f2}
@@ -2127,6 +2397,8 @@
       .dash-leadership span{display:block;font-size:10px;color:#607080;text-transform:uppercase;font-weight:800;line-height:1.25}
       .dash-leadership strong{display:block;color:#17324d;font-size:13px;margin-top:5px;line-height:1.25}
       .dash-leadership em{display:block;color:#0B5E3C;font-size:11px;font-style:normal;margin-top:3px}
+      .dash-online-card{display:flex;justify-content:space-between;gap:12px;align-items:center;background:#fff;border:1px solid #c9d8eb;border-left:4px solid #0B5E3C;border-radius:8px;padding:10px 12px;box-shadow:0 8px 18px rgba(10,61,122,.06)}
+      .dash-online-card span{display:block;font-size:10px;color:#607080;text-transform:uppercase;font-weight:800}.dash-online-card strong{display:block;color:#17324d;font-size:14px;margin-top:3px}.dash-online-card em{font-size:11px;color:#607080;font-style:normal;text-align:right}
       .suivi-actions-final{display:grid;grid-template-columns:repeat(3,minmax(130px,1fr));gap:8px;align-items:center;justify-content:end;min-width:min(100%,500px)}
       .suivi-actions-final button,.suivi-actions-final label{height:38px;display:flex!important;align-items:center;justify-content:center;text-align:center;width:100%!important;margin:0!important;padding:8px 12px!important;border-radius:7px!important;font-size:12px!important;font-weight:800!important;line-height:1.1;white-space:nowrap;box-sizing:border-box}
       .suivi-import-label{cursor:pointer}
