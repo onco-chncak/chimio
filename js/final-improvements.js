@@ -507,18 +507,18 @@
       <style>
         @page{size:A4 landscape;margin:5mm}
         *{box-sizing:border-box}
-        body{font-family:Arial,Helvetica,sans-serif;font-size:9.2px;line-height:1.18;color:#000;background:#fff;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+        body{font-family:Arial,Helvetica,sans-serif;font-size:10.2px;line-height:1.28;color:#000;background:#fff;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
         .landscape-protocol-page{width:287mm;min-height:200mm;display:grid;grid-template-columns:1fr 1fr;gap:0;border:1.4px double #000;padding:2mm;background:#fff}
-        .landscape-copy{min-width:0;padding:0 2.8mm;overflow:hidden}
+        .landscape-copy{min-width:0;padding:0 4mm;overflow:hidden}
         .landscape-copy:first-child{border-right:1.2px solid #000}
         .landscape-copy table{max-width:100%!important;width:100%!important;page-break-inside:avoid;border-collapse:collapse}
-        .landscape-copy table:first-child,.landscape-copy table:first-child *{font-size:6.3px!important;line-height:.98!important;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important}
-        .landscape-copy table:first-child img{max-height:35px!important;width:auto!important}
-        .landscape-copy th,.landscape-copy td{padding-top:3px!important;padding-bottom:3px!important}
-        .landscape-copy [style*="font-size:12px"]{font-size:10px!important}
-        .landscape-copy [style*="font-size:11px"]{font-size:9.5px!important}
-        .landscape-copy [style*="font-size:10px"]{font-size:9px!important}
-        .landscape-copy [style*="margin-bottom:5px"]{margin-bottom:3px!important}
+        .landscape-copy table:first-child,.landscape-copy table:first-child *{font-size:7.2px!important;line-height:1.12!important;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important}
+        .landscape-copy table:first-child img{max-height:42px!important;width:auto!important}
+        .landscape-copy th,.landscape-copy td{padding-top:4px!important;padding-bottom:4px!important}
+        .landscape-copy [style*="font-size:12px"]{font-size:11.2px!important}
+        .landscape-copy [style*="font-size:11px"]{font-size:10.5px!important}
+        .landscape-copy [style*="font-size:10px"]{font-size:10px!important}
+        .landscape-copy [style*="margin-bottom:5px"]{margin-bottom:5px!important}
         @media print{body{margin:0}.landscape-protocol-page{page-break-after:avoid}}
       </style>
     </head><body><div class="landscape-protocol-page"><section class="landscape-copy">${html}</section><section class="landscape-copy">${html}</section></div></body></html>`;
@@ -2192,15 +2192,15 @@
     }
     const medPage = document.getElementById('page-medecins');
     if(medPage && isAdminUser() && !document.getElementById('official-github-data-btn')){
-      medPage.querySelector('h2')?.insertAdjacentHTML('afterend', '<button id="official-github-data-btn" class="btn-secondary" style="width:auto;margin:8px 0 10px;padding:8px 12px" onclick="exportOfficialGitHubData()">Exporter donnees GitHub</button>');
+      medPage.querySelector('h2')?.insertAdjacentHTML('afterend', '<button id="official-github-data-btn" class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button>');
     }
     const dashPage = document.getElementById('page-dashboard');
     if(dashPage && isAdminUser() && !document.getElementById('official-github-data-dashboard')){
-      document.getElementById('dashboard-content')?.insertAdjacentHTML('afterbegin', '<button id="official-github-data-dashboard" class="btn-secondary" style="width:auto;margin:0 0 8px;padding:7px 11px;font-size:11px" onclick="exportOfficialGitHubData()">Exporter medecins/photos GitHub</button>');
+      document.getElementById('dashboard-content')?.insertAdjacentHTML('afterbegin', '<button id="official-github-data-dashboard" class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button>');
     }
     const pharmaPage = document.getElementById('page-pharmacie');
     if(pharmaPage && isAdminUser() && !document.getElementById('official-github-data-pharma')){
-      pharmaPage.querySelector('h2')?.insertAdjacentHTML('afterend', '<button id="official-github-data-pharma" class="btn-secondary" style="width:auto;margin:8px 0 10px;padding:8px 12px" onclick="exportOfficialGitHubData()">Exporter catalogue GitHub</button>');
+      pharmaPage.querySelector('h2')?.insertAdjacentHTML('afterend', '<button id="official-github-data-pharma" class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button>');
     }
     if(!isAdminUser()){
       document.querySelectorAll('button,label').forEach(el => {
@@ -2382,8 +2382,9 @@
     const style = document.createElement('style');
     style.textContent = `
       .dashboard-photo-btn{display:none!important}
-      .page{max-width:1480px}
-      #page-preparation > div,#page-support > div,#page-stats > div,#page-programme > div[style*="max-width"]{max-width:1380px!important}
+      .page{max-width:1580px}
+      #page-apercu > div,#page-preparation > div,#page-support > div,#page-stats > div,#page-programme > div[style*="max-width"],#page-patients > div,#patients-rdv-list,#page-rdv > div{max-width:1460px!important}
+      .official-github-mini{width:auto!important;margin:6px 0 8px!important;padding:4px 8px!important;font-size:10px!important;line-height:1.1!important;border-radius:6px!important;box-shadow:none!important;display:inline-flex!important;align-items:center!important;gap:4px!important}
       .dash-card{border-left:3px solid var(--blue);box-shadow:0 8px 20px rgba(10,61,122,.08)}
       .dash-final{display:flex;flex-direction:column;gap:14px}
       .dash-final-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.8fr);gap:16px;align-items:stretch;background:#fff;border:1px solid #dbe5f2;border-radius:8px;padding:18px;box-shadow:0 10px 24px rgba(10,61,122,.08)}
