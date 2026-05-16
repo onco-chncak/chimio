@@ -120,6 +120,7 @@
     proto.drugs = (proto.drugs || []).map(normalizeProtocolDrug).filter(Boolean);
     proto.pre = val(proto.pre, proto.bilan, defaultPreForProtocol(proto));
     proto.post = val(proto.post, proto.surveillance, 'Surveillance clinique et biologique selon protocole du service');
+    proto.reference = val(proto.reference, proto.ref, proto.source, proto.bibliographie, '');
     return proto;
   }
 
@@ -1246,6 +1247,7 @@
           <span class="pbadge ${esc(proto.badgeClass || 'b21')}">${esc(proto.badge || proto.rythme || '')}</span>
           <div class="pdetail">${esc((proto.drugs || []).filter(d => !d.t).map(d => d.name || d.label).join(' + '))}</div>
           <div style="font-size:10.5px;color:#5f6f62;margin-top:5px"><b>Bilan utile :</b> ${esc(proto.pre || defaultPreForProtocol(proto))}</div>
+          <div style="font-size:10.5px;color:#6b5b38;margin-top:4px"><b>Reference :</b> ${esc(proto.reference || proto.ref || proto.source || 'A renseigner / validation service')}</div>
         </div>
       </div>
     `).join('');
@@ -1269,6 +1271,7 @@
           <label>Nom du protocole<input id="new-proto-name" placeholder="Ex: FOLFOX"></label>
           <label>Rythme<input id="new-proto-rythme" placeholder="Ex: J14, J21, J28" value="J21"></label>
           <label>Indication<input id="new-proto-indication" placeholder="Ex: cancer colorectal"></label>
+          <label>Reference scientifique<input id="new-proto-reference" placeholder="Ex: NCCN, ESMO, protocole service valide..."></label>
           <label>Bilan utile<input id="new-proto-pre" placeholder="NFS, plaquettes, creatinine..."></label>
           <label>Surveillance / remarques<input id="new-proto-post" placeholder="Surveillance selon protocole du service"></label>
         </div>
@@ -1303,6 +1306,7 @@
       name,
       rythme: document.getElementById('new-proto-rythme')?.value.trim() || 'J21',
       indication: document.getElementById('new-proto-indication')?.value.trim(),
+      reference: document.getElementById('new-proto-reference')?.value.trim(),
       pre: document.getElementById('new-proto-pre')?.value.trim(),
       post: document.getElementById('new-proto-post')?.value.trim(),
       drugs
@@ -1314,10 +1318,10 @@
 
   window.downloadProtocolImportTemplate = function(){
     const rows = [
-      ['Nom protocole','Rythme','Bilan utile','Surveillance','Medicament','Type calcul','Dose','Unite','Jours','Solvant','Volume solvant cc','Duree','Frequence / remarque','Oral'],
-      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Oxaliplatine','mg/m2','85','mg/m2','J1','SG 5%','500','2 h','','NON'],
-      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','5-FU','mg/m2','400','mg/m2','J1','NaCl 0.9%','100','Bolus','','NON'],
-      ['EXEMPLE ORAL','J21','NFS plaquettes, bilan hepatique','Surveillance clinique','Capecitabine','per os','1250','mg','J1-J14','','','','OUI']
+      ['Nom protocole','Rythme','Bilan utile','Surveillance','Reference scientifique','Medicament','Type calcul','Dose','Unite','Jours','Solvant','Volume solvant cc','Duree','Frequence / remarque','Oral'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','Oxaliplatine','mg/m2','85','mg/m2','J1','SG 5%','500','2 h','','NON'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','5-FU','mg/m2','400','mg/m2','J1','NaCl 0.9%','100','Bolus','','NON'],
+      ['EXEMPLE ORAL','J21','NFS plaquettes, bilan hepatique','Surveillance clinique','Reference service / guideline validee','Capecitabine','per os','1250','mg','J1-J14','','','','OUI']
     ];
     const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(';')).join('\n');
     downloadTextFile('modele_import_protocoles_complet.csv', csv, 'text/csv;charset=utf-8');
@@ -1339,7 +1343,7 @@
           const med = val(row.Medicament, row.Med, row.Molecule);
           if(!name || !med) return;
           const key = slugify(name);
-          if(!grouped.has(key)) grouped.set(key, {id:key, name, rythme:val(row.Rythme,row.Badge,'J21'), pre:val(row['Bilan utile'],row.Bilan), post:val(row.Surveillance,row.Remarques), drugs:[]});
+          if(!grouped.has(key)) grouped.set(key, {id:key, name, rythme:val(row.Rythme,row.Badge,'J21'), pre:val(row['Bilan utile'],row.Bilan), post:val(row.Surveillance,row.Remarques), reference:val(row['Reference scientifique'], row.Reference, row.Source), drugs:[]});
           const type = norm(val(row['Type calcul'], row.Type, row.Calcul));
           const dose = Number(String(val(row.Dose,row.Coef)).replace(',', '.'));
           const solName = val(row.Solvant,row.Sol);

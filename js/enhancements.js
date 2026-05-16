@@ -41,6 +41,7 @@
         <td>${p.rythme || p.badge || '-'}</td>
         <td>${(p.drugs || []).filter(d => d.name).length}</td>
         <td>${p.pre || '-'}</td>
+        <td>${p.reference || p.ref || p.source || 'A renseigner / validation service'}</td>
       </tr>
     `).join('');
     el.innerHTML = `
@@ -48,7 +49,7 @@
         <div class="card-header"><div class="card-num">+</div><h2>Tableau de référence des protocoles</h2></div>
         <div class="card-body enhance-table-wrap">
           <table class="enhance-table">
-            <thead><tr><th>Protocole</th><th>Rythme</th><th>Produits</th><th>Bilan utile</th></tr></thead>
+            <thead><tr><th>Protocole</th><th>Rythme</th><th>Produits</th><th>Bilan utile</th><th>Reference scientifique</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
