@@ -281,6 +281,72 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
+  function officialPhotoStorageKey(slot){
+    return slot === 'team' ? 'chncak_dashboard_team_photo' : `chncak_dashboard_photo_${slot}`;
+  }
+
+  function normalizeOfficialMedecin(m, index){
+    const display = val(m?.name, `Dr ${val(m?.prenom)} ${val(m?.nom)}`.replace(/\s+/g, ' ').trim());
+    const cleanDisplay = display.replace(/^Dr\s+/i, '').trim();
+    const parts = cleanDisplay.split(/\s+/);
+    return {
+      id: val(m?.id, Date.now() + index),
+      name: display,
+      prenom: val(m?.prenom, parts.length > 1 ? parts.slice(0, -1).join(' ') : ''),
+      nom: val(m?.nom, parts[parts.length - 1] || cleanDisplay),
+      grade: val(m?.grade, m?.specialite, 'Oncologue'),
+      specialite: val(m?.specialite, m?.grade, 'Oncologue'),
+      contact: val(m?.contact),
+      email: val(m?.email)
+    };
+  }
+
+  function applyOfficialSiteData(){
+    const official = window.CHIMIOPRO_OFFICIAL_DATA || {};
+    const officialMeds = Array.isArray(official.medecins) ? official.medecins.map(normalizeOfficialMedecin) : [];
+    if(officialMeds.length){
+      const existing = readJson('chncak_medecins', []);
+      const merged = [...existing];
+      officialMeds.forEach(med => {
+        const key = norm(val(med.name, `${med.prenom} ${med.nom}`));
+        if(!merged.some(item => norm(val(item.name, `Dr ${val(item.prenom)} ${val(item.nom)}`)) === key || norm(`${val(item.prenom)} ${val(item.nom)}`) === norm(`${med.prenom} ${med.nom}`))){
+          merged.push(med);
+        }
+      });
+      if(merged.length !== existing.length || !existing.length) writeJson('chncak_medecins', merged);
+    }
+    const photos = official.photos || {};
+    Object.entries(photos).forEach(([slot, src]) => {
+      if(!src) return;
+      const key = officialPhotoStorageKey(slot);
+      if(!localStorage.getItem(key)) localStorage.setItem(key, src);
+      if(slot === 'team'){
+        if(!localStorage.getItem('dashboardTeamPhoto')) localStorage.setItem('dashboardTeamPhoto', src);
+        if(!localStorage.getItem('teamPhoto')) localStorage.setItem('teamPhoto', src);
+      }
+    });
+  }
+
+  window.exportOfficialGitHubData = function(){
+    requireAdminAction('exporter les medecins et photos pour GitHub', () => {
+      const photos = {
+        team: localStorage.getItem('chncak_dashboard_team_photo') || localStorage.getItem('dashboardTeamPhoto') || localStorage.getItem('teamPhoto') || '',
+        directrice: localStorage.getItem('chncak_dashboard_photo_directrice') || '',
+        oncologie: localStorage.getItem('chncak_dashboard_photo_oncologie') || '',
+        pharmacie: localStorage.getItem('chncak_dashboard_photo_pharmacie') || '',
+        surveillant: localStorage.getItem('chncak_dashboard_photo_surveillant') || ''
+      };
+      const payload = {
+        version: new Date().toISOString().slice(0,10).replace(/-/g,''),
+        medecins: readJson('chncak_medecins', []).map(normalizeOfficialMedecin),
+        photos
+      };
+      const content = `(function(){\n  window.CHIMIOPRO_OFFICIAL_DATA = ${JSON.stringify(payload, null, 2)};\n})();\n`;
+      downloadTextFile('site-official-data.js', content, 'text/javascript;charset=utf-8');
+      showToastSafe('Fichier officiel exporte. Envoyez-le a Codex pour le fixer dans GitHub.', 'success');
+    });
+  };
+
   function openValidationEmail(data){
     const patient = data.patient || {};
     const subject = `Validation protocole ${val(data.protocole, data.protoName, '')} - ${val(patient.prenom, data.prenom)} ${val(patient.nom, data.nom)}`.trim();
@@ -2114,6 +2180,14 @@
       const head = document.querySelector('#suivi-content .dashboard-head');
       head?.insertAdjacentHTML('beforeend', '<div id="suivi-import-final" class="suivi-actions-final"><button class="btn-secondary" onclick="downloadSuiviTemplate()">Modele tableau</button><label class="btn-secondary suivi-import-label">Importer tableau<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importSuiviExcel(this)"></label><button class="btn-primary" onclick="exportSuiviExcel()">Exporter tableau</button></div>');
     }
+    const medPage = document.getElementById('page-medecins');
+    if(medPage && isAdminUser() && !document.getElementById('official-github-data-btn')){
+      medPage.querySelector('h2')?.insertAdjacentHTML('afterend', '<button id="official-github-data-btn" class="btn-secondary" style="width:auto;margin:8px 0 10px;padding:8px 12px" onclick="exportOfficialGitHubData()">Exporter donnees GitHub</button>');
+    }
+    const dashPage = document.getElementById('page-dashboard');
+    if(dashPage && isAdminUser() && !document.getElementById('official-github-data-dashboard')){
+      document.getElementById('dashboard-content')?.insertAdjacentHTML('afterbegin', '<button id="official-github-data-dashboard" class="btn-secondary" style="width:auto;margin:0 0 8px;padding:7px 11px;font-size:11px" onclick="exportOfficialGitHubData()">Exporter medecins/photos GitHub</button>');
+    }
     if(!isAdminUser()){
       document.querySelectorAll('button,label').forEach(el => {
         const text = norm(el.textContent || '');
@@ -2284,6 +2358,7 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     normalizeAllProtocols();
+    applyOfficialSiteData();
     cleanMedecinsFinal();
     if(typeof renderProtos === 'function') renderProtos();
     cleanupLoginAndButtons();
