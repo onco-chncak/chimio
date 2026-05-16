@@ -110,6 +110,7 @@
     <button class="tab-btn" onclick="showPage('support',this)">&#128138; Support</button>
     <button class="tab-btn" onclick="showPage('suivi',this)">&#128200; Suivi</button>
     <button class="tab-btn" onclick="showPage('biologie',this)">&#129514; Biologie</button>
+    <button class="tab-btn" onclick="showPage('hematologie',this)">&#129656; Hématologie</button>
     <button class="tab-btn" onclick="showPage('stats',this)">&#128200; Stats</button>
     <button class="tab-btn" onclick="showPage('programme',this)">&#128197; Programme</button>
     <button class="tab-btn" onclick="showPage('patients',this)">&#128101; Patients</button>
@@ -981,6 +982,11 @@
   <div id="biologie-content"></div>
 </div>
 
+<!-- ===== PAGE : HEMATOLOGIE ===== -->
+<div id="page-hematologie" class="page">
+  <div id="hematologie-content"></div>
+</div>
+
 <!-- MODAL Historique détail -->
 <!-- PAGE: OK CHIMIO -->
 <div id="page-okchimio" class="page">
@@ -1145,11 +1151,11 @@ NaCl 0.9% 250ml | ml | fix | 250"
 <script src="js/protocol-editor.js"></script>
 <script src="js/app-polish.js"></script>
 <script src="js/requested-improvements.js"></script>
-<script src="js/site-official-data.js?v=20260516r"></script>
-<script src="js/final-improvements.js?v=20260516r"></script>
+<script src="js/site-official-data.js?v=20260516s"></script>
+<script src="js/final-improvements.js?v=20260516s"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const CHIMIOPRO_PUBLIC_VERSION = '20260516r';
+    const CHIMIOPRO_PUBLIC_VERSION = '20260516s';
     let chimioproReloadingForUpdate = false;
     const showChimioProUpdateNotice = () => {
       if (document.getElementById('chimiopro-update-notice')) return;

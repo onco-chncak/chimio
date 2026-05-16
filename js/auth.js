@@ -7,7 +7,19 @@ const USERS = {
     password: 'medecin123',
     role: 'medecin',
     name: 'Dr Médecin',
-    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'stats', 'programme', 'patients', 'rdv']
+    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'stats', 'programme', 'patients', 'rdv']
+  },
+  TEST: {
+    password: 'test123',
+    role: 'medecin',
+    name: 'Dr TEST',
+    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'stats', 'programme', 'patients', 'rdv']
+  },
+  maymouna: {
+    password: 'm123@',
+    role: 'medecin',
+    name: 'Dr Maymouna',
+    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'stats', 'programme', 'patients', 'rdv']
   },
   pharmacien: {
     password: 'pharma123',
@@ -19,7 +31,7 @@ const USERS = {
     password: 'admin123',
     role: 'admin',
     name: 'Administrateur',
-    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'stats', 'pharmacie', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'stats', 'programme', 'patients', 'rdv']
+    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'stats', 'pharmacie', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'stats', 'programme', 'patients', 'rdv']
   }
 };
 

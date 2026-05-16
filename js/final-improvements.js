@@ -2156,6 +2156,191 @@
     if(typeof renderSupport === 'function') renderSupport();
   };
 
+  function hematologiePatientOptions(){
+    return readJson(STORAGE.patients, [])
+      .map(p => `<option value="${esc(p.id)}">${esc(patientName(p))} - ${esc(val(p.dossier, p.codegratuite, p.codeGratuite, p.code, ''))}</option>`)
+      .join('');
+  }
+
+  function hematologieCatalogOptions(){
+    return readJson(STORAGE.catalog, [])
+      .map(item => `<option value="${esc(item.name)}">${esc(item.name)}${item.dci ? ' - ' + esc(item.dci) : ''}</option>`)
+      .join('');
+  }
+
+  function hematologieRows(){
+    return readJson('chncak_hematologie_sorties', []).slice(0, 40).map(r => `
+      <tr>
+        <td>${esc(r.date || '')}</td>
+        <td>${esc(r.patient || '')}</td>
+        <td>${esc(r.medicament || '')}</td>
+        <td>${esc(r.dci || '')}</td>
+        <td>${esc(r.numeroLot || '')}</td>
+        <td>${esc(r.dateExp || '')}</td>
+        <td>${esc(r.dosage || '')}</td>
+        <td>${esc(r.quantite || '')}</td>
+        <td>${esc(r.user || '')}</td>
+      </tr>
+    `).join('');
+  }
+
+  window.fillHematologiePatient = function(patientId){
+    const p = readJson(STORAGE.patients, []).find(item => String(item.id) === String(patientId));
+    if(!p) return;
+    const set = (id, value) => { const el = document.getElementById(id); if(el) el.value = value || ''; };
+    set('hema-nom', val(p.nom));
+    set('hema-prenom', val(p.prenom));
+    set('hema-age', val(p.age));
+    set('hema-sexe', val(p.sexe));
+    set('hema-code', val(p.codegratuite, p.codeGratuite, p.code));
+    set('hema-nationalite', val(p.nationalite));
+    set('hema-nin', val(p.nin, p.NIN));
+    set('hema-cuibix', val(p.cuibix, p.CUIBIX, p.idCuibix, p.id_cuibix));
+    set('hema-protocole', protocolNameFor(p));
+  };
+
+  window.fillHematologieDrug = function(){
+    const name = document.getElementById('hema-med-name')?.value || '';
+    const item = readJson(STORAGE.catalog, []).find(x => norm(x.name) === norm(name));
+    if(!item) return;
+    const dci = document.getElementById('hema-med-dci');
+    const dosage = document.getElementById('hema-med-dosage');
+    if(dci && !dci.value) dci.value = item.dci || '';
+    if(dosage && !dosage.value){
+      const first = Array.isArray(item.dosages) ? item.dosages[0] : val(item.dosage, '');
+      dosage.value = first ? `${first} mg` : '';
+    }
+  };
+
+  window.validateHematologieSortie = function(){
+    const get = id => document.getElementById(id)?.value?.trim() || '';
+    const medicament = get('hema-med-name');
+    const dci = get('hema-med-dci');
+    const quantite = Number(get('hema-med-quantite'));
+    if(!medicament || !quantite || quantite <= 0){
+      alert('Renseignez le medicament et une quantite valide.');
+      return;
+    }
+    const catalog = readJson(STORAGE.catalog, []);
+    const idx = catalog.findIndex(item => {
+      const n = norm(medicament);
+      const d = norm(dci);
+      return (n && norm(item.name) === n) || (d && norm(item.dci) === d) || (n && norm(item.dci) === n) || (d && norm(item.name) === d);
+    });
+    if(idx < 0){
+      alert('Medicament introuvable dans la pharmacie centrale. Ajoutez-le au catalogue avant validation.');
+      return;
+    }
+    const stock = Number(val(catalog[idx].qteStock, catalog[idx].stock, catalog[idx].quantite, 0));
+    if(stock < quantite){
+      alert(`Stock insuffisant pour ${catalog[idx].name}. Disponible : ${stock}, demande : ${quantite}.`);
+      return;
+    }
+    catalog[idx].qteStock = stock - quantite;
+    syncCatalogGlobal(catalog);
+    const row = {
+      id: Date.now(),
+      date: new Date().toLocaleDateString('fr-FR'),
+      dateTs: new Date().toISOString(),
+      patient: `${get('hema-prenom')} ${get('hema-nom')}`.trim(),
+      age: get('hema-age'),
+      sexe: get('hema-sexe'),
+      codegratuite: get('hema-code'),
+      nationalite: get('hema-nationalite'),
+      nin: get('hema-nin'),
+      cuibix: get('hema-cuibix'),
+      protocole: get('hema-protocole'),
+      medicament: catalog[idx].name || medicament,
+      dci: dci || catalog[idx].dci || '',
+      numeroLot: get('hema-med-lot'),
+      dateExp: get('hema-med-exp'),
+      dosage: get('hema-med-dosage'),
+      quantite,
+      user: val(currentUser().name, currentUser().username, '')
+    };
+    const hema = readJson('chncak_hematologie_sorties', []);
+    hema.unshift(row);
+    writeJson('chncak_hematologie_sorties', hema);
+    const sorties = readJson(STORAGE.sorties, []);
+    sorties.unshift({
+      id: row.id,
+      date: row.date,
+      dateTs: row.dateTs,
+      patient: row.patient,
+      dossier: row.codegratuite,
+      protocole: row.protocole || 'Hematologie',
+      source: 'Registre hematologie',
+      details: `${row.medicament}: ${quantite} unite(s), lot ${row.numeroLot || '-'}`,
+      detailsData: [{name: row.medicament, dose: 0, nbFlacons: quantite, reliquatMg: 0, flacons: []}],
+      warnings: []
+    });
+    writeJson(STORAGE.sorties, sorties);
+    window.renderHematologie?.();
+    window.renderPharmacie?.();
+    showToastSafe('Sortie hematologie validee et stock deduit.', 'success');
+  };
+
+  window.renderHematologie = function(){
+    const root = document.getElementById('hematologie-content');
+    if(!root) return;
+    root.innerHTML = `
+      <div class="hematologie-shell">
+        <div class="dashboard-head">
+          <div>
+            <h2>Hematologie</h2>
+            <p>Dossier patient et registre journalier de sortie des medicaments.</p>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-num">H</div><h2>Donnees patient</h2></div>
+          <div class="card-body">
+            <div class="field" style="margin-bottom:12px">
+              <label>Selectionner un patient</label>
+              <select id="hema-patient-select" onchange="fillHematologiePatient(this.value)">
+                <option value="">Choisir...</option>
+                ${hematologiePatientOptions()}
+              </select>
+            </div>
+            <div class="hematologie-grid">
+              <div class="field"><label>Nom</label><input id="hema-nom"></div>
+              <div class="field"><label>Prenom</label><input id="hema-prenom"></div>
+              <div class="field"><label>Age</label><input id="hema-age" type="number" min="0"></div>
+              <div class="field"><label>Sexe</label><select id="hema-sexe"><option></option><option>F</option><option>M</option></select></div>
+              <div class="field"><label>Code gratuite</label><input id="hema-code"></div>
+              <div class="field"><label>Nationalite</label><input id="hema-nationalite"></div>
+              <div class="field"><label>NIN</label><input id="hema-nin"></div>
+              <div class="field"><label>ID CUIBIX</label><input id="hema-cuibix"></div>
+              <div class="field hematologie-wide"><label>Protocole</label><input id="hema-protocole"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-num" style="background:#0B5E3C">S</div><h2>Registre journalier de sorties des medicaments</h2></div>
+          <div class="card-body">
+            <div class="hematologie-sortie-grid">
+              <div class="field"><label>Medicament</label><input id="hema-med-name" list="hema-med-list" onchange="fillHematologieDrug()" oninput="fillHematologieDrug()"><datalist id="hema-med-list">${hematologieCatalogOptions()}</datalist></div>
+              <div class="field"><label>DCI</label><input id="hema-med-dci"></div>
+              <div class="field"><label>Numero lot</label><input id="hema-med-lot"></div>
+              <div class="field"><label>Date d'exp</label><input id="hema-med-exp" type="date"></div>
+              <div class="field"><label>Dosage</label><input id="hema-med-dosage" placeholder="ex: 500 mg"></div>
+              <div class="field"><label>Quantite</label><input id="hema-med-quantite" type="number" min="1" step="1"></div>
+            </div>
+            <button class="btn-primary hematologie-validate" onclick="validateHematologieSortie()">Valider la sortie</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-num" style="background:#5A4A8A">J</div><h2>Journal des dernieres sorties</h2></div>
+          <div class="card-body dash-table-wrap">
+            <table class="dash-table hematologie-table">
+              <thead><tr><th>Date</th><th>Patient</th><th>Medicament</th><th>DCI</th><th>Lot</th><th>Exp</th><th>Dosage</th><th>Quantite</th><th>Utilisateur</th></tr></thead>
+              <tbody>${hematologieRows() || '<tr><td colspan="9" class="dash-empty">Aucune sortie hematologie enregistree.</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  };
+
   function cleanupLoginAndButtons(){
     const login = document.getElementById('login-screen');
     if(login){
@@ -2290,6 +2475,7 @@
     if(id === 'apercu') setTimeout(installApercuSearch, 20);
     if(id === 'suivi') setTimeout(() => { renderSuiviFinal(); cleanupLoginAndButtons(); }, 80);
     if(id === 'biologie') setTimeout(() => { window.renderBiologie?.(); normalizeBiologiePatientOptions(); cleanupLoginAndButtons(); }, 80);
+    if(id === 'hematologie') setTimeout(() => { window.renderHematologie?.(); cleanupLoginAndButtons(); }, 50);
     if(id === 'programme') setTimeout(cleanupLoginAndButtons, 20);
     if(id === 'preparation') setTimeout(ensurePreparationPrintReady, 80);
     if(id === 'dashboard') setTimeout(() => { window.renderDashboard?.(); cleanupLoginAndButtons(); }, 20);
@@ -2390,6 +2576,14 @@
       #page-apercu > div,#page-preparation > div,#page-support > div,#page-stats > div,#page-programme > div[style*="max-width"],#page-patients > div,#patients-rdv-list,#page-rdv > div{max-width:1460px!important}
       body:not(.admin-session) .official-github-mini{display:none!important}
       .official-github-mini{width:auto!important;margin:6px 0 8px!important;padding:4px 8px!important;font-size:10px!important;line-height:1.1!important;border-radius:6px!important;box-shadow:none!important;display:inline-flex!important;align-items:center!important;gap:4px!important}
+      .hematologie-shell{max-width:1460px;margin:0 auto}
+      .hematologie-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px}
+      .hematologie-wide{grid-column:span 2}
+      .hematologie-sortie-grid{display:grid;grid-template-columns:minmax(190px,1.4fr) minmax(150px,1fr) repeat(4,minmax(120px,.8fr));gap:10px;align-items:end}
+      .hematologie-validate{width:auto!important;margin-top:14px;padding:11px 18px!important;background:#0B5E3C!important}
+      .hematologie-table{min-width:980px}
+      @media (max-width:900px){.hematologie-grid,.hematologie-sortie-grid{grid-template-columns:1fr 1fr}.hematologie-wide{grid-column:1/-1}}
+      @media (max-width:580px){.hematologie-grid,.hematologie-sortie-grid{grid-template-columns:1fr}}
       .dash-card{border-left:3px solid var(--blue);box-shadow:0 8px 20px rgba(10,61,122,.08)}
       .dash-final{display:flex;flex-direction:column;gap:14px}
       .dash-final-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.8fr);gap:16px;align-items:stretch;background:#fff;border:1px solid #dbe5f2;border-radius:8px;padding:18px;box-shadow:0 10px 24px rgba(10,61,122,.08)}
