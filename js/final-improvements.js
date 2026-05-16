@@ -2375,12 +2375,6 @@
     if(typeof renderSupport === 'function') renderSupport();
   };
 
-  function hematologiePatientOptions(){
-    return [...readJson('chncak_hematologie_patients', []), ...readJson(STORAGE.patients, [])]
-      .map(p => `<option value="${esc(p.id)}">${esc(patientName(p))} - ${esc(val(p.dossier, p.codegratuite, p.codeGratuite, p.code, ''))}</option>`)
-      .join('');
-  }
-
   function hematologieRegisteredPatientOptions(){
     return readJson('chncak_hematologie_patients', [])
       .map(p => `<option value="${esc(patientName(p))}">${esc(val(p.prenom))} ${esc(val(p.nom))} - ${esc(val(p.codegratuite, p.code, ''))}</option>`)
@@ -2565,13 +2559,6 @@
         <div class="card">
           <div class="card-header"><div class="card-num">H</div><h2>Donnees patient</h2></div>
           <div class="card-body">
-            <div class="field" style="margin-bottom:12px">
-              <label>Selectionner un patient</label>
-              <select id="hema-patient-select" onchange="fillHematologiePatient(this.value)">
-                <option value="">Choisir...</option>
-                ${hematologiePatientOptions()}
-              </select>
-            </div>
             <div class="hematologie-grid">
               <div class="field"><label>Nom</label><input id="hema-nom"></div>
               <div class="field"><label>Prenom</label><input id="hema-prenom"></div>
