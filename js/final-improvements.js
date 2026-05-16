@@ -1183,9 +1183,12 @@
       const calc = row.querySelector('[data-field="calc"]')?.value;
       const coef = Number(row.querySelector('[data-field="coef"]')?.value || 0);
       const jours = row.querySelector('[data-field="jours"]')?.value.trim();
-      const sol = row.querySelector('[data-field="sol"]')?.value.trim();
+      const solvant = row.querySelector('[data-field="sol"]')?.value.trim();
+      const solVol = row.querySelector('[data-field="solvol"]')?.value.trim();
       const dur = row.querySelector('[data-field="dur"]')?.value.trim();
-      const out = {name, ryt: jours, sol, dur, hl:true};
+      const freq = row.querySelector('[data-field="freq"]')?.value.trim();
+      const sol = [solVol ? `${solVol} cc` : '', solvant].filter(Boolean).join(' ');
+      const out = {name, ryt: jours, sol, dur, freq, hl:true};
       if(calc === 'mgm2') out.mgm2 = coef;
       else if(calc === 'mgkg') out.mgkg = coef;
       else if(calc === 'fix') out.fix = coef;
@@ -1201,6 +1204,9 @@
     const d = data || {};
     const calc = d.mgm2 ? 'mgm2' : d.mgkg ? 'mgkg' : d.carbo ? 'auc' : d.oral ? 'oral' : 'fix';
     const coef = d.mgm2 || d.mgkg || d.fix || Number(String(d.pos || '').match(/\d+([.,]\d+)?/)?.[0]?.replace(',', '.') || 0) || '';
+    const solText = String(d.sol || d.solvant || '');
+    const solVol = solText.match(/(\d+(?:[.,]\d+)?)\s*(?:cc|ml)/i)?.[1] || '';
+    const selectedSol = norm(solText).includes('g5') || norm(solText).includes('sg') ? 'SG 5%' : norm(solText).includes('nacl') || norm(solText).includes('ssi') ? 'NaCl 0.9%' : '';
     root.insertAdjacentHTML('beforeend', `
       <div class="proto-drug-line">
         <input data-field="name" placeholder="Medicament" value="${esc(d.name || '')}">
@@ -1211,10 +1217,18 @@
           <option value="auc" ${calc === 'auc' ? 'selected' : ''}>AUC</option>
           <option value="oral" ${calc === 'oral' ? 'selected' : ''}>per os</option>
         </select>
-        <div class="unit-input"><input data-field="coef" type="number" step="0.01" placeholder="Dose" value="${esc(coef)}"><span>unite</span></div>
+        <div class="unit-input"><input data-field="coef" type="number" step="0.01" placeholder="Dose" value="${esc(coef)}"><span>mg</span></div>
         <input data-field="jours" placeholder="Jours (ex: J1 J8)" value="${esc(d.ryt || d.jours || '')}">
-        <input data-field="sol" placeholder="Solvant" value="${esc(d.sol || d.solvant || '')}">
+        <select data-field="sol">
+          <option value="">Solvant</option>
+          <option value="NaCl 0.9%" ${selectedSol === 'NaCl 0.9%' ? 'selected' : ''}>NaCl 0.9%</option>
+          <option value="SG 5%" ${selectedSol === 'SG 5%' ? 'selected' : ''}>SG 5%</option>
+          <option value="Eau PPI">Eau PPI</option>
+          <option value="Sans solvant">Sans solvant</option>
+        </select>
+        <div class="unit-input"><input data-field="solvol" type="number" step="1" placeholder="Vol." value="${esc(solVol)}"><span>cc</span></div>
         <input data-field="dur" placeholder="Duree" value="${esc(d.dur || d.duree || '')}">
+        <input data-field="freq" placeholder="Frequence / remarque" value="${esc(d.freq || d.frequence || '')}">
         <button type="button" class="proto-remove" title="Retirer" onclick="this.closest('.proto-drug-line').remove()">x</button>
       </div>
     `);
@@ -1300,10 +1314,10 @@
 
   window.downloadProtocolImportTemplate = function(){
     const rows = [
-      ['Nom protocole','Rythme','Bilan utile','Surveillance','Medicament','Type calcul','Dose','Unite','Jours','Solvant','Duree','Oral'],
-      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Oxaliplatine','mg/m2','85','mg/m2','J1','G5% 500 ml','2 h','NON'],
-      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','5-FU','mg/m2','400','mg/m2','J1','NaCl 0.9% 100 ml','Bolus','NON'],
-      ['EXEMPLE ORAL','J21','NFS plaquettes, bilan hepatique','Surveillance clinique','Capecitabine','per os','1250','mg','J1-J14','','','OUI']
+      ['Nom protocole','Rythme','Bilan utile','Surveillance','Medicament','Type calcul','Dose','Unite','Jours','Solvant','Volume solvant cc','Duree','Frequence / remarque','Oral'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Oxaliplatine','mg/m2','85','mg/m2','J1','SG 5%','500','2 h','','NON'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','5-FU','mg/m2','400','mg/m2','J1','NaCl 0.9%','100','Bolus','','NON'],
+      ['EXEMPLE ORAL','J21','NFS plaquettes, bilan hepatique','Surveillance clinique','Capecitabine','per os','1250','mg','J1-J14','','','','OUI']
     ];
     const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(';')).join('\n');
     downloadTextFile('modele_import_protocoles_complet.csv', csv, 'text/csv;charset=utf-8');
@@ -1328,7 +1342,9 @@
           if(!grouped.has(key)) grouped.set(key, {id:key, name, rythme:val(row.Rythme,row.Badge,'J21'), pre:val(row['Bilan utile'],row.Bilan), post:val(row.Surveillance,row.Remarques), drugs:[]});
           const type = norm(val(row['Type calcul'], row.Type, row.Calcul));
           const dose = Number(String(val(row.Dose,row.Coef)).replace(',', '.'));
-          const drug = {name:med, ryt:val(row.Jours,row.Rythme_medicament), sol:val(row.Solvant,row.Sol), dur:val(row.Duree,row.Durée), hl:true};
+          const solName = val(row.Solvant,row.Sol);
+          const solVol = val(row['Volume solvant cc'], row.Volume, row.Volume_solvant);
+          const drug = {name:med, ryt:val(row.Jours,row.Rythme_medicament), sol:[solVol ? `${solVol} cc` : '', solName].filter(Boolean).join(' '), dur:val(row.Duree,row.Durée), freq:val(row['Frequence / remarque'], row.Frequence, row.Remarque), hl:true};
           if(type.includes('m2') || type.includes('surface')) drug.mgm2 = dose;
           else if(type.includes('kg') || type.includes('poids')) drug.mgkg = dose;
           else if(type.includes('auc')) drug.carbo = true;
@@ -1622,7 +1638,7 @@
       .proto-editor-grid{display:grid;grid-template-columns:1fr 150px;gap:10px}
       .proto-editor-grid label:nth-child(3),.proto-editor-grid label:nth-child(4){grid-column:1/-1}
       .proto-drug-grid{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-      .proto-drug-line{display:grid;grid-template-columns:minmax(140px,1.2fr) 115px 105px 110px minmax(140px,1fr) 100px 28px;gap:7px;align-items:center;background:#f8fbff;border:1px solid #dbe5f2;border-radius:8px;padding:8px}
+      .proto-drug-line{display:grid;grid-template-columns:minmax(150px,1.2fr) 105px 95px 105px 110px 90px 95px minmax(130px,1fr) 28px;gap:7px;align-items:center;background:#f8fbff;border:1px solid #dbe5f2;border-radius:8px;padding:8px}
       .unit-input{display:flex;align-items:center;gap:4px}
       .unit-input span{font-size:10px;color:#607080}
       .proto-remove{height:32px;border:1px solid #f0b5b5;background:#fdeaea;color:#a33131;border-radius:6px;cursor:pointer;font-weight:800}
