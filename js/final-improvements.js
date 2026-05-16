@@ -621,21 +621,21 @@
   const nativeRenderSuiviFinal = window.renderSuivi;
   window.renderSuivi = renderSuiviFinal;
 
+  function normalizeBiologiePatientOptions(){
+    const patients = readJson(STORAGE.patients, []);
+    const select = document.getElementById('bio-patient-select');
+    if(!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">Selectionner patient</option>' + patients.map(p => {
+      const code = patientShortCode(p);
+      return `<option value="${esc(code)}"${current === code ? ' selected' : ''}>${esc(code || '-')} - ${esc(patientName(p) || '-')}</option>`;
+    }).join('');
+  }
+
   const nativeRenderBiologieFinal = window.renderBiologie;
   window.renderBiologie = function(){
     const out = typeof nativeRenderBiologieFinal === 'function' ? nativeRenderBiologieFinal.apply(this, arguments) : undefined;
-    const patients = readJson(STORAGE.patients, []);
-    const select = document.getElementById('bio-patient-select');
-    if(select){
-      Array.from(select.options).forEach((option, idx) => {
-        if(!option.value) return;
-        const p = patients[idx - 1];
-        if(!p) return;
-        const code = patientShortCode(p);
-        option.value = code;
-        option.textContent = `${code || '-'} - ${patientName(p) || '-'}`;
-      });
-    }
+    normalizeBiologiePatientOptions();
     return out;
   };
 
@@ -939,7 +939,15 @@
 
   window.clearClinicalModuleData = function(module){
     askAdminCode(`effacer l'historique ${module}`, () => {
-      if(module === 'suivi'){ localStorage.removeItem(STORAGE.suivi); localStorage.removeItem('suivi'); window.renderSuivi?.(); }
+      if(module === 'suivi'){
+        localStorage.removeItem(STORAGE.suivi);
+        localStorage.removeItem('suivi');
+        localStorage.removeItem(STORAGE.patients);
+        localStorage.removeItem('patients');
+        window.renderSuivi?.();
+        window.renderPatientsList?.();
+        window.renderDashboard?.();
+      }
       if(module === 'biologie'){ localStorage.removeItem(STORAGE.biologie); localStorage.removeItem('biologie'); window.renderBiologie?.(); }
     });
   };
@@ -1955,6 +1963,7 @@
     if(id === 'medecins') setTimeout(cleanupLoginAndButtons, 60);
     if(id === 'apercu') setTimeout(installApercuSearch, 20);
     if(id === 'suivi') setTimeout(() => { renderSuiviFinal(); cleanupLoginAndButtons(); }, 80);
+    if(id === 'biologie') setTimeout(() => { window.renderBiologie?.(); normalizeBiologiePatientOptions(); cleanupLoginAndButtons(); }, 80);
     if(id === 'programme') setTimeout(cleanupLoginAndButtons, 20);
     if(id === 'preparation') setTimeout(ensurePreparationPrintReady, 80);
     if(id === 'dashboard') setTimeout(() => { window.renderDashboard?.(); cleanupLoginAndButtons(); }, 20);
