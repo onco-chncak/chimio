@@ -84,6 +84,44 @@
     return Array.from(items).join(', ');
   }
 
+  const DEFAULT_PROTOCOL_REFERENCES = {
+    xelox: 'Ontario Health/CCO et eviQ - CAPOX/XELOX colorectal; validation service CHNCAK.',
+    ac60: 'eviQ et Ontario Health/CCO - doxorubicine cyclophosphamide dose-dense; validation service CHNCAK.',
+    ecx: 'Ontario Health/CCO - protocole ECX; validation service CHNCAK.',
+    folfox: 'Ontario Health/CCO - FOLFOX; validation service CHNCAK.',
+    carbo_taxol: 'eviQ/BC Cancer - carboplatine paclitaxel; validation service CHNCAK.',
+    gemcitabine: 'Ontario Health/CCO - gemcitabine; validation service CHNCAK.',
+    gemox: 'Ontario Health/CCO - GEMOX gemcitabine oxaliplatine; validation service CHNCAK.',
+    taxotere: 'Ontario Health/CCO - docetaxel; validation service CHNCAK.',
+    xeliri: 'Ontario Health/CCO - XELIRI +/- bevacizumab selon indication; validation service CHNCAK.',
+    carbo_taxol175: 'eviQ/BC Cancer - carboplatine paclitaxel J21; validation service CHNCAK.',
+    ac60_j21: 'eviQ et Ontario Health/CCO - AC doxorubicine cyclophosphamide J21; validation service CHNCAK.',
+    map: 'eviQ MAP et NCI PDQ osteosarcome - methotrexate doxorubicine cisplatine; validation service CHNCAK.',
+    folfiri: 'Ontario Health/CCO - FOLFIRI; validation service CHNCAK.',
+    abvd: 'Ontario Health/CCO - ABVD Hodgkin; validation service CHNCAK.',
+    bep: 'eviQ/Ontario Health - BEP bleomycine etoposide cisplatine; validation service CHNCAK.',
+    chop: 'Ontario Health/CCO et eviQ - CHOP lymphome; validation service CHNCAK.',
+    rchop: 'Ontario Health/CCO et eviQ - R-CHOP lymphome; validation service CHNCAK.',
+    vip: 'eviQ/Ontario Health - VIP etoposide ifosfamide cisplatine; validation service CHNCAK.',
+    mvac: 'BC Cancer/Ontario Health - MVAC cancer urothelial; validation service CHNCAK.',
+    cddp_hebdo: 'eviQ - cisplatine hebdomadaire avec radiotherapie selon indication; validation service CHNCAK.',
+    taxol_hebdo: 'eviQ/BC Cancer - paclitaxel hebdomadaire; validation service CHNCAK.',
+    ec100: 'eviQ/BC Cancer - epirubicine cyclophosphamide; validation service CHNCAK.',
+    herceptin: 'Ontario Health/CCO - trastuzumab monographie/protocole anti-HER2; validation service CHNCAK.',
+    avastin_zometa: 'Monographies bevacizumab et acide zoledronique; association a valider par indication CHNCAK.',
+    gem_avastin: 'Gemcitabine + bevacizumab selon indication; reference a confirmer par protocole valide CHNCAK.'
+  };
+
+  function defaultReferenceForProtocol(proto){
+    const overrides = readJson('chncak_protocol_references', {});
+    const id = String(proto?.id || '');
+    if(overrides[id]) return overrides[id];
+    if(DEFAULT_PROTOCOL_REFERENCES[id]) return DEFAULT_PROTOCOL_REFERENCES[id];
+    const name = norm(proto?.name);
+    const match = Object.entries(DEFAULT_PROTOCOL_REFERENCES).find(([key]) => name.includes(norm(key.replace(/_/g, ' '))) || name.includes(norm(key)));
+    return match ? match[1] : 'A renseigner / validation service CHNCAK.';
+  }
+
   function normalizeProtocolDrug(d){
     if(!d || typeof d !== 'object') return d;
     const out = {...d};
@@ -120,7 +158,7 @@
     proto.drugs = (proto.drugs || []).map(normalizeProtocolDrug).filter(Boolean);
     proto.pre = val(proto.pre, proto.bilan, defaultPreForProtocol(proto));
     proto.post = val(proto.post, proto.surveillance, 'Surveillance clinique et biologique selon protocole du service');
-    proto.reference = val(proto.reference, proto.ref, proto.source, proto.bibliographie, '');
+    proto.reference = val(readJson('chncak_protocol_references', {})[proto.id], proto.reference, proto.ref, proto.source, proto.bibliographie, defaultReferenceForProtocol(proto));
     return proto;
   }
 
@@ -186,6 +224,29 @@
     if(typeof showToast === 'function') showToast(message, type || 'info');
     else alert(message);
   }
+
+  window.editProtocolReference = function(defaultNumber){
+    normalizeAllProtocols();
+    const list = protocolsList();
+    const numberText = prompt('Numero du protocole a modifier :', defaultNumber || '');
+    if(numberText === null) return;
+    const idx = Number(numberText) - 1;
+    const proto = list[idx];
+    if(!proto){
+      alert('Numero de protocole introuvable.');
+      return;
+    }
+    const current = val(proto.reference, proto.ref, proto.source, defaultReferenceForProtocol(proto));
+    const next = prompt(`Reference scientifique pour ${proto.name} :`, current);
+    if(next === null) return;
+    const refs = readJson('chncak_protocol_references', {});
+    refs[proto.id] = next.trim() || 'A renseigner / validation service CHNCAK.';
+    writeJson('chncak_protocol_references', refs);
+    proto.reference = refs[proto.id];
+    window.renderProtocolReferenceTable?.();
+    if(typeof renderProtos === 'function') renderProtos();
+    showToastSafe('Reference scientifique mise a jour.', 'success');
+  };
 
   function downloadTextFile(filename, content, type){
     const a = document.createElement('a');

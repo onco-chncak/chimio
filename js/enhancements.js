@@ -6,6 +6,7 @@
     try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
     catch(e){ return fallback; }
   }
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
   function page(id){ return document.getElementById('page-' + id); }
   function panel(id){
@@ -35,13 +36,15 @@
   function renderProtocolEnhance(){
     const el = panel('protocole'); if(!el) return;
     const protocols = window.PROTOCOLS || PROTOCOLS || [];
-    const rows = protocols.slice(0, 10).map(p => `
+    const rows = protocols.map((p, index) => `
       <tr>
-        <td><strong>${p.name}</strong><div class="enhance-note">${p.indication || p.detail || ''}</div></td>
-        <td>${p.rythme || p.badge || '-'}</td>
+        <td style="text-align:center;font-weight:700">${index + 1}</td>
+        <td><strong>${esc(p.name)}</strong><div class="enhance-note">${esc(p.indication || p.detail || '')}</div></td>
+        <td>${esc(p.rythme || p.badge || '-')}</td>
         <td>${(p.drugs || []).filter(d => d.name).length}</td>
-        <td>${p.pre || '-'}</td>
-        <td>${p.reference || p.ref || p.source || 'A renseigner / validation service'}</td>
+        <td>${esc(p.pre || '-')}</td>
+        <td>${esc(p.reference || p.ref || p.source || 'A renseigner / validation service')}</td>
+        <td><button class="btn-secondary" style="padding:5px 9px;font-size:11px" onclick="editProtocolReference(${index + 1})">Modifier</button></td>
       </tr>
     `).join('');
     el.innerHTML = `
@@ -49,13 +52,14 @@
         <div class="card-header"><div class="card-num">+</div><h2>Tableau de référence des protocoles</h2></div>
         <div class="card-body enhance-table-wrap">
           <table class="enhance-table">
-            <thead><tr><th>Protocole</th><th>Rythme</th><th>Produits</th><th>Bilan utile</th><th>Reference scientifique</th></tr></thead>
+            <thead><tr><th>N°</th><th>Protocole</th><th>Rythme</th><th>Produits</th><th>Bilan utile</th><th>Reference scientifique</th><th>Action</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
       </div>
     `;
   }
+  window.renderProtocolReferenceTable = renderProtocolEnhance;
 
   function renderMedecinsEnhance(){
     const el = panel('medecins'); if(!el) return;
