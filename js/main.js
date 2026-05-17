@@ -10,8 +10,7 @@ const DOSE_LIMITS = {
   'CISPLATINE HEBDO':{max:120,warn:100},
   'TAXOL HEBDO':{max:350,warn:300},
   'TAXOL (Paclitaxel)':{max:350,warn:300},
-  'CARBOPLATINE AUC5':{max:900,warn:750},
-  'CARBOPLATINE AUC2':{max:900,warn:750},
+  'CARBOPLATINE':{max:900,warn:750},
   'GEMCITABINE':{max:2000,warn:1800},
   'TAXOTÈRE (Docétaxel)':{max:200,warn:170},
   'IRINOTÉCAN':{max:600,warn:500},
@@ -95,7 +94,7 @@ const PROTOCOLS = [
       {t:'r',label:'Rinçage 250 cc SSI 0.9%',dur:'15 mn'},
       {name:'TAXOL (Paclitaxel)',mgm2:80,unit:'mg',sol:'500 cc SSI 0.9%',dur:'60 mn',ryt:'J1, J8',hl:true},
       {t:'r',label:'Rinçage 250 cc SSI 0.9%',dur:'15 mn'},
-      {name:'CARBOPLATINE AUC5',carbo:true,unit:'mg',sol:'500 cc G5%',dur:'60 mn',ryt:'J1 et J21',hl:true},
+      {name:'CARBOPLATINE',carbo:true,unit:'mg',sol:'500 cc G5%',dur:'60 mn',ryt:'J1 et J21',hl:true},
       {t:'r',label:'Rinçage 500 cc SSI 0.9%',dur:'30 mn'},
     ]
   },
@@ -165,7 +164,7 @@ const PROTOCOLS = [
       {t:'r',label:'Rinçage 100 cc SSI 0.9%',dur:'15 mn'},
       {name:'TAXOL (Paclitaxel)',mgm2:175,unit:'mg',sol:'250 cc SSI 0.9%',dur:'60 mn',ryt:'J1=J21',hl:true},
       {t:'r',label:'Rinçage 100 cc SSI 0.9%',dur:'30 mn'},
-      {name:'CARBOPLATINE AUC5',carbo:true,unit:'mg',sol:'250 cc G5%',dur:'60 mn',ryt:'J1=J21',hl:true},
+      {name:'CARBOPLATINE',carbo:true,unit:'mg',sol:'250 cc G5%',dur:'60 mn',ryt:'J1=J21',hl:true},
       {t:'r',label:'Rinçage 500 cc SSI 0.9%',dur:'30 mn'},
     ]
   },
@@ -548,7 +547,7 @@ function getSolvantVol(drugName, doseMg){
     // Platines
     'OXALIPLATINE':            {concMax:0.7,  sol:'G5%',     volMin:250},  // 0.2–0.7 mg/mL
     'CISPLATINE':              {concMax:1.0,  sol:'G5%',     volMin:100},  // 0.5–1 mg/mL
-    'CARBOPLATINE AUC5':       {concMax:2.0,  sol:'G5%',     volMin:250},  // 0.5–2 mg/mL
+    'CARBOPLATINE':            {concMax:2.0,  sol:'G5%',     volMin:250},  // 0.5–2 mg/mL
     // Taxanes
     'TAXOL (Paclitaxel)':      {concMax:1.2,  sol:'SSI 0.9%',volMin:250},  // 0.3–1.2 mg/mL
     'TAXOTÈRE (Docétaxel)':    {concMax:0.74, sol:'SSI 0.9%',volMin:250},  // 0.3–0.74 mg/mL
@@ -559,8 +558,9 @@ function getSolvantVol(drugName, doseMg){
     'CYCLOPHOSPHAMIDE':        {concMax:4.0,  sol:'G5%',     volMin:250},  // 2–4 mg/mL
     // Antimétabolites
     'GEMCITABINE':             {concMax:10.0, sol:'SSI 0.9%',volMin:100},  // 1–10 mg/mL
-    '5-FLUOROURACILE bolus':   {concMax:99,   sol:'SSI 0.9%',volMin:100},  // bolus → volume fixe 100cc
-    '5-FLUOROURACILE perfusion':{concMax:2.0, sol:'SSI 0.9%',volMin:250},  // 1–2 mg/mL sur 22h
+    '5-FLUOROURACILE':         {concMax:2.0,  sol:'SSI 0.9%',volMin:250},  // forme unique 500 mg
+    '5-FLUOROURACILE bolus':   {concMax:99,   sol:'SSI 0.9%',volMin:100},  // administration bolus
+    '5-FLUOROURACILE perfusion':{concMax:2.0, sol:'SSI 0.9%',volMin:250},  // perfusion continue
     'LEUCOVORINE (LV)':        {concMax:2.0,  sol:'G5%',     volMin:100},
     'MÉTHOTREXATE':            {concMax:2.0,  sol:'SSI 0.9%',volMin:250},
     // Topo-isomérases
@@ -1119,7 +1119,7 @@ const DRUG_CONCENTRATIONS = {
     {dosage:10,  vol:20,  concMgMl:0.5, label:'Flacon 10 mg / 20 mL  (0,5 mg/mL)'},
     {dosage:50,  vol:100, concMgMl:0.5, label:'Flacon 50 mg / 100 mL (0,5 mg/mL)'},
   ],
-  'CARBOPLATINE AUC5': [
+  'CARBOPLATINE': [
     {dosage:150, vol:15,  concMgMl:10,  label:'Flacon 150 mg / 15 mL (10 mg/mL)'},
     {dosage:450, vol:45,  concMgMl:10,  label:'Flacon 450 mg / 45 mL (10 mg/mL)'},
   ],
@@ -1142,12 +1142,16 @@ const DRUG_CONCENTRATIONS = {
   ],
   'GEMCITABINE': [
     {dosage:1000,vol:25,  concMgMl:40,  label:'Flacon 1000 mg / 25 mL (40 mg/mL)'},
+    {dosage:200, vol:5,   concMgMl:40,  label:'Flacon 200 mg / 5 mL (40 mg/mL)'},
   ],
   'IRINOTÉCAN': [
     {dosage:100, vol:5,   concMgMl:20,  label:'Flacon 100 mg / 5 mL  (20 mg/mL)'},
   ],
   'AVASTIN (Bévacizumab)': [
     {dosage:400, vol:16,  concMgMl:25,  label:'Flacon 400 mg / 16 mL (25 mg/mL)'},
+  ],
+  '5-FLUOROURACILE': [
+    {dosage:500, vol:10,  concMgMl:50,  label:'Flacon 500 mg / 10 mL (50 mg/mL)'},
   ],
   '5-FLUOROURACILE bolus': [
     {dosage:500, vol:10,  concMgMl:50,  label:'Flacon 500 mg / 10 mL (50 mg/mL)'},
@@ -1176,7 +1180,7 @@ const DRUG_CONCENTRATIONS = {
   'VINBLASTINE': [
     {dosage:10,  vol:10,  concMgMl:1,   label:'Flacon 10 mg / 10 mL  (1 mg/mL)'},
   ],
-  'VINORELBINE': [
+  'NAVELBINE': [
     {dosage:50,  vol:5,   concMgMl:10,  label:'Flacon 50 mg / 5 mL   (10 mg/mL)'},
   ],
   'BLÉOMYCINE': [
@@ -1194,7 +1198,7 @@ const DRUG_CONCENTRATIONS = {
 const DRUG_PRECAUTIONS = {
   'OXALIPLATINE':      {color:'#0A3D7A', bg:'#EEF4FD', icon:'🔵', txt:'Ne jamais utiliser de solvant chloré (NaCl). Utiliser uniquement G5%. Rincer toute la ligne avec G5% avant et après.'},
   'CISPLATINE':        {color:'#0A3D7A', bg:'#EEF4FD', icon:'🔵', txt:'Hydratation obligatoire avant et après. Protéger de la lumière. Surveiller la fonction rénale.'},
-  'CARBOPLATINE AUC5': {color:'#0A3D7A', bg:'#EEF4FD', icon:'🔵', txt:'Contrôle de la créatininémie obligatoire avant chaque cure. Ne pas utiliser d\'aiguilles ou sets en aluminium.'},
+  'CARBOPLATINE':      {color:'#0A3D7A', bg:'#EEF4FD', icon:'🔵', txt:'Contrôle de la créatininémie obligatoire avant chaque cure. Ne pas utiliser d\'aiguilles ou sets en aluminium.'},
   'TAXOL (Paclitaxel)':{color:'#8B1A1A', bg:'#FDEAEA', icon:'🔴', txt:'Prémédication antiallergique obligatoire (corticoïdes + antihistaminiques). Utiliser tubulure non-PVC (polyéthylène). Surveiller signes d\'hypersensibilité pendant les 15 premières minutes.'},
   'TAXOTÈRE (Docétaxel)':{color:'#8B1A1A', bg:'#FDEAEA', icon:'🔴', txt:'Prémédication corticoïde 3 jours (J-1, J0, J+1). Surveiller rétention hydrique. Utiliser tubulure non-PVC.'},
   'DOXORUBICINE':      {color:'#8B1A1A', bg:'#FDEAEA', icon:'🔴', txt:'VÉSICANT — extravasation très dangereuse. Voie veineuse centrale recommandée. Protéger de la lumière. Surveillance cardiaque (dose cumulée max 550 mg/m²).'},
@@ -1203,6 +1207,7 @@ const DRUG_PRECAUTIONS = {
   'GEMCITABINE':       {color:'#7A4B00', bg:'#FFF3DC', icon:'🟠', txt:'Ne pas réfrigérer après reconstitution (précipitation). Perfusion en 30 mn — durée plus longue augmente la toxicité.'},
   'IRINOTÉCAN':        {color:'#7A4B00', bg:'#FFF3DC', icon:'🟠', txt:'Atropine 0,25 mg SC disponible pour syndrome cholinergique aigu. Lopéramide disponible pour diarrhée tardive.'},
   'AVASTIN (Bévacizumab)': {color:'#7A4B00', bg:'#FFF3DC', icon:'🟠', txt:'NE PAS SECOUER. Première perfusion en 90 mn, puis 60 mn, puis 30 mn si tolérée. Ne pas congeler.'},
+  '5-FLUOROURACILE':   {color:'#0B5E3C', bg:'#E4F5ED', icon:'🟢', txt:'Injection lente IV directe ou perfusion continue selon protocole. Surveiller mucites et syndrome main-pied. Protéger de la lumière.'},
   '5-FLUOROURACILE bolus': {color:'#0B5E3C', bg:'#E4F5ED', icon:'🟢', txt:'Injection lente IV directe ou bolus. Surveiller mucites et syndrome main-pied.'},
   '5-FLUOROURACILE perfusion': {color:'#0B5E3C', bg:'#E4F5ED', icon:'🟢', txt:'Perfusion continue sur 22-46h via pompe. Utiliser filtre 0,2 µm. Protéger de la lumière.'},
   'LEUCOVORINE (LV)':  {color:'#0B5E3C', bg:'#E4F5ED', icon:'🟢', txt:'Administrer avant ou simultanément au 5-FU. Ne pas mélanger dans la même seringue.'},
@@ -4628,7 +4633,7 @@ const DEFAULT_CATALOG = [
   // â”€â”€ Platines â”€â”€
   {name:'OXALIPLATINE',            dci:'Oxaliplatine',         dosages:[50,100],      forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:45000},
   {name:'CISPLATINE',              dci:'Cisplatine',           dosages:[10,50],       forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:8000},
-  {name:'CARBOPLATINE AUC5',       dci:'Carboplatine',         dosages:[150,450],     forme:'Injectable', cond:'B1',  qteStock:100, prixUnit:35000},
+  {name:'CARBOPLATINE',            dci:'Carboplatine',         dosages:[150,450],     forme:'Injectable', cond:'B1',  qteStock:100, prixUnit:35000},
   // â”€â”€ Taxanes â”€â”€
   {name:'TAXOL (Paclitaxel)',      dci:'Paclitaxel',           dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:200, prixUnit:120000},
   {name:'TAXOTÈRE (Docétaxel)',    dci:'Docetaxel',            dosages:[20,80],       forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:95000},
@@ -4638,9 +4643,8 @@ const DEFAULT_CATALOG = [
   // â”€â”€ Alkylants â”€â”€
   {name:'CYCLOPHOSPHAMIDE',        dci:'Cyclophosphamide',     dosages:[500,1000],    forme:'Injectable', cond:'B1',  qteStock:100, prixUnit:12000},
   // â”€â”€ Antimétabolites â”€â”€
-  {name:'GEMCITABINE',             dci:'Gemcitabine',          dosages:[1000],        forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:55000},
-  {name:'5-FLUOROURACILE bolus',   dci:'Fluoro 5 uracile',    dosages:[500],         forme:'Injectable', cond:'B10', qteStock:50,  prixUnit:4500},
-  {name:'5-FLUOROURACILE perfusion',dci:'Fluoro 5 uracile',   dosages:[500],         forme:'Injectable', cond:'B10', qteStock:50,  prixUnit:4500},
+  {name:'GEMCITABINE',             dci:'Gemcitabine',          dosages:[1000,200],    forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:55000},
+  {name:'5-FLUOROURACILE',         dci:'Fluoro 5 uracile',    dosages:[500],         forme:'Injectable', cond:'B10', qteStock:100, prixUnit:4500},
   {name:'LEUCOVORINE (LV)',        dci:'Folinate de calcium',  dosages:[50],          forme:'Injectable', cond:'B5',  qteStock:30,  prixUnit:5000},
   {name:'MÉTHOTREXATE',            dci:'Méthotrexate',         dosages:[500],         forme:'Injectable', cond:'B5',  qteStock:20,  prixUnit:15000},
   // â”€â”€ Topo-isomérases â”€â”€
@@ -4656,12 +4660,12 @@ const DEFAULT_CATALOG = [
   {name:'BLÉOMYCINE',              dci:'Bléomycine',           dosages:[15],          forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:18000},
   {name:'VINCRISTINE',             dci:'Vincristine',          dosages:[1],           forme:'Injectable', cond:'B10', qteStock:20,  prixUnit:9000},
   {name:'VINBLASTINE',             dci:'Vinblastine',          dosages:[10],          forme:'Injectable', cond:'B10', qteStock:20,  prixUnit:14000},
-  {name:'VINORELBINE',             dci:'Vinorelbine',          dosages:[50],          forme:'Injectable', cond:'B5',  qteStock:30,  prixUnit:35000},
+  {name:'NAVELBINE',               dci:'Vinorelbine',          dosages:[50],          forme:'Injectable', cond:'B5',  qteStock:30,  prixUnit:35000},
   {name:'CYTARABINE',              dci:'Cytarabine',           dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:8000},
   {name:'TÉMOZOLOMIDE',            dci:'Temozolomide',         dosages:[20,100],      forme:'Injectable', cond:'B5',  qteStock:10,  prixUnit:95000},
   {name:'PEMETREXED',              dci:'Pemextred',            dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:220000},
   {name:'FILGRASTIM (G-CSF)',      dci:'Filgrastim',           dosages:[30],          forme:'Injectable', cond:'B10', qteStock:100, prixUnit:18000},
-  {name:'ACIDE ZOLÉDRONIQUE',      dci:'Acide zolédronique',  dosages:[4],           forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:45000},
+  {name:'ZOMETA',                  dci:'Acide zolédronique',  dosages:[4],           forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:45000},
 ];
 
 let catalog = JSON.parse(localStorage.getItem('chncak_catalog') || 'null') || DEFAULT_CATALOG;
@@ -4826,7 +4830,7 @@ function downloadCatalogTemplate(){
       'Stock (flacons)': 50,
     },
     {
-      'Médicament':   'CARBOPLATINE AUC5',
+      'Médicament':   'CARBOPLATINE',
       'DCI':          'Carboplatine',
       'Dosages (mg)': '150, 450',
       'Forme':        'Injectable',

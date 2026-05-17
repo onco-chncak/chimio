@@ -198,10 +198,13 @@
     if(raw.includes('cyclophosph')) return 'CYCLOPHOSPHAMIDE';
     if(raw.includes('trastuz') || raw.includes('herceptin')) return 'TRASTUZUMAB';
     if(raw.includes('bevaciz') || raw.includes('avastin')) return 'AVASTIN (Bévacizumab)';
+    if(raw.includes('carboplat')) return 'CARBOPLATINE';
     if(raw.includes('gemcitab')) return 'GEMCITABINE';
+    if(raw.includes('fluorouracile') || raw.includes('5-fu') || raw.includes('fluoro 5')) return '5-FLUOROURACILE';
     if(raw.includes('zometa') || raw.includes('zoledron') || raw.includes('zolédron')) return 'ZOMETA';
     if(raw.includes('irinotec')) return 'IRINOTÉCAN';
     if(raw.includes('capecitab')) return 'Capécitabine per os';
+    if(raw.includes('vinorel') || raw.includes('navelbine')) return 'NAVELBINE';
     if(raw.includes('nacl') || raw.includes('na cl') || raw.includes('chlorure')) return 'NaCl 0.9%';
     if(raw.includes('glucose') || raw.includes('g5')) return 'G5%';
     return String(name || '').trim();
@@ -637,13 +640,14 @@
     if(raw.includes('trastuz') || raw.includes('herceptin')) return 'trastuzumab';
     if(raw.includes('bevaciz') || raw.includes('avastin')) return 'avastin';
     if(raw.includes('zoledron') || raw.includes('zometa')) return 'zometa';
-    if(raw.includes('fluorouracile') || raw.includes('5-fu')) return raw.includes('perfusion') ? '5fu perfusion' : '5fu bolus';
+    if(raw.includes('fluorouracile') || raw.includes('5-fu')) return '5fu';
     if(raw.includes('leucovorine') || raw.includes('acide folinique') || raw.includes('folinate')) return 'leucovorine';
     if(raw.includes('methotrex')) return 'methotrexate';
     if(raw.includes('etopos')) return 'etoposide';
     if(raw.includes('bleomyc')) return 'bleomycine';
     if(raw.includes('vincrist')) return 'vincristine';
     if(raw.includes('vinblast')) return 'vinblastine';
+    if(raw.includes('vinorel') || raw.includes('navelbine')) return 'navelbine';
     if(raw.includes('dacarb')) return 'dacarbazine';
     if(raw.includes('ritux')) return 'rituximab';
     if(raw.includes('magnesium')) return 'support magnesium';
@@ -665,15 +669,25 @@
       if(!item) return;
       if(isSupportOnlyDrug(item.name) || isSupportOnlyDrug(item.dci)) return;
       const alias = catalogAliasKey(val(item.name, item.dci));
-      const key = alias === 'taxol' ? 'taxol' : (alias || norm(item.name));
-      const existing = clean.find(x => ((catalogAliasKey(x.name) === 'taxol' ? 'taxol' : catalogAliasKey(x.name)) || norm(x.name)) === key);
+      const key = ['taxol','carboplatine','5fu','navelbine','zometa'].includes(alias) ? alias : (alias || norm(item.name));
+      const existing = clean.find(x => {
+        const xAlias = catalogAliasKey(x.name);
+        const xKey = ['taxol','carboplatine','5fu','navelbine','zometa'].includes(xAlias) ? xAlias : (xAlias || norm(x.name));
+        return xKey === key;
+      });
       if(existing){
-        existing.qteStock = Math.max(Number(val(existing.qteStock, existing.stock, 0)), Number(val(item.qteStock, item.stock, 0)));
+        existing.qteStock = Number(val(existing.qteStock, existing.stock, 0)) + Number(val(item.qteStock, item.stock, 0));
         existing.prixUnit = Number(val(existing.prixUnit, existing.prix, 0)) || Number(val(item.prixUnit, item.prix, 0)) || 0;
+        existing.dosages = Array.from(new Set([...(existing.dosages || []), ...(item.dosages || [])].map(Number).filter(Boolean))).sort((a,b) => b-a);
         return;
       }
       seen.add(key);
-      clean.push(alias === 'taxol' ? {...item, name:'TAXOL (Paclitaxel)', dci:'Paclitaxel'} : item);
+      if(alias === 'taxol') clean.push({...item, name:'TAXOL (Paclitaxel)', dci:'Paclitaxel'});
+      else if(alias === 'carboplatine') clean.push({...item, name:'CARBOPLATINE', dci:'Carboplatine'});
+      else if(alias === '5fu') clean.push({...item, name:'5-FLUOROURACILE', dci:'Fluoro 5 uracile'});
+      else if(alias === 'navelbine') clean.push({...item, name:'NAVELBINE', dci:'Vinorelbine'});
+      else if(alias === 'zometa') clean.push({...item, name:'ZOMETA', dci:'Acide zolédronique'});
+      else clean.push(item);
     });
     return clean;
   }
@@ -2273,7 +2287,7 @@
     'GEFITINIB', 'HYDROXYCARBAMIDE', 'IFOSFAMIDE', 'IMATINIB', 'IRINOTECAN', 'LEUCOVORINE',
     'MELPHALAN', 'METHOTREXATE', 'NIVOLUMAB', 'OXALIPLATINE', 'PACLITAXEL', 'PEMBROLIZUMAB',
     'PEMETREXED', 'PERTUZUMAB', 'RITUXIMAB', 'TAMOXIFENE', 'TEMOZOLOMIDE', 'TRASTUZUMAB',
-    'VINBLASTINE', 'VINCRISTINE', 'VINORELBINE', 'ACIDE ZOLEDRONIQUE'
+    'VINBLASTINE', 'VINCRISTINE', 'NAVELBINE', 'ZOMETA'
   ];
 
   function protocolDrugNameOptions(){
