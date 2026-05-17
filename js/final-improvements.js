@@ -2575,6 +2575,7 @@
   }
 
   function hematologieRows(){
+    const admin = isAdminUser();
     return readJson('chncak_hematologie_sorties', []).slice(0, 40).map(r => `
       <tr>
         <td>${esc(r.date || '')}</td>
@@ -2586,9 +2587,44 @@
         <td>${esc(r.dosage || '')}</td>
         <td>${esc(r.quantite || '')}</td>
         <td>${esc(r.user || '')}</td>
+        ${admin ? `<td style="white-space:nowrap"><button class="btn-secondary official-github-mini" onclick="editHematologieSortie('${esc(r.id)}')">Modifier</button><button class="btn-secondary official-github-mini" onclick="deleteHematologieSortie('${esc(r.id)}')">Supprimer</button></td>` : ''}
       </tr>
     `).join('');
   }
+
+  window.editHematologieSortie = function(id){
+    requireAdminAction('modifier une sortie hematologie', () => {
+      const list = readJson('chncak_hematologie_sorties', []);
+      const idx = list.findIndex(r => String(r.id) === String(id));
+      if(idx < 0) return alert('Ligne introuvable.');
+      const row = list[idx];
+      const patient = prompt('Patient :', row.patient || '') ?? row.patient;
+      const medicament = prompt('Medicament :', row.medicament || '') ?? row.medicament;
+      const dci = prompt('DCI :', row.dci || '') ?? row.dci;
+      const numeroLot = prompt('Numero lot :', row.numeroLot || '') ?? row.numeroLot;
+      const dateExp = prompt("Date d'expiration (AAAA-MM-JJ) :", row.dateExp || '') ?? row.dateExp;
+      const dosage = prompt('Dosage :', row.dosage || '') ?? row.dosage;
+      const quantiteRaw = prompt('Quantite :', String(row.quantite || '')) ?? row.quantite;
+      const quantite = Number(quantiteRaw);
+      if(!medicament || !quantite || quantite <= 0) return alert('Medicament ou quantite invalide.');
+      list[idx] = {...row, patient, medicament, dci, numeroLot, dateExp, dosage, quantite, editedAt:new Date().toISOString(), editedBy:val(currentUser().name, currentUser().username, 'admin')};
+      writeJson('chncak_hematologie_sorties', list);
+      window.renderHematologie?.();
+      showToastSafe('Sortie hematologie modifiee.', 'success');
+    });
+  };
+
+  window.deleteHematologieSortie = function(id){
+    requireAdminAction('supprimer une sortie hematologie', () => {
+      const list = readJson('chncak_hematologie_sorties', []);
+      const row = list.find(r => String(r.id) === String(id));
+      if(!row) return alert('Ligne introuvable.');
+      if(!confirm(`Supprimer la sortie de ${row.patient || 'ce patient'} - ${row.medicament || ''} ?`)) return;
+      writeJson('chncak_hematologie_sorties', list.filter(r => String(r.id) !== String(id)));
+      window.renderHematologie?.();
+      showToastSafe('Sortie hematologie supprimee.', 'success');
+    });
+  };
 
   window.fillHematologiePatient = function(patientId){
     const p = [...readJson('chncak_hematologie_patients', []), ...readJson(STORAGE.patients, [])].find(item => String(item.id) === String(patientId));
@@ -2789,8 +2825,8 @@
           <div class="card-header"><div class="card-num" style="background:#5A4A8A">J</div><h2>Journal des dernieres sorties</h2>${isAdminUser() ? '<button class="btn-secondary official-github-mini" onclick="clearHematologieHistory()">Effacer historique</button>' : ''}</div>
           <div class="card-body dash-table-wrap">
             <table class="dash-table hematologie-table">
-              <thead><tr><th>Date</th><th>Patient</th><th>Medicament</th><th>DCI</th><th>Lot</th><th>Exp</th><th>Dosage</th><th>Quantite</th><th>Utilisateur</th></tr></thead>
-              <tbody>${hematologieRows() || '<tr><td colspan="9" class="dash-empty">Aucune sortie hematologie enregistree.</td></tr>'}</tbody>
+              <thead><tr><th>Date</th><th>Patient</th><th>Medicament</th><th>DCI</th><th>Lot</th><th>Exp</th><th>Dosage</th><th>Quantite</th><th>Utilisateur</th>${isAdminUser() ? '<th>Actions</th>' : ''}</tr></thead>
+              <tbody>${hematologieRows() || `<tr><td colspan="${isAdminUser() ? '10' : '9'}" class="dash-empty">Aucune sortie hematologie enregistree.</td></tr>`}</tbody>
             </table>
           </div>
         </div>
