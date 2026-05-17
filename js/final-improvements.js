@@ -279,6 +279,7 @@
     if(out.name === 'ZOMETA' && !out.fix && Number.isFinite(coef) && coef > 0) out.fix = coef;
     out.unit = out.unit || (out.name === 'ZOMETA' ? 'mg' : 'mg');
     out.sol = val(out.sol, out.solvant, out.name === 'ZOMETA' ? '100 cc SSI 0.9%' : '');
+    if(norm(out.name).includes('calcium 10')) out.sol = '250 cc SG5%';
     out.dur = val(out.dur, out.duree, out.name === 'ZOMETA' ? '15 mn' : '');
     out.ryt = val(out.ryt, out.jours, out.rythme, '');
     if(!out.oral && !out.t && (out.mgm2 || out.mgkg || out.fix || out.avastin || out.carbo)) out.hl = true;
@@ -659,7 +660,7 @@
   }
 
   function isSupportOnlyDrug(name){
-    return ['support magnesium','support calcium','support prednisone','support nacl','support g5'].includes(catalogAliasKey(name));
+    return ['support magnesium','support calcium','support prednisone','support nacl','support g5','kytril','hydrocortisone'].includes(catalogAliasKey(name));
   }
 
   function cleanPharmacyCatalog(list){
@@ -868,33 +869,39 @@
     const rdvText = rdvInput ? rdvInput.split('-').reverse().join('/') : '___/___/______';
     const protoDate = get('date-protocole');
     const dateProto = protoDate ? protoDate.split('-').reverse().join('/') : new Date().toLocaleDateString('fr-FR');
+    const contact = get('telephone') || get('contact') || get('tel') || '';
     const logo = document.querySelector('.nav-logo img')?.src || '';
     const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Bon de rendez-vous</title>
       <style>
-        @page{size:A4 portrait;margin:12mm}
+        @page{size:A4 landscape;margin:8mm}
         *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-        .rdv-page{min-height:272mm;display:flex;align-items:center;justify-content:center}
-        .rdv-card{width:178mm;min-height:176mm;border:2px solid #0A3D7A;border-radius:8px;padding:12mm 13mm;display:flex;flex-direction:column;gap:9mm}
-        .rdv-head{display:grid;grid-template-columns:56px 1fr 56px;gap:8px;align-items:start;text-align:center}
+        .rdv-page{width:281mm;min-height:194mm;display:grid;grid-template-columns:1fr 1fr;gap:8mm;align-items:start}
+        .rdv-card{width:100%;min-height:188mm;border:2px solid #0A3D7A;border-radius:8px;padding:8mm 9mm;display:flex;flex-direction:column;gap:5.5mm}
+        .rdv-blank{border-left:1px dashed #cbd5e1;min-height:188mm}
+        .rdv-head{display:grid;grid-template-columns:52px 1fr 52px;gap:6px;align-items:start;text-align:center}
         .rdv-head img{width:52px;height:52px;object-fit:contain}
-        .ministry{font-size:10.5px;line-height:1.22}.ministry b{font-size:11px}
-        .title{background:#0A3D7A;color:#fff;text-align:center;font-weight:900;letter-spacing:.08em;font-size:21px;padding:8px;border-radius:4px}
-        .line{display:flex;gap:8px;align-items:flex-end;font-size:18px;line-height:1.8}
-        .line span:first-child{font-weight:800;min-width:58mm;color:#17324d}.line b{flex:1;border-bottom:1.5px dotted #333;min-height:30px;padding-left:6px}
-        .rdv-date{border:2px solid #0B5E3C;border-radius:8px;padding:8mm;text-align:center;background:#f3fbf7}
-        .rdv-date span{display:block;font-size:14px;text-transform:uppercase;color:#0B5E3C;font-weight:800}.rdv-date strong{display:block;font-size:32px;margin-top:4px;color:#111}
-        .foot{margin-top:auto;font-size:13px;line-height:1.45;color:#4b5563;text-align:center}
+        .ministry{font-size:9px;line-height:1.15}.ministry b{font-size:9.5px}
+        .title{background:#0A3D7A;color:#fff;text-align:center;font-weight:900;letter-spacing:.08em;font-size:19px;padding:7px;border-radius:4px}
+        .line{display:flex;gap:6px;align-items:flex-end;font-size:14.5px;line-height:1.55}
+        .line span:first-child{font-weight:800;min-width:42mm;color:#17324d}.line b{flex:1;border-bottom:1.3px dotted #333;min-height:22px;padding-left:5px}
+        .rdv-date{border:2px solid #0B5E3C;border-radius:8px;padding:5mm;text-align:center;background:#f3fbf7}
+        .rdv-date span{display:block;font-size:12px;text-transform:uppercase;color:#0B5E3C;font-weight:800}.rdv-date strong{display:block;font-size:27px;margin-top:3px;color:#111}
+        .ticket{font-size:16px;font-weight:900;color:#7A4B00;background:#fff7e6;border:1.5px solid #f0c060;border-radius:5px;text-align:center;padding:6px}
+        .foot{margin-top:auto;font-size:11.5px;line-height:1.35;color:#4b5563;text-align:center}
       </style></head><body><main class="rdv-page"><section class="rdv-card">
         <div class="rdv-head"><img src="${logo}"><div class="ministry">Republique du Senegal<br><b>Un peuple - un but - une foi</b><br>Ministere de la Sante et de l'Action Sociale<br><b>Centre Hospitalier National Cheikh Ahmadoul Khadim</b><br><b>Service d'Oncologie - Radiotherapie</b></div><img src="${logo}"></div>
         <div class="title">BON DE RENDEZ-VOUS</div>
         <div class="line"><span>Prenom et nom</span><b>${esc(`${prenom} ${nom}`.toUpperCase())}</b></div>
         <div class="line"><span>Numero dossier</span><b>${esc(val(get('dossier'), get('cubix'), '-'))}</b></div>
+        <div class="line"><span>ID CUBIX</span><b>${esc(val(get('cubix'), '-'))}</b></div>
+        <div class="line"><span>Contact</span><b>${esc(val(contact, '-'))}</b></div>
         <div class="line"><span>Protocole</span><b>${esc(proto?.name || '-')}</b></div>
         <div class="line"><span>Date protocole</span><b>${esc(dateProto)}</b></div>
+        <div class="ticket">Prix du ticket : 25 000 FCFA</div>
         <div class="rdv-date"><span>Date du prochain rendez-vous</span><strong>${esc(rdvText)} a 07h30</strong></div>
         <div class="foot">Merci de venir avec les resultats de biologie demandes et de se presenter au service d'oncologie-radiotherapie.</div>
-      </section></main></body></html>`;
-    printHtml(html);
+      </section><section class="rdv-blank"></section></main></body></html>`;
+    printHtml(html, '297mm', '210mm');
   };
 
   function resolvePreparationProtocol(){
@@ -1262,9 +1269,42 @@
   window.loadBiologiePatient = function(){
     const code = document.getElementById('bio-patient-select')?.value;
     const patients = readJson(STORAGE.patients, []);
-    const patient = patients.find(p => patientShortCode(p) === code || patientCode(p) === code);
+    const patient = patients.find(p => patientShortCode(p) === code || patientCode(p) === code || String(p.id) === String(code));
     const input = document.getElementById('bio-patient');
     if(input) input.value = patient ? patientName(patient) : '';
+  };
+
+  window.saveBiologie = function(){
+    const select = document.getElementById('bio-patient-select');
+    const selected = select?.value || '';
+    const typedPatient = document.getElementById('bio-patient')?.value || '';
+    const patients = readJson(STORAGE.patients, []);
+    const patient = patients.find(p =>
+      patientShortCode(p) === selected ||
+      patientCode(p) === selected ||
+      String(p.id) === String(selected) ||
+      (typedPatient && norm(patientName(p)) === norm(typedPatient))
+    );
+    if(!patient) return alert('Selectionner un patient.');
+    const entry = {
+      patient: patientName(patient),
+      code: patientCode(patient),
+      dossier: val(patient.dossier, patient.numeroDossier),
+      hb: document.getElementById('hb')?.value || '',
+      pnn: document.getElementById('pnn')?.value || '',
+      plaquettes: document.getElementById('plaquettes')?.value || '',
+      creat: document.getElementById('creat')?.value || '',
+      asat: document.getElementById('asat')?.value || '',
+      alat: document.getElementById('alat')?.value || '',
+      date: new Date().toLocaleDateString('fr-FR'),
+      dateTs: new Date().toISOString()
+    };
+    const list = readJson(STORAGE.biologie, readJson('biologie', []));
+    list.push(entry);
+    writeJson(STORAGE.biologie, list);
+    writeJson('biologie', list);
+    window.renderBiologie?.();
+    showToastSafe('Bilan biologique enregistre.', 'success');
   };
 
   window.renderDashboard = function(){
@@ -1577,6 +1617,24 @@
     const list = typeof getOkChimio === 'function' ? getOkChimio() : readJson(STORAGE.okchimio, []);
     const entry = list.find(item => String(item.id) === String(id));
     if(entry) openValidationEmail(entry);
+  };
+
+  window.refuserOkChimio = function(id){
+    const motif = prompt('Motif du refus :');
+    if(!motif) return;
+    const list = typeof getOkChimio === 'function' ? getOkChimio() : readJson(STORAGE.okchimio, []);
+    const idx = list.findIndex(item => String(item.id) === String(id));
+    if(idx < 0) return;
+    const refused = {...list[idx], statut:'Refuse', motifRefus:motif, dateRefus:new Date().toISOString()};
+    const archive = readJson('chncak_okchimio_refuses', []);
+    archive.unshift(refused);
+    writeJson('chncak_okchimio_refuses', archive.slice(0, 500));
+    list.splice(idx, 1);
+    if(typeof saveOkChimio === 'function') saveOkChimio(list);
+    writeJson(STORAGE.okchimio, list);
+    writeJson('chncak_okchimio', list);
+    window.renderOkChimio?.();
+    showToastSafe('Protocole envoye pour verification et retire des OK chimio en attente.', 'info');
   };
 
   window.clearClinicalModuleData = function(module){
@@ -2386,7 +2444,7 @@
     if(!root) return;
     refreshProtocolDrugDatalist();
     const d = data || {};
-    const calc = d.mgm2 ? 'mgm2' : d.mgkg ? 'mgkg' : d.carbo ? 'auc' : d.oral ? 'oral' : 'fix';
+    const calc = d.calc || (d.mgm2 ? 'mgm2' : d.mgkg ? 'mgkg' : d.carbo ? 'auc' : d.oral ? 'oral' : 'fix');
     const coef = d.mgm2 || d.mgkg || d.fix || Number(String(d.pos || '').match(/\d+([.,]\d+)?/)?.[0]?.replace(',', '.') || 0) || '';
     const solText = String(d.sol || d.solvant || '');
     const solVol = solText.match(/(\d+(?:[.,]\d+)?)\s*(?:cc|ml)/i)?.[1] || '';
@@ -2520,7 +2578,10 @@
       </div></div>
     `;
     modal.style.display = 'block';
-    addProtocolDrugRow();
+    addProtocolDrugRow({order:1, name:'Hydrocortisone', calc:'support', fix:200, sol:'50 cc NaCl 0.9%', dur:'15 mn', ryt:'J1', remark:'Premedication'});
+    addProtocolDrugRow({order:2, name:'Kytril', calc:'support', fix:3, sol:'50 cc NaCl 0.9%', dur:'15 mn', ryt:'J1', remark:'Premedication antiemetique'});
+    addProtocolDrugRow({order:3, name:'Rincage 250 cc SSI 0.9%', calc:'support', fix:250, sol:'250 cc NaCl 0.9%', dur:'30 mn', ryt:'J1', remark:'Rincage entre deux medicaments anticancereux'});
+    addProtocolDrugRow({order:4});
   };
 
   window.closeAddProtocoleModal = function(){
@@ -2555,8 +2616,11 @@
   window.downloadProtocolImportTemplate = function(){
     const rows = [
       ['Nom protocole','Rythme','Bilan utile','Surveillance','Reference scientifique','Ordre de passage','Medicament','Type calcul','Dose','Unite','Jours','Solvant','Volume solvant cc','Duree','Frequence','Remarque','Alerte dose limite mg','Protection lumiere','Oral'],
-      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','1','Oxaliplatine','mg/m2','85','mg/m2','J1','SG 5%','500','120','J1','Tubulure adaptee selon protocole','','NON','NON'],
-      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','2','5-FU','mg/m2','400','mg/m2','J1','NaCl 0.9%','100','Bolus','J1','Bolus lent','','NON','NON'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','1','Hydrocortisone','support','200','mg','J1','NaCl 0.9%','50','15','Avant chimio','Premedication','','NON','NON'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','2','Kytril','support','3','mg','J1','NaCl 0.9%','50','15','Avant chimio','Premedication antiemetique','','NON','NON'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','3','Oxaliplatine','mg/m2','85','mg/m2','J1','SG 5%','500','120','J1','Tubulure adaptee selon protocole','','NON','NON'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','4','Rincage 250 cc SSI 0.9%','support','250','cc','J1','NaCl 0.9%','250','30','Entre deux anticancereux','Faire passer en 30 mn','','NON','NON'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','5','5-FU','mg/m2','400','mg/m2','J1','NaCl 0.9%','100','Bolus','J1','Bolus lent','','NON','NON'],
       ['EXEMPLE ORAL','J21','NFS plaquettes, bilan hepatique','Surveillance clinique','Reference service / guideline validee','3','Capecitabine','per os','1250','mg','J1-J14','','','','2 prises par jour','A prendre apres repas','','NON','OUI']
     ];
     const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(';')).join('\n');
@@ -2669,7 +2733,8 @@
 
   function installPatientSearchBox(pageId, boxId, loadFnName){
     const page = document.getElementById(pageId);
-    if(!page || document.getElementById(boxId)) return;
+    if(!page) return;
+    document.getElementById(boxId)?.remove();
     const entries = savedProtocolEntries();
     const options = entries.map((item, index) => `<option value="${index}">${esc(patientName(item))} - Dossier ${esc(val(item.dossier, '-'))} - ${esc(protocolNameFor(item))}</option>`).join('');
     const anchor = page.querySelector('[style*="justify-content:space-between"]') || page.firstElementChild;
@@ -3247,8 +3312,6 @@
       .page{max-width:1580px}
       #page-apercu > div,#page-preparation > div,#page-support > div,#page-stats > div,#page-programme > div[style*="max-width"],#page-patients > div,#patients-rdv-list,#page-rdv > div{max-width:1460px!important}
       body:not(.admin-session) .official-github-mini{display:none!important}
-      body:not(.pharmacien-session) #page-pharmacie #catalog-body input,
-      body:not(.pharmacien-session) #page-pharmacie #catalog-body select,
       body:not(.pharmacien-session) #page-pharmacie button[onclick*="saveCatalog"],
       body:not(.pharmacien-session) #page-pharmacie button[onclick*="scrollToCatalog"],
       body:not(.pharmacien-session) #page-pharmacie button[onclick*="addMissingDrugToCatalog"]{display:none!important}

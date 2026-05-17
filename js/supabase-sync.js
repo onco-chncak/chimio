@@ -60,6 +60,7 @@
     'chncak_prog_config',
     'chncak_code_gratuite_counter',
     'chncak_dashboard_team_photo',
+    'chncak_official_reset_at',
     'chncak_cloud_device_id',
     'chncak_dark',
     'supabase.auth.token'
@@ -190,14 +191,19 @@
     const medecins = localStorage.getItem('chncak_medecins');
     const responsables = localStorage.getItem('chncak_responsables');
     const config = localStorage.getItem('chncak_prog_config');
+    const resetAt = localStorage.getItem('chncak_official_reset_at') || new Date().toISOString();
     if(catalog !== null) data.chncak_catalog = catalog;
     if(medecins !== null) data.chncak_medecins = medecins;
     if(responsables !== null) data.chncak_responsables = responsables;
     if(config !== null) data.chncak_prog_config = config;
+    data.chncak_official_reset_at = resetAt;
     return data;
   }
 
   function applyCloudData(cloudData){
+    const cloudResetAt = Date.parse(cloudData?.chncak_official_reset_at || '') || 0;
+    const localResetAt = Date.parse(localStorage.getItem('chncak_official_reset_at') || '') || 0;
+    if(cloudResetAt > localResetAt) resetLocalOfficialData();
     const localData = collectLocalData();
     const merged = {...cloudData};
     Object.keys(localData).forEach(key => {
@@ -456,6 +462,7 @@
     if(phrase !== 'INITIALISER') return alert('Confirmation annulee.');
     try{
       await requireSession();
+      localStorage.setItem('chncak_official_reset_at', new Date().toISOString());
       resetLocalOfficialData();
       await resetCloudSnapshot();
       localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());

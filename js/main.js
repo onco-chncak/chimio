@@ -824,8 +824,8 @@ function renderCapeTable(proto){
   const capeDrug=proto.drugs.find(d=>d.oral);
   if(!capeDrug) return;
   const doseTotal=Math.round(capeDrug.mgm2*sc);
-  const cp500=Math.floor(doseTotal/500);
-  const cp150=Math.round((doseTotal-(cp500*500))/150);
+  const cp500=Math.ceil(doseTotal/500);
+  const cp150=0;
   let rows='';
   for(let j=1;j<=14;j++){
     rows+=`<tr>
@@ -1475,7 +1475,7 @@ function buildDocumentHTML(){
     const capeDrug = proto.drugs.find(d=>d.oral);
     if(capeDrug){
       const dt=Math.round(capeDrug.mgm2*sc);
-      const cp500=Math.floor(dt/500), cp150=Math.round((dt-cp500*500)/150);
+      const cp500=Math.ceil(dt/500), cp150=0;
       const cpTxt=(cp500>0?cp500+' cp à 500 mg':'')+(cp150>0?(cp500?' + ':'')+cp150+' cp à 150 mg':'');
       const makeRows=(from,to)=>Array.from({length:to-from+1},(_,i)=>`
         <tr><td style="border:1px solid #ccc;padding:3px 5px;font-size:9px;font-weight:bold;text-align:center;background:#e8eef8;width:30px">J${from+i}</td>
@@ -4400,8 +4400,8 @@ function printDoc(double){
     const capeDrug = proto.drugs.find(d=>d.oral);
     if(capeDrug){
       const dt    = Math.round(capeDrug.mgm2*sc);
-      const cp500 = Math.floor(dt/500);
-      const cp150 = Math.round((dt - cp500*500) / 150);
+      const cp500 = Math.ceil(dt/500);
+      const cp150 = 0;
       const cpTxt = (cp500>0 ? cp500+' cp à 500 mg' : '') + (cp150>0 ? (cp500>0?' + ':'')+cp150+' cp à 150 mg' : '');
       // Two columns J1-J7 and J8-J14 like original XELOX(2) model
       const makeRows = (from, to) => Array.from({length:to-from+1},(_,i)=>`
@@ -4823,7 +4823,7 @@ function downloadCatalogTemplate(){
     {
       'Médicament':   'OXALIPLATINE',
       'DCI':          'Oxaliplatine',
-      'Dosages (mg)': '50, 100',
+      'Dosages (mg)': '50',
       'Forme':        'Injectable',
       'Conditionnement': 'B1',
       'Statut':       'Payant',
@@ -4833,7 +4833,7 @@ function downloadCatalogTemplate(){
     {
       'Médicament':   'CISPLATINE',
       'DCI':          'Cisplatine',
-      'Dosages (mg)': '10, 50',
+      'Dosages (mg)': '50',
       'Forme':        'Injectable',
       'Conditionnement': 'B1',
       'Statut':       'Payant',
@@ -4843,7 +4843,7 @@ function downloadCatalogTemplate(){
     {
       'Médicament':   'CARBOPLATINE',
       'DCI':          'Carboplatine',
-      'Dosages (mg)': '150, 450',
+      'Dosages (mg)': '450',
       'Forme':        'Injectable',
       'Conditionnement': 'B1',
       'Statut':       'Payant',
@@ -4853,7 +4853,7 @@ function downloadCatalogTemplate(){
     {
       'Médicament':   '[Votre médicament ici]',
       'DCI':          '[DCI / générique]',
-      'Dosages (mg)': '[ex: 100, 500]',
+      'Dosages (mg)': '[ex: 500]',
       'Forme':        'Injectable',
       'Conditionnement': 'B1',
       'Statut':       'Payant ou Gratuit',
