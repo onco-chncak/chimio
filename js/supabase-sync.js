@@ -27,6 +27,12 @@
     'chncak_prog_config',
     'chncak_responsables',
     'chncak_archived_patients',
+    'chncak_okchimio',
+    'chncak_stock_sorties',
+    'chncak_okchimio_refuses',
+    'patients',
+    'okchimio',
+    'sorties',
     'suivi',
     'biologie',
     'historique',
@@ -47,6 +53,12 @@
     'chncak_biologie',
     'chncak_medecins',
     'chncak_archived_patients',
+    'chncak_okchimio',
+    'chncak_stock_sorties',
+    'chncak_okchimio_refuses',
+    'patients',
+    'okchimio',
+    'sorties',
     'suivi',
     'biologie',
     'historique',
@@ -78,9 +90,15 @@
     'chncak_biologie',
     'chncak_programme',
     'chncak_archived_patients',
+    'chncak_okchimio',
+    'chncak_stock_sorties',
+    'chncak_okchimio_refuses',
     'chncak_last_backup',
     'chncak_last_restore',
     'chncak_cloud_last_sync',
+    'patients',
+    'okchimio',
+    'sorties',
     'suivi',
     'biologie',
     'historique',
@@ -197,13 +215,22 @@
     if(responsables !== null) data.chncak_responsables = responsables;
     if(config !== null) data.chncak_prog_config = config;
     data.chncak_official_reset_at = resetAt;
+    RESET_REMOVE_KEYS.forEach(key => {
+      data[key] = key === 'chncak_programme' ? '{}' : '[]';
+    });
     return data;
   }
 
   function applyCloudData(cloudData){
     const cloudResetAt = Date.parse(cloudData?.chncak_official_reset_at || '') || 0;
     const localResetAt = Date.parse(localStorage.getItem('chncak_official_reset_at') || '') || 0;
-    if(cloudResetAt > localResetAt) resetLocalOfficialData();
+    if(cloudResetAt > localResetAt) {
+      resetLocalOfficialData();
+      cloudData = {...cloudData};
+      RESET_REMOVE_KEYS.forEach(key => {
+        cloudData[key] = key === 'chncak_programme' ? '{}' : '[]';
+      });
+    }
     const localData = collectLocalData();
     const merged = {...cloudData};
     Object.keys(localData).forEach(key => {
