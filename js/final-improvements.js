@@ -726,6 +726,7 @@
     let updated = 0;
     const warnings = [];
     const details = [];
+    const validatedDetails = pharmaValidatedFlacons(patient);
     (proto.drugs || []).filter(d => !d.t && !d.oral && !isSupportOnlyDrug(d.name) && (d.mgm2 || d.mgkg || d.avastin || typeof d.fix === 'number')).forEach(drug => {
       const dose = doseForDrug(drug, patient);
       if(!dose){ warnings.push(`${drug.name}: dose non calculable.`); return; }
@@ -733,8 +734,15 @@
       const matchedItem = findCatalogItem(drug.name, catalog);
       const idx = catalog.findIndex(item => item === matchedItem);
       if(!calc || idx < 0){ warnings.push(`${drug.name}: medicament non trouve dans Pharmacie Centrale.`); return; }
-      calc = confirmFlaconsByDosage(drug.name, dose, calc);
-      if(!calc){ warnings.push(`${drug.name}: deduction annulee ou quantites invalides.`); return; }
+      const validated = validatedDetails.find(item => catalogAliasKey(item.name) === catalogAliasKey(drug.name));
+      if(validated?.flacons?.length){
+        const flacons = validated.flacons.map(Number).filter(Boolean);
+        const totalMg = flacons.reduce((sum, size) => sum + size, 0);
+        calc = {...calc, nbFlacons:flacons.length, flacons, totalMg, reliquat:Math.max(0, Math.round((totalMg - dose) * 10) / 10)};
+      } else {
+        calc = confirmFlaconsByDosage(drug.name, dose, calc);
+        if(!calc){ warnings.push(`${drug.name}: deduction annulee ou quantites invalides.`); return; }
+      }
       const stock = Number(catalog[idx].qteStock ?? catalog[idx].stock ?? 0);
       if(stock < calc.nbFlacons){ warnings.push(`${drug.name}: stock insuffisant (${stock} flacon(s), besoin ${calc.nbFlacons}).`); return; }
       catalog[idx].qteStock = stock - calc.nbFlacons;
@@ -952,12 +960,36 @@
     return !!(key && readJson('chncak_pharma_validations', {})[key]);
   }
 
+  function pharmaValidatedFlacons(patient, rdv){
+    const key = pharmaValidationKey(patient, rdv);
+    return key ? readJson('chncak_pharma_validations', {})[key]?.detailsData || [] : [];
+  }
+
+  function collectPharmaValidationDetails(patient, rdv){
+    const proto = findProtocolByPatient({...patient, protoId:val(patient?.protoId, rdv?.protoId), proto:val(patient?.proto, rdv?.proto)});
+    if(!proto) return {detailsData:[], warnings:[`Protocole introuvable pour ${patientName(patient) || 'ce patient'}.`]};
+    const detailsData = [];
+    const warnings = [];
+    (proto.drugs || []).filter(d => !d.t && !d.oral && !isSupportOnlyDrug(d.name) && (d.mgm2 || d.mgkg || d.avastin || typeof d.fix === 'number')).forEach(drug => {
+      const dose = doseForDrug(drug, patient);
+      if(!dose){ warnings.push(`${drug.name}: dose non calculable.`); return; }
+      let calc = calcDrugFlacons(drug.name, dose);
+      if(!calc){ warnings.push(`${drug.name}: medicament non trouve dans Pharmacie Centrale.`); return; }
+      calc = confirmFlaconsByDosage(drug.name, dose, calc);
+      if(!calc){ warnings.push(`${drug.name}: validation annulee ou quantites invalides.`); return; }
+      detailsData.push({name:drug.name, dose, nbFlacons:calc.nbFlacons, reliquatMg:Number(calc.reliquat || 0), flacons:calc.flacons || []});
+    });
+    return {detailsData, warnings};
+  }
+
   window.validatePharmacistPreparation = function(){
     const patient = currentProtocolFormPatient();
     if(!patient.prenom || !patient.nom) return alert('Chargez ou renseignez le patient avant validation.');
-    requireAdminAction('validation pharmacien', () => {
+    requirePharmacienAction('validation pharmacien', () => {
+      const validationDetails = collectPharmaValidationDetails(patient);
+      if(validationDetails.warnings.length && !confirm(`Avertissements:\n${validationDetails.warnings.join('\n')}\n\nContinuer la validation ?`)) return;
       const map = readJson('chncak_pharma_validations', {});
-      map[pharmaValidationKey(patient)] = {validatedAt:new Date().toISOString(), patient:patientName(patient), dossier:patient.dossier, protoId:patient.protoId};
+      map[pharmaValidationKey(patient)] = {validatedAt:new Date().toISOString(), patient:patientName(patient), dossier:patient.dossier, protoId:patient.protoId, detailsData:validationDetails.detailsData, warnings:validationDetails.warnings};
       writeJson('chncak_pharma_validations', map);
       showToastSafe('Validation pharmacien enregistree.', 'success');
     });
@@ -992,8 +1024,11 @@
     const rdv = readJson(STORAGE.rdv, []).find(r => String(r.id) === String(id));
     if(!rdv) return alert('Rendez-vous introuvable.');
     const patient = rdvPatientForPreparation(rdv);
+    if(!isPharmacienUser() && !isAdminUser()) return alert('Action reservee au compte pharmacien.');
+    const validationDetails = collectPharmaValidationDetails({...patient, protoId:val(patient.protoId, rdv.protoId), proto:val(patient.proto, rdv.proto)}, rdv);
+    if(validationDetails.warnings.length && !confirm(`Avertissements:\n${validationDetails.warnings.join('\n')}\n\nContinuer la validation ?`)) return;
     const map = readJson('chncak_pharma_validations', {});
-    map[pharmaValidationKey(patient, rdv)] = {validatedAt:new Date().toISOString(), patient:patientName(patient), dossier:val(patient.dossier, rdv.dossier), protoId:val(patient.protoId, rdv.protoId), source:'preparation'};
+    map[pharmaValidationKey(patient, rdv)] = {validatedAt:new Date().toISOString(), patient:patientName(patient), dossier:val(patient.dossier, rdv.dossier), protoId:val(patient.protoId, rdv.protoId), source:'preparation', detailsData:validationDetails.detailsData, warnings:validationDetails.warnings};
     writeJson('chncak_pharma_validations', map);
     renderPreparationTodayList();
     showToastSafe('Fiche de preparation validee.', 'success');
