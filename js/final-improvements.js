@@ -687,6 +687,7 @@
       else if(alias === '5fu') clean.push({...item, name:'5-FLUOROURACILE', dci:'Fluoro 5 uracile'});
       else if(alias === 'navelbine') clean.push({...item, name:'NAVELBINE', dci:'Vinorelbine'});
       else if(alias === 'zometa') clean.push({...item, name:'ZOMETA', dci:'Acide zolédronique'});
+      else if(alias === 'trastuzumab') clean.push({...item, name:'HERCEPTIN', dci:'Trastuzumab', dosages:[600], forme:'Injection sous-cutanée'});
       else clean.push(item);
     });
     return clean;
@@ -709,7 +710,7 @@
       ['Acide folinique','Acide folinique',[50],'Injectable'],
       ['RITUXIMAB','Rituximab',[100,500],'Injectable']
     ];
-    return defaults.map(([name,dci,dosages,forme]) => ({name,dci,dosages,forme,cond:'',qteStock:0,prixUnit:0}));
+    return defaults.map(([name,dci,dosages,forme]) => ({name,dci,dosages,forme,cond:'',qteStock:0,prixUnit:0,statutTarif:'Payant'}));
   }
 
   function ensureProtocolCatalogCompleteness(){
@@ -1652,7 +1653,8 @@
     if(!dosages.length) return alert('Dosage invalide. Medicament non ajoute.');
     const stock = Number(prompt('Stock initial en flacons :', '0') || 0);
     const prix = Number(prompt('Prix par flacon en FCFA :', '0') || 0);
-    list.push({name:drugName, dci, dosages, forme:'Injectable', cond:'B1', qteStock:stock, prixUnit:prix});
+    const statutTarif = confirm('Ce medicament est-il gratuit ?\n\nOK = Gratuit\nAnnuler = Payant') ? 'Gratuit' : 'Payant';
+    list.push({name:drugName, dci, dosages, forme:'Injectable', cond:'B1', qteStock:stock, prixUnit:prix, statutTarif});
     syncCatalogGlobal(list);
     window.renderCatalogTable?.();
     window.renderPharmacie?.();
@@ -1707,7 +1709,7 @@
     const page = document.getElementById('page-pharmacie');
     if(!page) return;
     const allowed = isPharmacienUser();
-    page.querySelectorAll('#catalog-body input, button[onclick*="saveCatalog"], button[onclick*="scrollToCatalog"], button[onclick*="addMissingDrugToCatalog"], input[onchange*="importCatalogExcel"]').forEach(el => {
+    page.querySelectorAll('#catalog-body input, #catalog-body select, button[onclick*="saveCatalog"], button[onclick*="scrollToCatalog"], button[onclick*="addMissingDrugToCatalog"], input[onchange*="importCatalogExcel"]').forEach(el => {
       el.disabled = !allowed;
       el.style.opacity = allowed ? '' : '0.48';
       el.style.cursor = allowed ? '' : 'not-allowed';
@@ -1729,6 +1731,7 @@
     tbody.innerHTML = list.map((d, i) => {
       const stock = d.qteStock ?? d.stock ?? 0;
       const prix = d.prixUnit ?? d.prix ?? 0;
+      const statutTarif = d.statutTarif || d.statut || 'Payant';
       const stockLow = Number(stock) <= 5;
       const stockCrit = Number(stock) <= 2;
       const dosages = (d.dosages || d.flacons || []).map(Number).filter(Boolean);
@@ -1739,6 +1742,12 @@
           <td style="padding:7px 8px;font-size:11px;color:var(--gray-mid)">${esc(d.dci || '')}</td>
           <td style="padding:7px 8px;font-size:12px;font-weight:500">${dosage ? `${esc(dosage)} mg` : '-'}</td>
           <td style="padding:7px 8px;font-size:11px;color:var(--gray-mid)">${esc(d.cond || 'B1')}</td>
+          <td style="padding:4px 6px">
+            <select data-idx="${i}" data-field="statutTarif" style="width:95px;padding:5px 7px;font-size:12px;border:1px solid var(--gray-border);border-radius:4px;background:white" onchange="updateCatalogField(${i},'statutTarif',this.value)">
+              <option value="Payant" ${statutTarif === 'Payant' ? 'selected' : ''}>Payant</option>
+              <option value="Gratuit" ${statutTarif === 'Gratuit' ? 'selected' : ''}>Gratuit</option>
+            </select>
+          </td>
           <td style="padding:4px 6px">
             <input type="number" value="${esc(prix)}" data-idx="${i}" data-field="prixUnit" placeholder="FCFA" style="width:100px;padding:5px 7px;font-size:12px;border:1px solid var(--gray-border);border-radius:4px" oninput="updateCatalogField(${i},'prixUnit',this.value)">
           </td>
@@ -3218,6 +3227,7 @@
       #page-apercu > div,#page-preparation > div,#page-support > div,#page-stats > div,#page-programme > div[style*="max-width"],#page-patients > div,#patients-rdv-list,#page-rdv > div{max-width:1460px!important}
       body:not(.admin-session) .official-github-mini{display:none!important}
       body:not(.pharmacien-session) #page-pharmacie #catalog-body input,
+      body:not(.pharmacien-session) #page-pharmacie #catalog-body select,
       body:not(.pharmacien-session) #page-pharmacie button[onclick*="saveCatalog"],
       body:not(.pharmacien-session) #page-pharmacie button[onclick*="scrollToCatalog"],
       body:not(.pharmacien-session) #page-pharmacie button[onclick*="addMissingDrugToCatalog"]{display:none!important}

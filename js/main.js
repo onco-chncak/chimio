@@ -395,12 +395,11 @@ const PROTOCOLS = [
   name: 'HERCEPTIN',
   rythme: 'J21',
   indication: 'Cancer du sein HER2+',
-  detail: 'Trastuzumab 6 mg/kg (dose de charge 8 mg/kg)',
+  detail: 'Herceptin 600 mg en injection sous-cutanée',
   badge: 'J21',
   badgeClass: 'b21',
   drugs: [
-    {name:'Trastuzumab 150mg', unit:'mg', calc:'poids', coef:6, base:'kg', note:'Dose de charge : 8mg/kg puis 6mg/kg'},
-    {name:'NaCl 0.9% 250ml', unit:'ml', calc:'fix', coef:250}
+    {name:'HERCEPTIN', unit:'mg', calc:'fix', coef:600, sol:'Injection sous-cutanée', dur:'5 mn', note:'Forme 600 mg SC uniquement'}
   ],
   supports: ['PARACETAMOL 1G', 'DEXAMETHASONE 8MG'],
   pre: 'FEVG â‰¥50%, bilan cardiaque',
@@ -568,7 +567,8 @@ function getSolvantVol(drugName, doseMg){
     'ÉTOPOSIDE':               {concMax:0.4,  sol:'SSI 0.9%',volMin:250},  // max 0.4 mg/mL
     // Thérapies ciblées
     'AVASTIN (Bévacizumab)':   {concMax:16.5, sol:'SSI 0.9%',volMin:100},  // 1.4–16.5 mg/mL
-    'TRASTUZUMAB':             {concMax:4.0,  sol:'SSI 0.9%',volMin:250},
+    'HERCEPTIN':               {concMax:600,  sol:'SC',       volMin:5},
+    'TRASTUZUMAB':             {concMax:600,  sol:'SC',       volMin:5},
   };
 
   const rule = concMax[drugName];
@@ -1165,8 +1165,11 @@ const DRUG_CONCENTRATIONS = {
   'MÉTHOTREXATE': [
     {dosage:500, vol:20,  concMgMl:25,  label:'Flacon 500 mg / 20 mL (25 mg/mL)'},
   ],
+  'HERCEPTIN': [
+    {dosage:600, vol:5,   concMgMl:120, label:'Seringue/flacon 600 mg / 5 mL — injection sous-cutanée'},
+  ],
   'TRASTUZUMAB': [
-    {dosage:150, vol:7.2, concMgMl:21,  label:'Flacon 150 mg / 7,2 mL (21 mg/mL) — reconstituer avec 7,2 mL eau PPI'},
+    {dosage:600, vol:5,   concMgMl:120, label:'Seringue/flacon 600 mg / 5 mL — injection sous-cutanée'},
   ],
   'ÉTOPOSIDE': [
     {dosage:100, vol:5,   concMgMl:20,  label:'Flacon 100 mg / 5 mL  (20 mg/mL)'},
@@ -1214,7 +1217,8 @@ const DRUG_PRECAUTIONS = {
   'DACARBAZINE':       {color:'#8B1A1A', bg:'#FDEAEA', icon:'🔴', txt:'TRÈS PHOTOSENSIBLE — protéger strictement de la lumière (papier alu sur poche et tubulure). Vésicant.'},
   'BLÉOMYCINE':        {color:'#8B1A1A', bg:'#FDEAEA', icon:'🔴', txt:'Test-dose 1-2 UI avant première administration (risque fièvre/choc). Dose cumulée max 300 UI (fibrose pulmonaire).'},
   'VINCRISTINE':       {color:'#8B1A1A', bg:'#FDEAEA', icon:'🔴', txt:'VÉSICANT MAJEUR — usage IV STRICTEMENT INTERDIT par voie intrathécale (FATAL). Neurotoxicité dose-limitante.'},
-  'TRASTUZUMAB':       {color:'#7A4B00', bg:'#FFF3DC', icon:'🟠', txt:'Reconstituer avec eau PPI fournie. Ne pas agiter. 1ère perfusion en 90 mn. Surveiller cardiotoxicité (FE cardiaque).'},
+  'HERCEPTIN':         {color:'#7A4B00', bg:'#FFF3DC', icon:'🟠', txt:'Forme 600 mg en injection sous-cutanée uniquement. Surveiller la fonction cardiaque (FEVG).'},
+  'TRASTUZUMAB':       {color:'#7A4B00', bg:'#FFF3DC', icon:'🟠', txt:'Forme 600 mg en injection sous-cutanée uniquement. Surveiller la fonction cardiaque (FEVG).'},
 };
 
 function getVolAspirer(drugName, doseMg){
@@ -4628,7 +4632,7 @@ function printDoc(double){
 ============================================================ */
 
 // Catalog based on CHNCAK conditioning file (CONDITIONNMENT_DES_FLACONS_MEDICAMANTS_ANTICANCERUX)
-// {name, dci, dosages:[mg], forme, cond, qteStock, prixUnit(FCFA)}
+// {name, dci, dosages:[mg], forme, cond, qteStock, prixUnit(FCFA), statutTarif}
 const DEFAULT_CATALOG = [
   // â”€â”€ Platines â”€â”€
   {name:'OXALIPLATINE',            dci:'Oxaliplatine',         dosages:[50,100],      forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:45000},
@@ -4652,7 +4656,7 @@ const DEFAULT_CATALOG = [
   {name:'ÉTOPOSIDE',               dci:'Etoposide',            dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:30,  prixUnit:18000},
   // â”€â”€ Thérapies ciblées â”€â”€
   {name:'AVASTIN (Bévacizumab)',   dci:'Bevacizumab',         dosages:[400],         forme:'Injectable', cond:'B1',  qteStock:10,  prixUnit:450000},
-  {name:'TRASTUZUMAB',             dci:'Trastuzumab',          dosages:[150],         forme:'Injectable', cond:'B1',  qteStock:30,  prixUnit:380000},
+  {name:'HERCEPTIN',               dci:'Trastuzumab',          dosages:[600],         forme:'Injection sous-cutanée', cond:'B1',  qteStock:30,  prixUnit:380000, statutTarif:'Payant'},
   // â”€â”€ Support / Autres â”€â”€
   {name:'Kytril (Granisetron)',    dci:'Granisetron',          dosages:[3],           forme:'Injectable', cond:'B5',  qteStock:200, prixUnit:6500},
   {name:'Hydrocortisone',          dci:'Hydrocortisone',       dosages:[100,500],     forme:'Injectable', cond:'B10', qteStock:200, prixUnit:2500},
@@ -4736,6 +4740,8 @@ function importCatalogExcel(input){
         const dosagesRaw= (getCol('dosage','presentation','flacon','mg') || '').toString();
         const forme     = (getCol('forme','type') || 'Injectable').toString().trim();
         const cond      = (getCol('cond','conditionnement') || 'B1').toString().trim();
+        const statutRaw = (getCol('statut','payant','gratuit','prise en charge') || 'Payant').toString().trim();
+        const statutTarif = normalize(statutRaw).includes('grat') ? 'Gratuit' : 'Payant';
         const prix      = parseFloat((getCol('prix','price','cout','tarif','fcfa') || '0').toString().replace(/[^0-9.]/g,'')) || 0;
         const stock     = parseInt((getCol('stock','qte','quantite') || '0').toString().replace(/[^0-9]/g,'')) || 0;
 
@@ -4756,13 +4762,14 @@ function importCatalogExcel(input){
           catalog[existing].dosages   = dosages;
           catalog[existing].forme     = forme;
           catalog[existing].cond      = cond;
+          catalog[existing].statutTarif = statutTarif;
           if(prix > 0) catalog[existing].prixUnit = prix;
           const currentStock = parseInt(catalog[existing].qteStock ?? catalog[existing].stock ?? 0) || 0;
           catalog[existing].qteStock  = cumulateExistingStock ? currentStock + stock : stock;
           updated++;
         } else {
           // Add new entry
-          catalog.push({name, dci, dosages, forme, cond, qteStock:stock, prixUnit:prix});
+          catalog.push({name, dci, dosages, forme, cond, statutTarif, qteStock:stock, prixUnit:prix});
           added++;
         }
       });
@@ -4797,12 +4804,13 @@ function exportCatalogExcel(){
     'Dosages (mg)': (d.dosages||[]).join(', '),
     'Forme':        d.forme || 'Injectable',
     'Conditionnement': d.cond || 'B1',
+    'Statut':       d.statutTarif || d.statut || 'Payant',
     'Prix/flacon (FCFA)': d.prixUnit || 0,
     'Stock (flacons)': d.qteStock ?? d.stock ?? 0,
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
   // Column widths
-  ws['!cols'] = [30,22,18,14,18,22,18].map(w=>({wch:w}));
+  ws['!cols'] = [30,22,18,14,18,14,22,18].map(w=>({wch:w}));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Catalogue');
   XLSX.writeFile(wb, 'Catalogue_Pharmacie_CHNCAK.xlsx');
@@ -4817,6 +4825,7 @@ function downloadCatalogTemplate(){
       'Dosages (mg)': '50, 100',
       'Forme':        'Injectable',
       'Conditionnement': 'B1',
+      'Statut':       'Payant',
       'Prix/flacon (FCFA)': 45000,
       'Stock (flacons)': 50,
     },
@@ -4826,6 +4835,7 @@ function downloadCatalogTemplate(){
       'Dosages (mg)': '10, 50',
       'Forme':        'Injectable',
       'Conditionnement': 'B1',
+      'Statut':       'Payant',
       'Prix/flacon (FCFA)': 8000,
       'Stock (flacons)': 50,
     },
@@ -4835,6 +4845,7 @@ function downloadCatalogTemplate(){
       'Dosages (mg)': '150, 450',
       'Forme':        'Injectable',
       'Conditionnement': 'B1',
+      'Statut':       'Payant',
       'Prix/flacon (FCFA)': 35000,
       'Stock (flacons)': 100,
     },
@@ -4844,12 +4855,13 @@ function downloadCatalogTemplate(){
       'Dosages (mg)': '[ex: 100, 500]',
       'Forme':        'Injectable',
       'Conditionnement': 'B1',
+      'Statut':       'Payant ou Gratuit',
       'Prix/flacon (FCFA)': 0,
       'Stock (flacons)': 0,
     },
   ];
   const ws = XLSX.utils.json_to_sheet(template);
-  ws['!cols'] = [28,22,18,14,18,22,18].map(w=>({wch:w}));
+  ws['!cols'] = [28,22,18,14,18,14,22,18].map(w=>({wch:w}));
   // Style header row note
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Modèle_Catalogue');
@@ -4908,6 +4920,7 @@ function renderCatalogTable(){
   tbody.innerHTML = catalog.map((d,i)=>{
     const stock = d.qteStock ?? d.stock ?? 0;
     const prix = d.prixUnit ?? d.prix ?? 0;
+    const statutTarif = d.statutTarif || d.statut || 'Payant';
     const stockLow = stock <= 5;
     const stockCrit = stock <= 2;
     const dosagesStr = (d.dosages||d.flacons||[]).join(' / ')+' mg';
@@ -4916,6 +4929,12 @@ function renderCatalogTable(){
       <td style="padding:7px 8px;font-size:11px;color:var(--gray-mid)">${d.dci||''}</td>
       <td style="padding:7px 8px;font-size:12px;font-weight:500">${dosagesStr}</td>
       <td style="padding:7px 8px;font-size:11px;color:var(--gray-mid)">${d.cond||'B1'}</td>
+      <td style="padding:4px 6px">
+        <select data-idx="${i}" data-field="statutTarif" style="width:95px;padding:5px 7px;font-size:12px;border:1px solid var(--gray-border);border-radius:4px;background:white" onchange="updateCatalogField(${i},'statutTarif',this.value)">
+          <option value="Payant" ${statutTarif==='Payant'?'selected':''}>Payant</option>
+          <option value="Gratuit" ${statutTarif==='Gratuit'?'selected':''}>Gratuit</option>
+        </select>
+      </td>
       <td style="padding:4px 6px">
         <input type="number" value="${prix}" data-idx="${i}" data-field="prixUnit"
           placeholder="FCFA" style="width:100px;padding:5px 7px;font-size:12px;border:1px solid var(--gray-border);border-radius:4px"
@@ -4934,7 +4953,7 @@ function renderCatalogTable(){
 
 function updateCatalogField(idx, field, val){
   if(!catalog[idx]) return;
-  catalog[idx][field] = parseFloat(val)||0;
+  catalog[idx][field] = field === 'statutTarif' ? (val === 'Gratuit' ? 'Gratuit' : 'Payant') : (parseFloat(val)||0);
   localStorage.setItem('chncak_catalog', JSON.stringify(catalog));
   // Silently refresh pharma calc if visible
   if(document.getElementById('page-pharmacie').classList.contains('active')) renderPharmacie();
