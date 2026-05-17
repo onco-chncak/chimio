@@ -3305,8 +3305,9 @@
       .proto-editor-grid{display:grid;grid-template-columns:1.2fr 1.2fr 140px 1fr;gap:10px}
       .proto-editor-grid label:nth-child(4),.proto-editor-grid label:nth-child(5),.proto-editor-grid label:nth-child(6),.proto-editor-grid label:nth-child(7){grid-column:span 2}
       .proto-drug-grid{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-      .proto-drug-line{display:grid;grid-template-columns:70px minmax(180px,1.25fr) 115px 105px 110px 115px 90px 95px minmax(150px,1fr) 100px 130px 30px;gap:7px;align-items:center;background:#f8fbff;border:1px solid #dbe5f2;border-radius:8px;padding:8px}
+      .proto-drug-line{display:grid;grid-template-columns:70px minmax(220px,1.5fr) 120px 115px 120px 130px;gap:8px;align-items:center;background:#f8fbff;border:1px solid #dbe5f2;border-radius:8px;padding:9px}
       .proto-drug-line input,.proto-drug-line select{min-width:0}
+      .proto-drug-line [data-field="freq"]{min-width:180px}
       .unit-input{display:flex;align-items:center;gap:4px}
       .unit-input span{font-size:10px;color:#607080}
       .light-check{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center;gap:5px;font-size:11px!important;font-weight:800!important;color:#17324d!important;white-space:normal!important;line-height:1.1}
