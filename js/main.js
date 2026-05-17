@@ -4635,41 +4635,41 @@ function printDoc(double){
 // {name, dci, dosages:[mg], forme, cond, qteStock, prixUnit(FCFA), statutTarif}
 const DEFAULT_CATALOG = [
   // â”€â”€ Platines â”€â”€
-  {name:'OXALIPLATINE',            dci:'Oxaliplatine',         dosages:[50,100],      forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:45000},
-  {name:'CISPLATINE',              dci:'Cisplatine',           dosages:[10,50],       forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:8000},
-  {name:'CARBOPLATINE',            dci:'Carboplatine',         dosages:[150,450],     forme:'Injectable', cond:'B1',  qteStock:100, prixUnit:35000},
+  {name:'OXALIPLATINE',            dci:'Oxaliplatine',         dosages:[50,100],      forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:45000, statutTarif:'Payant'},
+  {name:'CISPLATINE',              dci:'Cisplatine',           dosages:[10,50],       forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:8000, statutTarif:'Gratuit'},
+  {name:'CARBOPLATINE',            dci:'Carboplatine',         dosages:[150,450],     forme:'Injectable', cond:'B1',  qteStock:100, prixUnit:35000, statutTarif:'Gratuit'},
   // â”€â”€ Taxanes â”€â”€
-  {name:'TAXOL (Paclitaxel)',      dci:'Paclitaxel',           dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:200, prixUnit:120000},
-  {name:'TAXOTÈRE (Docétaxel)',    dci:'Docetaxel',            dosages:[20,80],       forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:95000},
+  {name:'TAXOL (Paclitaxel)',      dci:'Paclitaxel',           dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:200, prixUnit:120000, statutTarif:'Gratuit'},
+  {name:'TAXOTÈRE (Docétaxel)',    dci:'Docetaxel',            dosages:[20,80],       forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:95000, statutTarif:'Gratuit'},
   // â”€â”€ Anthracyclines â”€â”€
-  {name:'DOXORUBICINE',            dci:'Doxorubicine',         dosages:[50],          forme:'Injectable', cond:'B1',  qteStock:100, prixUnit:28000},
-  {name:'ÉPIRUBICINE',             dci:'Epirubicine',          dosages:[50],          forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:32000},
+  {name:'DOXORUBICINE',            dci:'Doxorubicine',         dosages:[50],          forme:'Injectable', cond:'B1',  qteStock:100, prixUnit:28000, statutTarif:'Gratuit'},
+  {name:'ÉPIRUBICINE',             dci:'Epirubicine',          dosages:[50],          forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:32000, statutTarif:'Gratuit'},
   // â”€â”€ Alkylants â”€â”€
-  {name:'CYCLOPHOSPHAMIDE',        dci:'Cyclophosphamide',     dosages:[500,1000],    forme:'Injectable', cond:'B1',  qteStock:100, prixUnit:12000},
+  {name:'CYCLOPHOSPHAMIDE',        dci:'Cyclophosphamide',     dosages:[500,1000],    forme:'Injectable', cond:'B1',  qteStock:100, prixUnit:12000, statutTarif:'Gratuit'},
   // â”€â”€ Antimétabolites â”€â”€
-  {name:'GEMCITABINE',             dci:'Gemcitabine',          dosages:[1000,200],    forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:55000},
-  {name:'5-FLUOROURACILE',         dci:'Fluoro 5 uracile',    dosages:[500],         forme:'Injectable', cond:'B10', qteStock:100, prixUnit:4500},
-  {name:'LEUCOVORINE (LV)',        dci:'Folinate de calcium',  dosages:[50],          forme:'Injectable', cond:'B5',  qteStock:30,  prixUnit:5000},
-  {name:'MÉTHOTREXATE',            dci:'Méthotrexate',         dosages:[500],         forme:'Injectable', cond:'B5',  qteStock:20,  prixUnit:15000},
+  {name:'GEMCITABINE',             dci:'Gemcitabine',          dosages:[1000,200],    forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:55000, statutTarif:'Payant'},
+  {name:'5-FLUOROURACILE',         dci:'Fluoro 5 uracile',    dosages:[500],         forme:'Injectable', cond:'B10', qteStock:100, prixUnit:4500, statutTarif:'Gratuit'},
+  {name:'LEUCOVORINE (LV)',        dci:'Folinate de calcium',  dosages:[50],          forme:'Injectable', cond:'B5',  qteStock:30,  prixUnit:5000, statutTarif:'Gratuit'},
+  {name:'MÉTHOTREXATE',            dci:'Méthotrexate',         dosages:[500],         forme:'Injectable', cond:'B5',  qteStock:20,  prixUnit:15000, statutTarif:'Gratuit'},
   // â”€â”€ Topo-isomérases â”€â”€
-  {name:'IRINOTÉCAN',              dci:'Irinotecan',           dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:30,  prixUnit:85000},
-  {name:'ÉTOPOSIDE',               dci:'Etoposide',            dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:30,  prixUnit:18000},
+  {name:'IRINOTÉCAN',              dci:'Irinotecan',           dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:30,  prixUnit:85000, statutTarif:'Gratuit'},
+  {name:'ÉTOPOSIDE',               dci:'Etoposide',            dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:30,  prixUnit:18000, statutTarif:'Payant'},
   // â”€â”€ Thérapies ciblées â”€â”€
-  {name:'AVASTIN (Bévacizumab)',   dci:'Bevacizumab',         dosages:[400],         forme:'Injectable', cond:'B1',  qteStock:10,  prixUnit:450000},
+  {name:'AVASTIN (Bévacizumab)',   dci:'Bevacizumab',         dosages:[400],         forme:'Injectable', cond:'B1',  qteStock:10,  prixUnit:450000, statutTarif:'Payant'},
   {name:'HERCEPTIN',               dci:'Trastuzumab',          dosages:[600],         forme:'Injection sous-cutanée', cond:'B1',  qteStock:30,  prixUnit:380000, statutTarif:'Payant'},
   // â”€â”€ Support / Autres â”€â”€
-  {name:'Kytril (Granisetron)',    dci:'Granisetron',          dosages:[3],           forme:'Injectable', cond:'B5',  qteStock:200, prixUnit:6500},
-  {name:'Hydrocortisone',          dci:'Hydrocortisone',       dosages:[100,500],     forme:'Injectable', cond:'B10', qteStock:200, prixUnit:2500},
-  {name:'DACARBAZINE',             dci:'Dacarbazine',          dosages:[400],         forme:'Injectable', cond:'B10', qteStock:30,  prixUnit:22000},
-  {name:'BLÉOMYCINE',              dci:'Bléomycine',           dosages:[15],          forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:18000},
-  {name:'VINCRISTINE',             dci:'Vincristine',          dosages:[1],           forme:'Injectable', cond:'B10', qteStock:20,  prixUnit:9000},
-  {name:'VINBLASTINE',             dci:'Vinblastine',          dosages:[10],          forme:'Injectable', cond:'B10', qteStock:20,  prixUnit:14000},
-  {name:'NAVELBINE',               dci:'Vinorelbine',          dosages:[50],          forme:'Injectable', cond:'B5',  qteStock:30,  prixUnit:35000},
-  {name:'CYTARABINE',              dci:'Cytarabine',           dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:8000},
-  {name:'TÉMOZOLOMIDE',            dci:'Temozolomide',         dosages:[20,100],      forme:'Injectable', cond:'B5',  qteStock:10,  prixUnit:95000},
-  {name:'PEMETREXED',              dci:'Pemextred',            dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:220000},
-  {name:'FILGRASTIM (G-CSF)',      dci:'Filgrastim',           dosages:[30],          forme:'Injectable', cond:'B10', qteStock:100, prixUnit:18000},
-  {name:'ZOMETA',                  dci:'Acide zolédronique',  dosages:[4],           forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:45000},
+  {name:'Kytril (Granisetron)',    dci:'Granisetron',          dosages:[3],           forme:'Injectable', cond:'B5',  qteStock:200, prixUnit:6500, statutTarif:'Payant'},
+  {name:'Hydrocortisone',          dci:'Hydrocortisone',       dosages:[100,500],     forme:'Injectable', cond:'B10', qteStock:200, prixUnit:2500, statutTarif:'Payant'},
+  {name:'DACARBAZINE',             dci:'Dacarbazine',          dosages:[400],         forme:'Injectable', cond:'B10', qteStock:30,  prixUnit:22000, statutTarif:'Payant'},
+  {name:'BLÉOMYCINE',              dci:'Bléomycine',           dosages:[15],          forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:18000, statutTarif:'Payant'},
+  {name:'VINCRISTINE',             dci:'Vincristine',          dosages:[1],           forme:'Injectable', cond:'B10', qteStock:20,  prixUnit:9000, statutTarif:'Gratuit'},
+  {name:'VINBLASTINE',             dci:'Vinblastine',          dosages:[10],          forme:'Injectable', cond:'B10', qteStock:20,  prixUnit:14000, statutTarif:'Gratuit'},
+  {name:'NAVELBINE',               dci:'Vinorelbine',          dosages:[50],          forme:'Injectable', cond:'B5',  qteStock:30,  prixUnit:35000, statutTarif:'Payant'},
+  {name:'CYTARABINE',              dci:'Cytarabine',           dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:8000, statutTarif:'Payant'},
+  {name:'TÉMOZOLOMIDE',            dci:'Temozolomide',         dosages:[20,100],      forme:'Injectable', cond:'B5',  qteStock:10,  prixUnit:95000, statutTarif:'Payant'},
+  {name:'PEMETREXED',              dci:'Pemextred',            dosages:[100],         forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:220000, statutTarif:'Payant'},
+  {name:'FILGRASTIM (G-CSF)',      dci:'Filgrastim',           dosages:[30],          forme:'Injectable', cond:'B10', qteStock:100, prixUnit:18000, statutTarif:'Payant'},
+  {name:'ZOMETA',                  dci:'Acide zolédronique',  dosages:[4],           forme:'Injectable', cond:'B1',  qteStock:50,  prixUnit:45000, statutTarif:'Payant'},
 ];
 
 let catalog = JSON.parse(localStorage.getItem('chncak_catalog') || 'null') || DEFAULT_CATALOG;
