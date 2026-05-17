@@ -502,10 +502,11 @@
     if(Array.isArray(official.catalog) && official.catalog.length){
       const currentOfficialCatalogVersion = localStorage.getItem('chncak_official_catalog_version');
       if(currentOfficialCatalogVersion !== official.version){
-        writeJson(STORAGE.catalog, official.catalog);
+        const cleanCatalog = cleanPharmacyCatalog(official.catalog);
+        writeJson(STORAGE.catalog, cleanCatalog);
         localStorage.setItem('chncak_official_catalog_version', official.version || todayIso());
-        try { if(Array.isArray(window.catalog)) window.catalog = official.catalog; } catch(e) {}
-        try { if(typeof catalog !== 'undefined') catalog = official.catalog; } catch(e) {}
+        try { if(Array.isArray(window.catalog)) window.catalog = cleanCatalog; } catch(e) {}
+        try { if(typeof catalog !== 'undefined') catalog = cleanCatalog; } catch(e) {}
       }
     }
   }
@@ -579,7 +580,7 @@
       const native = calcFlacons(name, dose);
       if(native && native.drug) return native;
     }
-    const catalog = readJson(STORAGE.catalog, []);
+    const catalog = cleanPharmacyCatalog(readJson(STORAGE.catalog, []));
     const item = findCatalogItem(name, catalog);
     const sizes = (item?.dosages || item?.flacons || []).map(Number).filter(Boolean).sort((a,b) => b-a);
     if(!item || !sizes.length || !dose) return null;
@@ -604,7 +605,7 @@
     if(raw.includes('cisplatine hebdo')) return 'cisplatine hebdo';
     if(raw.includes('cisplat')) return 'cisplatine';
     if(raw.includes('carboplat')) return 'carboplatine';
-    if(raw.includes('taxol hebdo')) return 'taxol hebdo';
+    if(raw.includes('taxol hebdo')) return 'taxol';
     if(raw.includes('taxol') || raw.includes('paclitaxel')) return 'taxol';
     if(raw.includes('taxot') || raw.includes('docetax')) return 'taxotere';
     if(raw.includes('gemcitab')) return 'gemcitabine';
@@ -621,12 +622,36 @@
     if(raw.includes('vinblast')) return 'vinblastine';
     if(raw.includes('dacarb')) return 'dacarbazine';
     if(raw.includes('ritux')) return 'rituximab';
-    if(raw.includes('magnesium')) return 'magnesium';
-    if(raw.includes('calcium')) return 'calcium';
-    if(raw.includes('prednisone')) return 'prednisone';
-    if(raw.includes('nacl') || raw.includes('ssi') || raw.includes('chlorure')) return 'nacl';
-    if(raw.includes('glucose') || raw.includes('g5')) return 'g5';
+    if(raw.includes('magnesium')) return 'support magnesium';
+    if(raw.includes('calcium')) return 'support calcium';
+    if(raw.includes('prednisone')) return 'support prednisone';
+    if(raw.includes('nacl') || raw.includes('ssi') || raw.includes('chlorure')) return 'support nacl';
+    if(raw.includes('glucose') || raw.includes('g5')) return 'support g5';
     return raw.replace(/\b\d+(?:[.,]\d+)?\s*(mg|ml|ui|g|cc|amp|cp)\b/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  function isSupportOnlyDrug(name){
+    return ['support magnesium','support calcium','support prednisone','support nacl','support g5'].includes(catalogAliasKey(name));
+  }
+
+  function cleanPharmacyCatalog(list){
+    const seen = new Set();
+    const clean = [];
+    (Array.isArray(list) ? list : []).forEach(item => {
+      if(!item) return;
+      if(isSupportOnlyDrug(item.name) || isSupportOnlyDrug(item.dci)) return;
+      const alias = catalogAliasKey(val(item.name, item.dci));
+      const key = alias === 'taxol' ? 'taxol' : (alias || norm(item.name));
+      const existing = clean.find(x => ((catalogAliasKey(x.name) === 'taxol' ? 'taxol' : catalogAliasKey(x.name)) || norm(x.name)) === key);
+      if(existing){
+        existing.qteStock = Math.max(Number(val(existing.qteStock, existing.stock, 0)), Number(val(item.qteStock, item.stock, 0)));
+        existing.prixUnit = Number(val(existing.prixUnit, existing.prix, 0)) || Number(val(item.prixUnit, item.prix, 0)) || 0;
+        return;
+      }
+      seen.add(key);
+      clean.push(alias === 'taxol' ? {...item, name:'TAXOL (Paclitaxel)', dci:'Paclitaxel'} : item);
+    });
+    return clean;
   }
 
   function findCatalogItem(name, list){
@@ -642,22 +667,17 @@
 
   function protocolCatalogDefaults(){
     const defaults = [
-      ['Magnésium 10%','Sulfate de magnesium',[10],'Ampoule'],
-      ['Calcium 10%','Gluconate de calcium',[10],'Ampoule'],
       ['CISPLATINE HEBDO','Cisplatine',[50],'Injectable'],
-      ['TAXOL HEBDO','Paclitaxel',[100,300],'Injectable'],
+      ['TAXOL (Paclitaxel)','Paclitaxel',[100,300],'Injectable'],
       ['Acide folinique','Acide folinique',[50],'Injectable'],
-      ['Prednisone per os','Prednisone',[20],'Comprime'],
-      ['RITUXIMAB','Rituximab',[100,500],'Injectable'],
-      ['NaCl 0.9% 250ml','Chlorure de sodium 0.9%',[250],'Solvant'],
-      ['NaCl 0.9% 500ml','Chlorure de sodium 0.9%',[500],'Solvant'],
-      ['Glucose 5% 250ml','Glucose 5%',[250],'Solvant']
+      ['RITUXIMAB','Rituximab',[100,500],'Injectable']
     ];
     return defaults.map(([name,dci,dosages,forme]) => ({name,dci,dosages,forme,cond:'',qteStock:0,prixUnit:0}));
   }
 
   function ensureProtocolCatalogCompleteness(){
-    const list = readJson(STORAGE.catalog, []);
+    const original = readJson(STORAGE.catalog, []);
+    const list = cleanPharmacyCatalog(original);
     let changed = false;
     protocolCatalogDefaults().forEach(item => {
       if(!findCatalogItem(item.name, list)){
@@ -668,11 +688,12 @@
     protocolsList().forEach(proto => (proto.drugs || []).forEach(drug => {
       if(!drug || drug.t || drug.oral || !(drug.name || drug.label)) return;
       const name = drug.name || drug.label;
+      if(isSupportOnlyDrug(name)) return;
       if(findCatalogItem(name, list)) return;
       list.push({name, dci:name, dosages:[], forme:'A completer', cond:'', qteStock:0, prixUnit:0});
       changed = true;
     }));
-    if(changed) syncCatalogGlobal(list);
+    if(changed || list.length !== original.length) syncCatalogGlobal(list);
   }
 
   function deductStockForPatient(patient, sourceLabel){
@@ -682,7 +703,7 @@
     let updated = 0;
     const warnings = [];
     const details = [];
-    (proto.drugs || []).filter(d => !d.t && !d.oral && (d.mgm2 || d.mgkg || d.avastin || typeof d.fix === 'number')).forEach(drug => {
+    (proto.drugs || []).filter(d => !d.t && !d.oral && !isSupportOnlyDrug(d.name) && (d.mgm2 || d.mgkg || d.avastin || typeof d.fix === 'number')).forEach(drug => {
       const dose = doseForDrug(drug, patient);
       if(!dose){ warnings.push(`${drug.name}: dose non calculable.`); return; }
       const calc = calcDrugFlacons(drug.name, dose);
@@ -1511,6 +1532,7 @@
   };
 
   function syncCatalogGlobal(list){
+    list = cleanPharmacyCatalog(list);
     writeJson(STORAGE.catalog, list);
     try { if(Array.isArray(window.catalog)) window.catalog = list; } catch(e) {}
     try { if(typeof catalog !== 'undefined') catalog = list; } catch(e) {}
@@ -2833,6 +2855,7 @@
     }
     if(!isAdminUser()){
       document.querySelectorAll('button,label').forEach(el => {
+        if(isPharmacienUser() && el.closest('#page-pharmacie')) return;
         const text = norm(el.textContent || '');
         if(text.includes('effacer historique') || text === 'effacer' || text.includes('restaurer') || text.includes('ajouter un protocole') || text.includes('importer un protocole')) el.style.display = 'none';
       });

@@ -342,7 +342,7 @@ const PROTOCOLS = [
       {t:'r',label:'Réhydratation 500 cc SSI 0.9%',dur:'30 mn'},
       {name:'Hydrocortisone',fix:200,unit:'mg',sol:'10 cc SSI',dur:'5 mn',ryt:'J1, J8, J15'},
       {name:'Kytril',fix:3,unit:'mg',sol:'15 cc SSI 0.9%',dur:'2 mn',ryt:'J1, J8, J15'},
-      {name:'TAXOL HEBDO',mgm2:80,unit:'mg',sol:'250 cc SSI 0.9%',dur:'60 mn',ryt:'J1, J8, J15',hl:true,note:'Tubulure non-PVC obligatoire'},
+      {name:'TAXOL (Paclitaxel)',mgm2:80,unit:'mg',sol:'250 cc SSI 0.9%',dur:'60 mn',ryt:'J1, J8, J15',hl:true,note:'Tubulure non-PVC obligatoire'},
       {t:'r',label:'Réhydratation 500 cc SSI 0.9%',dur:'30 mn'},
     ]
   },
@@ -1294,7 +1294,7 @@ function renderPreparation(){
   `;
 
   // Active drugs (exclude rehydration/rinçage and fixed support drugs)
-  const activeDrugs = proto.drugs.filter(d=>!d.t && (d.mgm2||d.carbo||d.avastin||d.fix));
+  const activeDrugs = proto.drugs.filter(d=>!d.t && !/magn[ée]?sium|calcium|prednisone|nacl|glucose|g5|ssi/i.test(d.name || '') && (d.mgm2||d.carbo||d.avastin||d.fix));
   let stepNum = 0;
   let allPrecautions = [];
   let materiel = new Set(['Gants stériles','Masque','Lunettes de protection','Hotte à flux laminaire','Seringues stériles (diverses)','Aiguilles stériles','Compresses stériles','Étiquettes médicaments']);
@@ -1642,10 +1642,10 @@ function validatePreparation(){
 
 Cela déduira les flacons utilisés du stock.`)) return;
 
-  const activeDrugs = proto.drugs.filter(d=>!d.t && (d.mgm2||d.carbo||d.avastin||d.fix));
+  const activeDrugs = proto.drugs.filter(d=>!d.t && !/magn[ée]?sium|calcium|prednisone|nacl|glucose|g5|ssi/i.test(d.name || '') && (d.mgm2||d.carbo||d.avastin||d.fix));
   let updated = 0, warnings = [];
 
-  activeDrugs.forEach(d=>{
+  activeDrugs.filter(d => !/magn[ée]?sium|calcium|prednisone|nacl|glucose|g5|ssi/i.test(d.name || '')).forEach(d=>{
     const dose = getDose(d);
     if(!dose.val) return;
     const calc = calcFlacons(d.name, dose.val);
@@ -1727,7 +1727,7 @@ function printPreparation(){
   const cureN     = document.getElementById('cure-num').value||'';
 
   // Build one row per active drug
-  const activeDrugs = proto.drugs.filter(d => !d.t && (d.mgm2||d.carbo||d.avastin||d.fix));
+  const activeDrugs = proto.drugs.filter(d => !d.t && !/magn[ée]?sium|calcium|prednisone|nacl|glucose|g5|ssi/i.test(d.name || '') && (d.mgm2||d.carbo||d.avastin||d.fix));
 
   let tableRows = '';
   let stepNum = 0;
@@ -3734,7 +3734,7 @@ function validateStockFromRdv(id){
 
   if(!confirm(`Valider la sortie stock pour :\n${rdv.prenom} ${rdv.nom} — ${rdv.proto}\nDate RDV : ${rdv.dateRdv}\n\nCela déduira les flacons du stock.`)) return;
 
-  const activeDrugs = proto.drugs.filter(d=>!d.t && (d.mgm2||d.carbo||d.avastin||d.fix));
+  const activeDrugs = proto.drugs.filter(d=>!d.t && !/magn[ée]?sium|calcium|prednisone|nacl|glucose|g5|ssi/i.test(d.name || '') && (d.mgm2||d.carbo||d.avastin||d.fix));
   let updated=0, warnings=[];
 
   activeDrugs.forEach(d=>{
