@@ -137,18 +137,15 @@ const PROTOCOLS = [
     ]
   },
   {
-    id:'xeliri', name:'XELIRI + Avastin', rythme:'J1=J21',
-    detail:'Irinotécan 240 mg/m² + Avastin 15 mg/kg + Capécitabine 2000 mg/m²',
+    id:'xeliri', name:'XELIRI', rythme:'J1=J21',
+    detail:'Irinotécan 240 mg/m² avec Capécitabine 2000 mg/m²',
     badge:'J1=J21', badgeClass:'b21', hasCape:true,
     drugs:[
       {t:'r',label:'Réhydratation 500 cc SSI 0.9%',dur:'30 mn'},
       {name:'Hydrocortisone',fix:200,unit:'mg',sol:'10 cc SSI',dur:'5 mn',ryt:'J1=J21'},
       {name:'Kytril',fix:3,unit:'mg',sol:'5 cc SSI 0.9%',dur:'2 mn',ryt:'J1=J21'},
-      {name:'Magnésium 10%',fix:'2 amp',sol:'250 cc G5%',dur:'30 mn',ryt:'J1=J21'},
-      {name:'Calcium 10%',fix:'2 amp',sol:'(avec Mg)',dur:'—',ryt:'J1=J21'},
       {name:'IRINOTÉCAN',mgm2:240,unit:'mg',sol:'500 cc G5%',dur:'60 mn',ryt:'J1=J21',hl:true},
-      {name:'AVASTIN (Bévacizumab)',avastin:true,unit:'mg',sol:'250 cc SSI 0.9%',dur:'2 mn',ryt:'J1=J21',hl:true},
-      {t:'r',label:'Réhydratation 500 cc SSI 0.9%',dur:'30 mn'},
+      {t:'r',label:'Rinçage 250 cc SSI 0.9%',dur:'30 mn'},
       {name:'Capécitabine per os',mgm2:2000,unit:'mg',sol:'—',dur:'J2–J14',ryt:'J1=J21',hl:true,oral:true,capeQty:2000},
     ]
   },
@@ -356,13 +353,14 @@ const PROTOCOLS = [
   name: 'EC100',
   rythme: 'J21',
   indication: 'Cancer du sein adjuvant/néoadjuvant',
-  detail: 'Epirubicine 100 mg/m² J1 + Cyclophosphamide 600 mg/m² J1',
+  detail: 'Epirubicine 100 mg/m² J1 avec Cyclophosphamide 600 mg/m² J1',
   badge: 'J21',
   badgeClass: 'b21',
   drugs: [
-    {name:'Epirubicine 50mg', unit:'mg', calc:'sc', coef:100, base:'m2'},
-    {name:'Cyclophosphamide 500mg', unit:'mg', calc:'sc', coef:600, base:'m2'},
-    {name:'NaCl 0.9% 250ml', unit:'ml', calc:'fix', coef:250}
+    {t:'r',label:'Réhydratation 250 cc SSI 0.9%',dur:'30 mn'},
+    {name:'ÉPIRUBICINE', unit:'mg', calc:'sc', coef:100, base:'m2', sol:'100 cc SSI 0.9%', dur:'15 mn', note:'Protéger contre la lumière'},
+    {t:'r',label:'Rinçage 250 cc SSI 0.9%',dur:'30 mn'},
+    {name:'CYCLOPHOSPHAMIDE', unit:'mg', calc:'sc', coef:600, base:'m2', sol:'250 cc SG 5%', dur:'60 mn'}
   ],
   supports: ['ONDANSETRON 8MG', 'DEXAMETHASONE 20MG', 'METOCLOPRAMIDE 10MG'],
   pre: 'Bilan : NFS plaquettes, créatinine, ECG, FEVG',
@@ -375,14 +373,15 @@ const PROTOCOLS = [
   name: 'XELIRI',
   rythme: 'J21',
   indication: 'Cancer colorectal métastatique',
-  detail: 'Irinotécan 200 mg/m² J1 + Capécitabine 2000 mg/m²/j J1-14',
+  detail: 'Irinotécan 200 mg/m² J1 avec Capécitabine 2000 mg/m²/j J1-14',
   badge: 'J21',
   badgeClass: 'b21',
   hasCape: true,
   drugs: [
-    {name:'Irinotécan 100mg', unit:'mg', calc:'sc', coef:200, base:'m2'},
-    {name:'Capécitabine 500mg', unit:'cp', calc:'sc', coef:2000, base:'m2', t:true, oral:true, capeQty:2000},
-    {name:'Glucose 5% 250ml', unit:'ml', calc:'fix', coef:250}
+    {t:'r',label:'Réhydratation 250 cc SSI 0.9%',dur:'30 mn'},
+    {name:'IRINOTÉCAN', unit:'mg', calc:'sc', coef:200, base:'m2', sol:'250 cc SG 5%', dur:'90 mn'},
+    {t:'r',label:'Rinçage 250 cc SSI 0.9%',dur:'30 mn'},
+    {name:'Capécitabine per os', unit:'cp', calc:'sc', coef:2000, base:'m2', oral:true, capeQty:2000}
   ],
   supports: ['ONDANSETRON 8MG', 'DEXAMETHASONE 20MG'],
   pre: 'Bilan : NFS, créatinine, bilirubine totale',
@@ -409,16 +408,17 @@ const PROTOCOLS = [
 
 {
   id: 'avastin_zometa',
-  name: 'AVASTIN + ZOMETA',
+  name: 'AVASTIN ZOMETA',
   rythme: 'J28',
   indication: 'Cancer métastatique avec atteinte osseuse',
-  detail: 'Bevacizumab 5 mg/kg + Acide zolédronique 4 mg',
+  detail: 'Bevacizumab 5 mg/kg avec Acide zolédronique 4 mg',
   badge: 'J28',
   badgeClass: 'b28',
   drugs: [
-    {name:'Bevacizumab 100mg', unit:'mg', calc:'poids', coef:5, base:'kg'},
-    {name:'Acide zolédronique 4mg', unit:'mg', calc:'fix', coef:4},
-    {name:'NaCl 0.9% 250ml', unit:'ml', calc:'fix', coef:250}
+    {t:'r',label:'Réhydratation 250 cc SSI 0.9%',dur:'30 mn'},
+    {name:'AVASTIN (Bévacizumab)', unit:'mg', calc:'poids', coef:5, base:'kg', sol:'100 cc SSI 0.9%', dur:'30 mn'},
+    {t:'r',label:'Rinçage 250 cc SSI 0.9%',dur:'30 mn'},
+    {name:'ZOMETA', unit:'mg', calc:'fix', coef:4, sol:'100 cc SSI 0.9%', dur:'15 mn'}
   ],
   supports: ['ONDANSETRON 8MG', 'PARACETAMOL 1G'],
   pre: 'Créatinine, protéinurie, TA, bilan dentaire (avant Zometa)',
@@ -428,16 +428,17 @@ const PROTOCOLS = [
 
 {
   id: 'gem_avastin',
-  name: 'GEMCITABINE + AVASTIN',
+  name: 'GEMCITABINE AVASTIN',
   rythme: 'J21',
   indication: 'Cancer de l\'ovaire récidivant',
-  detail: 'Gemcitabine 1000 mg/m² J1,J8 + Bevacizumab 10 mg/kg J1',
+  detail: 'Gemcitabine 1000 mg/m² J1,J8 avec Bevacizumab 10 mg/kg J1',
   badge: 'J21',
   badgeClass: 'b21',
   drugs: [
-    {name:'Gemcitabine 1g', unit:'mg', calc:'sc', coef:1000, base:'m2'},
-    {name:'Bevacizumab 100mg', unit:'mg', calc:'poids', coef:10, base:'kg'},
-    {name:'NaCl 0.9% 500ml', unit:'ml', calc:'fix', coef:500}
+    {t:'r',label:'Réhydratation 250 cc SSI 0.9%',dur:'30 mn'},
+    {name:'GEMCITABINE', unit:'mg', calc:'sc', coef:1000, base:'m2', sol:'250 cc SSI 0.9%', dur:'30 mn'},
+    {t:'r',label:'Rinçage 250 cc SSI 0.9%',dur:'30 mn'},
+    {name:'AVASTIN (Bévacizumab)', unit:'mg', calc:'poids', coef:10, base:'kg', sol:'100 cc SSI 0.9%', dur:'30 mn'}
   ],
   supports: ['ONDANSETRON 8MG', 'DEXAMETHASONE 8MG'],
   pre: 'NFS plaquettes, créatinine, protéinurie',

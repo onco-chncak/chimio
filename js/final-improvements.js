@@ -230,7 +230,7 @@
     gemcitabine: 'Ontario Health/CCO - gemcitabine; validation service CHNCAK.',
     gemox: 'Ontario Health/CCO - GEMOX gemcitabine oxaliplatine; validation service CHNCAK.',
     taxotere: 'Ontario Health/CCO - docetaxel; validation service CHNCAK.',
-    xeliri: 'Ontario Health/CCO - XELIRI +/- bevacizumab selon indication; validation service CHNCAK.',
+    xeliri: 'Ontario Health/CCO - XELIRI avec ou sans bevacizumab selon indication; validation service CHNCAK.',
     carbo_taxol175: 'eviQ/BC Cancer - carboplatine paclitaxel J21; validation service CHNCAK.',
     ac60_j21: 'eviQ et Ontario Health/CCO - AC doxorubicine cyclophosphamide J21; validation service CHNCAK.',
     map: 'eviQ MAP et NCI PDQ osteosarcome - methotrexate doxorubicine cisplatine; validation service CHNCAK.',
@@ -292,7 +292,7 @@
     proto.rythme = val(proto.rythme, proto.badge, 'J21');
     proto.badge = val(proto.badge, proto.rythme);
     proto.badgeClass = val(proto.badgeClass, proto.badge_class, proto.rythme.includes('28') ? 'b28' : proto.rythme.includes('14') ? 'b14' : 'b21');
-    proto.drugs = (proto.drugs || []).map(normalizeProtocolDrug).filter(Boolean);
+    proto.drugs = (proto.drugs || []).map(normalizeProtocolDrug).filter(Boolean).sort((a,b) => Number(a.order || 0) - Number(b.order || 0));
     proto.pre = val(proto.pre, proto.bilan, defaultPreForProtocol(proto));
     proto.post = val(proto.post, proto.surveillance, 'Surveillance clinique et biologique selon protocole du service');
     proto.reference = val(readJson('chncak_protocol_references', {})[proto.id], proto.reference, proto.ref, proto.source, proto.bibliographie, defaultReferenceForProtocol(proto));
@@ -2340,6 +2340,7 @@
   function collectProtocolDrugRows(){
     const rows = Array.from(document.querySelectorAll('#proto-drugs-list .proto-drug-line'));
     const drugs = rows.map(row => {
+      const order = Number(row.querySelector('[data-field="order"]')?.value || 0);
       const name = row.querySelector('[data-field="name"]')?.value.trim();
       const calc = row.querySelector('[data-field="calc"]')?.value;
       const coef = Number(row.querySelector('[data-field="coef"]')?.value || 0);
@@ -2352,19 +2353,24 @@
       const light = row.querySelector('[data-field="light"]')?.checked;
       const sol = [solVol ? `${solVol} cc` : '', solvant].filter(Boolean).join(' ');
       const durLabel = dur && /^\d+([.,]\d+)?$/.test(dur) ? `${dur} mn` : dur;
+      const supportLabel = [name, sol].filter(Boolean).join(' ');
+      if(calc === 'support' || /^(nacl|na cl|ssi|sg|g5|glucose|ringer|eau ppi|rinçage|rincage|rehydratation|réhydratation)/i.test(norm(name))){
+        return {t:'r', label:supportLabel || 'Rinçage / réhydratation', dur:durLabel || '30 mn', order};
+      }
       const notes = [];
       if(freq) notes.push(freq);
+      if(order) notes.push(`Ordre de passage: ${order}`);
       if(doseLimit) notes.push(`Alerte dose limite: ${doseLimit} mg`);
       if(light) notes.push('Proteger contre la lumiere');
       if(/cisplat|carbo|oxali/i.test(norm(name))) notes.push('Surveillance ions: Na+, K+, Mg2+, Ca2+');
-      const out = {name, ryt: jours, sol, dur: durLabel, freq:notes.join(' - '), note:notes.join(' - '), hl:true};
+      const out = {name, ryt: jours, sol, dur: durLabel, freq:notes.join(' - '), note:notes.join(' - '), order, hl:true};
       if(calc === 'mgm2') out.mgm2 = coef;
       else if(calc === 'mgkg') out.mgkg = coef;
       else if(calc === 'fix') out.fix = coef;
       else if(calc === 'auc') out.carbo = true;
       else if(calc === 'oral'){ out.oral = true; out.pos = `${coef || ''} mg`.trim(); delete out.hl; }
       return out;
-    }).filter(d => d.name);
+    }).filter(d => d.name || d.label).sort((a,b) => Number(a.order || 0) - Number(b.order || 0));
     const withRinsing = [];
     drugs.forEach((drug, index) => {
       if(index > 0 && drug.hl && drugs[index - 1]?.hl) withRinsing.push({t:'r', label:'Rincage 250 cc SSI 0.9% - faire passer en 30 mn', dur:'30 mn'});
@@ -2386,6 +2392,7 @@
     const durValue = String(d.dur || d.duree || '').match(/^\s*(\d+(?:[.,]\d+)?)\s*(?:mn|min|minutes?)?\s*$/i)?.[1] || String(d.dur || d.duree || '');
     root.insertAdjacentHTML('beforeend', `
       <div class="proto-drug-line">
+        <div class="unit-input"><input data-field="order" type="number" step="1" min="1" placeholder="Ordre" value="${esc(d.order || '')}"><span>ordre</span></div>
         <input data-field="name" list="protocol-drug-options" placeholder="Medicament" value="${esc(d.name || '')}" title="Choisir dans la liste ou taper un nouveau medicament">
         <select data-field="calc">
           <option value="mgm2" ${calc === 'mgm2' ? 'selected' : ''}>mg/m2</option>
@@ -2393,6 +2400,7 @@
           <option value="fix" ${calc === 'fix' ? 'selected' : ''}>dose fixe mg</option>
           <option value="auc" ${calc === 'auc' ? 'selected' : ''}>AUC</option>
           <option value="oral" ${calc === 'oral' ? 'selected' : ''}>per os</option>
+          <option value="support">support / rinçage</option>
         </select>
         <div class="unit-input"><input data-field="coef" type="number" step="0.01" placeholder="Dose" value="${esc(coef)}"><span>mg</span></div>
         <input data-field="jours" placeholder="Jours (ex: J1 J8)" value="${esc(d.ryt || d.jours || '')}">
@@ -2405,9 +2413,9 @@
         </select>
         <div class="unit-input"><input data-field="solvol" type="number" step="1" placeholder="Vol." value="${esc(solVol)}"><span>cc</span></div>
         <div class="unit-input"><input data-field="dur" placeholder="Duree" value="${esc(durValue)}"><span>mn</span></div>
-        <input data-field="freq" placeholder="Frequence / remarque" title="Rythme particulier, ordre de perfusion, remarque clinique..." value="${esc(d.freq || d.frequence || '')}">
+        <input data-field="freq" placeholder="Frequence / remarque" title="Rythme particulier, remarque clinique..." value="${esc(d.freq || d.frequence || '')}">
         <div class="unit-input"><input data-field="limit" type="number" step="0.01" placeholder="Dose limite" value="${esc(d.maxDose || '')}"><span>mg</span></div>
-        <label class="light-check"><input data-field="light" type="checkbox" ${norm(d.note || d.freq).includes('lumiere') ? 'checked' : ''}> Lumiere</label>
+        <label class="light-check"><input data-field="light" type="checkbox" ${norm(d.note || d.freq).includes('lumiere') ? 'checked' : ''}> Protection lumière</label>
         <button type="button" class="proto-remove" title="Retirer" onclick="this.closest('.proto-drug-line').remove()">x</button>
       </div>
     `);
@@ -2480,7 +2488,7 @@
     if(!modal) return;
     refreshProtocolDrugDatalist();
     modal.innerHTML = `
-      <div style="max-width:980px;margin:28px auto;background:white;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);overflow:hidden">
+      <div style="max-width:1280px;margin:18px auto;background:white;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);overflow:hidden">
       <div style="padding:16px 20px;background:linear-gradient(135deg,#0B5E3C,#16a085);color:white;display:flex;justify-content:space-between;align-items:center">
         <h2 style="margin:0;font-size:18px">Ajouter un protocole</h2>
         <button onclick="closeAddProtocoleModal()" style="background:none;border:none;color:white;font-size:24px;cursor:pointer">x</button>
@@ -2543,10 +2551,10 @@
 
   window.downloadProtocolImportTemplate = function(){
     const rows = [
-      ['Nom protocole','Rythme','Bilan utile','Surveillance','Reference scientifique','Medicament','Type calcul','Dose','Unite','Jours','Solvant','Volume solvant cc','Duree','Frequence / remarque','Alerte dose limite mg','Protection lumiere','Oral'],
-      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','Oxaliplatine','mg/m2','85','mg/m2','J1','SG 5%','500','2 h','','','','NON'],
-      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','5-FU','mg/m2','400','mg/m2','J1','NaCl 0.9%','100','Bolus','','','','NON'],
-      ['EXEMPLE ORAL','J21','NFS plaquettes, bilan hepatique','Surveillance clinique','Reference service / guideline validee','Capecitabine','per os','1250','mg','J1-J14','','','','','','OUI']
+      ['Nom protocole','Rythme','Bilan utile','Surveillance','Reference scientifique','Ordre de passage','Medicament','Type calcul','Dose','Unite','Jours','Solvant','Volume solvant cc','Duree','Frequence / remarque','Alerte dose limite mg','Protection lumiere','Oral'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','1','Oxaliplatine','mg/m2','85','mg/m2','J1','SG 5%','500','120','','','NON','NON'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','2','5-FU','mg/m2','400','mg/m2','J1','NaCl 0.9%','100','Bolus','','','NON','NON'],
+      ['EXEMPLE ORAL','J21','NFS plaquettes, bilan hepatique','Surveillance clinique','Reference service / guideline validee','3','Capecitabine','per os','1250','mg','J1-J14','','','','','','NON','OUI']
     ];
     const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(';')).join('\n');
     downloadTextFile('modele_import_protocoles_complet.csv', csv, 'text/csv;charset=utf-8');
@@ -2581,7 +2589,15 @@
           const dose = Number(String(val(row.Dose,row.Coef)).replace(',', '.'));
           const solName = val(row.Solvant,row.Sol);
           const solVol = val(row['Volume solvant cc'], row.Volume, row.Volume_solvant);
-          const drug = {name:med, ryt:val(row.Jours,row.Rythme_medicament), sol:[solVol ? `${solVol} cc` : '', solName].filter(Boolean).join(' '), dur:val(row.Duree,row.Durée), freq:val(row['Frequence / remarque'], row.Frequence, row.Remarque), hl:true};
+          const order = Number(val(row['Ordre de passage'], row.Ordre, row.Order)) || 0;
+          const drug = {name:med, ryt:val(row.Jours,row.Rythme_medicament), sol:[solVol ? `${solVol} cc` : '', solName].filter(Boolean).join(' '), dur:val(row.Duree,row.Durée), freq:val(row['Frequence / remarque'], row.Frequence, row.Remarque), order, hl:true};
+          const light = norm(val(row['Protection lumiere'], row['Protection lumière'], row.Lumiere, row.Lumière));
+          if(light === 'oui' || light === 'yes' || light === '1') drug.note = [drug.freq, 'Proteger contre la lumiere'].filter(Boolean).join(' - ');
+          if(norm(med).match(/^(nacl|na cl|ssi|sg|g5|glucose|ringer|eau ppi|rinçage|rincage|rehydratation|réhydratation)/) || type.includes('support')){
+            drug.t = 'r';
+            drug.label = [med, drug.sol].filter(Boolean).join(' ');
+            delete drug.name; delete drug.hl;
+          }
           if(type.includes('m2') || type.includes('surface')) drug.mgm2 = dose;
           else if(type.includes('kg') || type.includes('poids')) drug.mgkg = dose;
           else if(type.includes('auc')) drug.carbo = true;
@@ -3286,13 +3302,14 @@
       #logout-btn-forced{top:10px!important;right:10px!important;padding:8px 12px!important;font-size:12px!important}
       .proto-editor-final input,.proto-editor-final select{width:100%;box-sizing:border-box;border:1px solid #ccd8e6;border-radius:6px;padding:8px 9px;font-size:12px;background:#fff}
       .proto-editor-final label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#17324d}
-      .proto-editor-grid{display:grid;grid-template-columns:1fr 150px;gap:10px}
-      .proto-editor-grid label:nth-child(3),.proto-editor-grid label:nth-child(4){grid-column:1/-1}
+      .proto-editor-grid{display:grid;grid-template-columns:1.2fr 1.2fr 140px 1fr;gap:10px}
+      .proto-editor-grid label:nth-child(4),.proto-editor-grid label:nth-child(5),.proto-editor-grid label:nth-child(6),.proto-editor-grid label:nth-child(7){grid-column:span 2}
       .proto-drug-grid{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-      .proto-drug-line{display:grid;grid-template-columns:minmax(150px,1.2fr) 105px 95px 105px 110px 90px 95px minmax(130px,1fr) 95px 74px 28px;gap:7px;align-items:center;background:#f8fbff;border:1px solid #dbe5f2;border-radius:8px;padding:8px}
+      .proto-drug-line{display:grid;grid-template-columns:70px minmax(180px,1.25fr) 115px 105px 110px 115px 90px 95px minmax(150px,1fr) 100px 130px 30px;gap:7px;align-items:center;background:#f8fbff;border:1px solid #dbe5f2;border-radius:8px;padding:8px}
+      .proto-drug-line input,.proto-drug-line select{min-width:0}
       .unit-input{display:flex;align-items:center;gap:4px}
       .unit-input span{font-size:10px;color:#607080}
-      .light-check{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center;gap:5px;font-size:11px!important;font-weight:800!important;color:#17324d!important}
+      .light-check{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center;gap:5px;font-size:11px!important;font-weight:800!important;color:#17324d!important;white-space:normal!important;line-height:1.1}
       .light-check input{width:auto!important}
       .proto-remove{height:32px;border:1px solid #f0b5b5;background:#fdeaea;color:#a33131;border-radius:6px;cursor:pointer;font-weight:800}
       .proto-card{position:relative}
