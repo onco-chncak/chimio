@@ -4696,6 +4696,23 @@ function importCatalogExcel(input){
       if(!rows.length){ showImportMsg('error','X Fichier vide ou format incorrect.'); return; }
 
       let updated=0, added=0, errors=[];
+      const normalizeName = s => (s||'').toString().toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+      const importedExisting = rows.some(row => {
+        const getValue = (...keys) => {
+          for(const k of Object.keys(row)){
+            const nk = normalizeName(k);
+            if(keys.some(key => nk.includes(normalizeName(key)))) return row[k];
+          }
+          return '';
+        };
+        const name = (getValue('medicament','nom','name','drug') || '').toString().trim();
+        const dci = (getValue('dci','molecule','generique') || '').toString().trim();
+        return catalog.some(c => normalizeName(c.name) === normalizeName(name) || (dci && normalizeName(c.dci) === normalizeName(dci)));
+      });
+      const cumulateExistingStock = importedExisting
+        ? confirm("Le fichier contient des medicaments deja presents dans le catalogue.\n\nOK = cumuler les quantites avec le stock existant.\nAnnuler = garder seulement les quantites du nouveau fichier.")
+        : false;
 
       rows.forEach((row, i)=>{
         // Accept flexible column names (case-insensitive, accents ignored)
@@ -4728,7 +4745,7 @@ function importCatalogExcel(input){
 
         if(!dosages.length){ errors.push(`Ligne ${i+2} (${name}) : dosages invalides "${dosagesRaw}"`); return; }
 
-        const existing = catalog.findIndex(c => c.name === name);
+        const existing = catalog.findIndex(c => normalize(c.name) === normalize(name) || (dci && normalize(c.dci) === normalize(dci)));
         if(existing >= 0){
           // Update existing entry
           catalog[existing].dci       = dci || catalog[existing].dci;
@@ -4736,7 +4753,8 @@ function importCatalogExcel(input){
           catalog[existing].forme     = forme;
           catalog[existing].cond      = cond;
           if(prix > 0) catalog[existing].prixUnit = prix;
-          catalog[existing].qteStock  = stock;
+          const currentStock = parseInt(catalog[existing].qteStock ?? catalog[existing].stock ?? 0) || 0;
+          catalog[existing].qteStock  = cumulateExistingStock ? currentStock + stock : stock;
           updated++;
         } else {
           // Add new entry
