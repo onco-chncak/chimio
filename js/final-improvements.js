@@ -594,6 +594,30 @@
     return {drug:item, nbFlacons:flacons.length, flacons, totalMg, reliquat:Math.max(0, Math.round((totalMg - dose) * 10) / 10), stock:Number(item.qteStock ?? item.stock ?? 0)};
   }
 
+  function confirmFlaconsByDosage(drugName, dose, calc){
+    const sizes = (calc?.drug?.dosages || calc?.drug?.flacons || []).map(Number).filter(Boolean).sort((a,b) => b-a);
+    if(!calc || sizes.length <= 1) return calc;
+    const defaults = {};
+    (calc.flacons || []).forEach(size => { defaults[size] = (defaults[size] || 0) + 1; });
+    const used = [];
+    for(const size of sizes){
+      const answer = prompt(`${drugName}\nCombien de flacon(s) ${size} mg utilises ?`, String(defaults[size] || 0));
+      if(answer === null) return null;
+      const count = Number(String(answer).replace(',', '.'));
+      if(!Number.isFinite(count) || count < 0) return null;
+      for(let i = 0; i < Math.floor(count); i++) used.push(size);
+    }
+    if(!used.length) return null;
+    const totalMg = used.reduce((sum, size) => sum + size, 0);
+    return {
+      ...calc,
+      nbFlacons: used.length,
+      flacons: used,
+      totalMg,
+      reliquat: Math.max(0, Math.round((totalMg - dose) * 10) / 10)
+    };
+  }
+
   function catalogAliasKey(name){
     const raw = norm(name);
     if(!raw) return '';
@@ -705,10 +729,12 @@
     (proto.drugs || []).filter(d => !d.t && !d.oral && !isSupportOnlyDrug(d.name) && (d.mgm2 || d.mgkg || d.avastin || typeof d.fix === 'number')).forEach(drug => {
       const dose = doseForDrug(drug, patient);
       if(!dose){ warnings.push(`${drug.name}: dose non calculable.`); return; }
-      const calc = calcDrugFlacons(drug.name, dose);
+      let calc = calcDrugFlacons(drug.name, dose);
       const matchedItem = findCatalogItem(drug.name, catalog);
       const idx = catalog.findIndex(item => item === matchedItem);
       if(!calc || idx < 0){ warnings.push(`${drug.name}: medicament non trouve dans Pharmacie Centrale.`); return; }
+      calc = confirmFlaconsByDosage(drug.name, dose, calc);
+      if(!calc){ warnings.push(`${drug.name}: deduction annulee ou quantites invalides.`); return; }
       const stock = Number(catalog[idx].qteStock ?? catalog[idx].stock ?? 0);
       if(stock < calc.nbFlacons){ warnings.push(`${drug.name}: stock insuffisant (${stock} flacon(s), besoin ${calc.nbFlacons}).`); return; }
       catalog[idx].qteStock = stock - calc.nbFlacons;
@@ -1595,7 +1621,10 @@
   const nativeRenderCatalogTable = window.renderCatalogTable;
   window.renderCatalogTable = function(){
     const out = nativeRenderCatalogTable?.apply(this, arguments);
-    setTimeout(lockPharmacyStockControls, 20);
+    setTimeout(() => {
+      expandCatalogDosageRows();
+      lockPharmacyStockControls();
+    }, 20);
     return out;
   };
 
@@ -1623,6 +1652,35 @@
         el.style.display = allowed ? '' : 'none';
       }
     });
+  }
+
+  function expandCatalogDosageRows(){
+    const tbody = document.getElementById('catalog-body');
+    if(!tbody) return;
+    const list = readJson(STORAGE.catalog, Array.isArray(window.catalog) ? window.catalog : []);
+    tbody.innerHTML = list.map((d, i) => {
+      const stock = d.qteStock ?? d.stock ?? 0;
+      const prix = d.prixUnit ?? d.prix ?? 0;
+      const stockLow = Number(stock) <= 5;
+      const stockCrit = Number(stock) <= 2;
+      const dosages = (d.dosages || d.flacons || []).map(Number).filter(Boolean);
+      const rows = dosages.length ? dosages : [''];
+      return rows.map((dosage, j) => `
+        <tr style="${(i+j)%2===0?'background:var(--gray-light)':'background:white'}">
+          <td style="padding:7px 10px;font-size:12px;font-weight:600;color:var(--blue)">${esc(d.name)}${rows.length > 1 ? ` <span style="font-size:10px;color:var(--gray-mid)">forme ${j+1}</span>` : ''}</td>
+          <td style="padding:7px 8px;font-size:11px;color:var(--gray-mid)">${esc(d.dci || '')}</td>
+          <td style="padding:7px 8px;font-size:12px;font-weight:500">${dosage ? `${esc(dosage)} mg` : '-'}</td>
+          <td style="padding:7px 8px;font-size:11px;color:var(--gray-mid)">${esc(d.cond || 'B1')}</td>
+          <td style="padding:4px 6px">
+            <input type="number" value="${esc(prix)}" data-idx="${i}" data-field="prixUnit" placeholder="FCFA" style="width:100px;padding:5px 7px;font-size:12px;border:1px solid var(--gray-border);border-radius:4px" oninput="updateCatalogField(${i},'prixUnit',this.value)">
+          </td>
+          <td style="padding:4px 6px">
+            <input type="number" value="${esc(stock)}" data-idx="${i}" data-field="qteStock" placeholder="flacons" min="0" style="width:80px;padding:5px 7px;font-size:12px;border:1px solid ${stockCrit?'var(--red2)':stockLow?'var(--amber2)':'var(--gray-border)'};border-radius:4px;background:${stockCrit?'var(--red-pale)':stockLow?'var(--amber-pale)':'white'}" oninput="updateCatalogField(${i},'qteStock',this.value)">
+            ${stockCrit?'<span style="font-size:10px;color:var(--red2);margin-left:4px;display:block">ALERTE Critique</span>':stockLow?'<span style="font-size:10px;color:var(--amber2);margin-left:4px;display:block">Bas</span>':''}
+          </td>
+        </tr>
+      `).join('');
+    }).join('');
   }
 
   window.clearDay = function(){
