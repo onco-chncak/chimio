@@ -957,7 +957,8 @@
 
   function hasPharmaValidation(patient, rdv){
     const key = pharmaValidationKey(patient, rdv);
-    return !!(key && readJson('chncak_pharma_validations', {})[key]);
+    const entry = key ? readJson('chncak_pharma_validations', {})[key] : null;
+    return !!(entry && entry.status !== 'verification');
   }
 
   function pharmaValidatedFlacons(patient, rdv){
@@ -989,9 +990,21 @@
       const validationDetails = collectPharmaValidationDetails(patient);
       if(validationDetails.warnings.length && !confirm(`Avertissements:\n${validationDetails.warnings.join('\n')}\n\nContinuer la validation ?`)) return;
       const map = readJson('chncak_pharma_validations', {});
-      map[pharmaValidationKey(patient)] = {validatedAt:new Date().toISOString(), patient:patientName(patient), dossier:patient.dossier, protoId:patient.protoId, detailsData:validationDetails.detailsData, warnings:validationDetails.warnings};
+      map[pharmaValidationKey(patient)] = {status:'validated', validatedAt:new Date().toISOString(), patient:patientName(patient), dossier:patient.dossier, protoId:patient.protoId, detailsData:validationDetails.detailsData, warnings:validationDetails.warnings};
       writeJson('chncak_pharma_validations', map);
       showToastSafe('Validation pharmacien enregistree.', 'success');
+    });
+  };
+
+  window.sendPreparationForVerification = function(){
+    const patient = currentProtocolFormPatient();
+    if(!patient.prenom || !patient.nom) return alert('Chargez ou renseignez le patient avant envoi pour verification.');
+    requirePharmacienAction('envoyer la fiche pour verification', () => {
+      const map = readJson('chncak_pharma_validations', {});
+      map[pharmaValidationKey(patient)] = {status:'verification', sentAt:new Date().toISOString(), patient:patientName(patient), dossier:patient.dossier, protoId:patient.protoId, sentBy:val(currentUser().name, currentUser().username, 'pharmacien')};
+      writeJson('chncak_pharma_validations', map);
+      showToastSafe('Fiche envoyee pour verification.', 'info');
+      renderPreparationTodayList();
     });
   };
 
@@ -1000,6 +1013,9 @@
     if(!btn) return;
     if(!document.getElementById('prep-pharma-validation-btn')){
       btn.insertAdjacentHTML('afterend', '<button id="prep-pharma-validation-btn" type="button" class="btn-primary" style="width:auto;margin-left:8px;padding:10px 14px;background:#0B5E3C" onclick="validatePharmacistPreparation()">Validation pharmacien</button>');
+    }
+    if(!document.getElementById('prep-pharma-verification-btn')){
+      document.getElementById('prep-pharma-validation-btn')?.insertAdjacentHTML('afterend', '<button id="prep-pharma-verification-btn" type="button" class="btn-secondary" style="width:auto;margin-left:8px;padding:10px 14px;border-color:#F0C060;color:#7A4B00;background:#FFF3DC" onclick="sendPreparationForVerification()">Envoyer pour verification</button>');
     }
     const proto = resolvePreparationProtocol();
     const poids = Number(document.getElementById('poids')?.value || 0);
@@ -1028,7 +1044,7 @@
     const validationDetails = collectPharmaValidationDetails({...patient, protoId:val(patient.protoId, rdv.protoId), proto:val(patient.proto, rdv.proto)}, rdv);
     if(validationDetails.warnings.length && !confirm(`Avertissements:\n${validationDetails.warnings.join('\n')}\n\nContinuer la validation ?`)) return;
     const map = readJson('chncak_pharma_validations', {});
-    map[pharmaValidationKey(patient, rdv)] = {validatedAt:new Date().toISOString(), patient:patientName(patient), dossier:val(patient.dossier, rdv.dossier), protoId:val(patient.protoId, rdv.protoId), source:'preparation', detailsData:validationDetails.detailsData, warnings:validationDetails.warnings};
+    map[pharmaValidationKey(patient, rdv)] = {status:'validated', validatedAt:new Date().toISOString(), patient:patientName(patient), dossier:val(patient.dossier, rdv.dossier), protoId:val(patient.protoId, rdv.protoId), source:'preparation', detailsData:validationDetails.detailsData, warnings:validationDetails.warnings};
     writeJson('chncak_pharma_validations', map);
     renderPreparationTodayList();
     showToastSafe('Fiche de preparation validee.', 'success');
@@ -1047,12 +1063,15 @@
     const today = todayIso();
     const rows = readJson(STORAGE.rdv, []).filter(r => r.dateRdv === today).map(r => {
       const patient = rdvPatientForPreparation(r);
+      const key = pharmaValidationKey(patient, r);
+      const pharmaState = readJson('chncak_pharma_validations', {})[key];
       const validated = hasPharmaValidation(patient, r);
+      const needsVerification = pharmaState?.status === 'verification';
       return `<tr>
         <td>${esc(val(r.heure, r.time, '-'))}</td>
         <td><b>${esc(patientName(patient) || `${val(r.prenom)} ${val(r.nom)}`)}</b><div class="dash-muted">${esc(val(patient.dossier, r.dossier, patientCode(patient), ''))}</div></td>
         <td>${esc(protocolNameFor({...patient, protoId:val(patient.protoId, r.protoId), proto:val(patient.proto, r.proto)}))}</td>
-        <td>${validated ? '<span class="clinical-pill ok">Fiche validee</span>' : '<span class="clinical-pill warn">En attente</span>'}</td>
+        <td>${validated ? '<span class="clinical-pill ok">Fiche validee</span>' : needsVerification ? '<span class="clinical-pill warn">Verification demandee</span>' : '<span class="clinical-pill warn">En attente</span>'}</td>
         <td>${validated ? '<button class="btn-sm" disabled>Validee</button>' : `<button class="btn-sm primary" onclick="validatePreparationForRdv(${esc(r.id)})">Valider la fiche</button>`}</td>
       </tr>`;
     }).join('');
