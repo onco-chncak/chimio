@@ -602,7 +602,7 @@
     if(raw.includes('epirub')) return 'epirubicine';
     if(raw.includes('doxorub')) return 'doxorubicine';
     if(raw.includes('cyclophosph')) return 'cyclophosphamide';
-    if(raw.includes('cisplatine hebdo')) return 'cisplatine hebdo';
+    if(raw.includes('cisplatine hebdo')) return 'cisplatine';
     if(raw.includes('cisplat')) return 'cisplatine';
     if(raw.includes('carboplat')) return 'carboplatine';
     if(raw.includes('taxol hebdo')) return 'taxol';
@@ -667,7 +667,6 @@
 
   function protocolCatalogDefaults(){
     const defaults = [
-      ['CISPLATINE HEBDO','Cisplatine',[50],'Injectable'],
       ['TAXOL (Paclitaxel)','Paclitaxel',[100,300],'Injectable'],
       ['Acide folinique','Acide folinique',[50],'Injectable'],
       ['RITUXIMAB','Rituximab',[100,500],'Injectable']

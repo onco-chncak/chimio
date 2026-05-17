@@ -330,7 +330,7 @@ const PROTOCOLS = [
       {name:'Hydrocortisone',fix:200,unit:'mg',sol:'10 cc SSI',dur:'5 mn',ryt:'J1 = J8'},
       {name:'Kytril',fix:3,unit:'mg',sol:'15 cc SSI 0.9%',dur:'2 mn',ryt:'J1 = J8'},
       {t:'r',label:'Réhydratation 500 cc SSI 0.9%',dur:'30 mn'},
-      {name:'CISPLATINE HEBDO',mgm2:40,unit:'mg',sol:'250 cc SSI 0.9%',dur:'60 mn',ryt:'J1 = J8',hl:true},
+      {name:'CISPLATINE',mgm2:40,unit:'mg',sol:'250 cc SSI 0.9%',dur:'60 mn',ryt:'J1 = J8',hl:true},
       {t:'r',label:'Réhydratation 1000 cc SSI 0.9%',dur:'45 mn'},
     ]
   },
