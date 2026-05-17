@@ -2762,7 +2762,7 @@
               <div class="field"><label>Age</label><input id="hema-age" type="number" min="0"></div>
               <div class="field"><label>Sexe</label><select id="hema-sexe" onchange="generateHematologieCodeGratuite()"><option></option><option>F</option><option>M</option></select></div>
               <div class="field"><label>Code gratuite <span style="color:var(--blue);font-size:10px">(auto)</span></label><input id="hema-code" readonly style="background:var(--blue-pale);color:var(--blue);font-weight:600;font-family:var(--mono)"></div>
-              <div class="field"><label>Nationalite</label><input id="hema-nationalite"></div>
+              <div class="field"><label>Nationalite</label><select id="hema-nationalite"><option>Senegalais</option><option>Etranger</option></select></div>
               <div class="field"><label>NIN</label><input id="hema-nin"></div>
               <div class="field"><label>ID CUIBIX</label><input id="hema-cuibix"></div>
               <div class="field hematologie-wide"><label>Protocole</label><input id="hema-protocole"></div>
