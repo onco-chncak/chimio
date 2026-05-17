@@ -2349,6 +2349,7 @@
       const solVol = row.querySelector('[data-field="solvol"]')?.value.trim();
       const dur = row.querySelector('[data-field="dur"]')?.value.trim();
       const freq = row.querySelector('[data-field="freq"]')?.value.trim();
+      const remark = row.querySelector('[data-field="remark"]')?.value.trim();
       const doseLimit = row.querySelector('[data-field="limit"]')?.value.trim();
       const light = row.querySelector('[data-field="light"]')?.checked;
       const sol = [solVol ? `${solVol} cc` : '', solvant].filter(Boolean).join(' ');
@@ -2358,7 +2359,8 @@
         return {t:'r', label:supportLabel || 'Rinçage / réhydratation', dur:durLabel || '30 mn', order};
       }
       const notes = [];
-      if(freq) notes.push(freq);
+      if(freq) notes.push(`Frequence: ${freq}`);
+      if(remark) notes.push(remark);
       if(order) notes.push(`Ordre de passage: ${order}`);
       if(doseLimit) notes.push(`Alerte dose limite: ${doseLimit} mg`);
       if(light) notes.push('Proteger contre la lumiere');
@@ -2413,7 +2415,8 @@
         </select>
         <div class="unit-input"><input data-field="solvol" type="number" step="1" placeholder="Vol." value="${esc(solVol)}"><span>cc</span></div>
         <div class="unit-input"><input data-field="dur" placeholder="Duree" value="${esc(durValue)}"><span>mn</span></div>
-        <input data-field="freq" placeholder="Frequence / remarque" title="Rythme particulier, remarque clinique..." value="${esc(d.freq || d.frequence || '')}">
+        <input data-field="freq" placeholder="Frequence" title="Rythme particulier: hebdomadaire, J1-J8, avant/apres une autre molecule..." value="${esc(d.frequence || d.frequency || '')}">
+        <input data-field="remark" placeholder="Remarque" title="Consigne clinique ou pratique: surveillance, voie, consigne de preparation..." value="${esc(d.remarque || d.remark || d.freq || '')}">
         <div class="unit-input"><input data-field="limit" type="number" step="0.01" placeholder="Dose limite" value="${esc(d.maxDose || '')}"><span>mg</span></div>
         <label class="light-check"><input data-field="light" type="checkbox" ${norm(d.note || d.freq).includes('lumiere') ? 'checked' : ''}> Protection lumière</label>
         <button type="button" class="proto-remove" title="Retirer" onclick="this.closest('.proto-drug-line').remove()">x</button>
@@ -2551,10 +2554,10 @@
 
   window.downloadProtocolImportTemplate = function(){
     const rows = [
-      ['Nom protocole','Rythme','Bilan utile','Surveillance','Reference scientifique','Ordre de passage','Medicament','Type calcul','Dose','Unite','Jours','Solvant','Volume solvant cc','Duree','Frequence / remarque','Alerte dose limite mg','Protection lumiere','Oral'],
-      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','1','Oxaliplatine','mg/m2','85','mg/m2','J1','SG 5%','500','120','','','NON','NON'],
-      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','2','5-FU','mg/m2','400','mg/m2','J1','NaCl 0.9%','100','Bolus','','','NON','NON'],
-      ['EXEMPLE ORAL','J21','NFS plaquettes, bilan hepatique','Surveillance clinique','Reference service / guideline validee','3','Capecitabine','per os','1250','mg','J1-J14','','','','','','NON','OUI']
+      ['Nom protocole','Rythme','Bilan utile','Surveillance','Reference scientifique','Ordre de passage','Medicament','Type calcul','Dose','Unite','Jours','Solvant','Volume solvant cc','Duree','Frequence','Remarque','Alerte dose limite mg','Protection lumiere','Oral'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','1','Oxaliplatine','mg/m2','85','mg/m2','J1','SG 5%','500','120','J1','Tubulure adaptee selon protocole','','NON','NON'],
+      ['EXEMPLE FOLFOX','J14','NFS plaquettes, creatinine, bilan hepatique','Surveillance clinique et biologique','Reference service / guideline validee','2','5-FU','mg/m2','400','mg/m2','J1','NaCl 0.9%','100','Bolus','J1','Bolus lent','','NON','NON'],
+      ['EXEMPLE ORAL','J21','NFS plaquettes, bilan hepatique','Surveillance clinique','Reference service / guideline validee','3','Capecitabine','per os','1250','mg','J1-J14','','','','2 prises par jour','A prendre apres repas','','NON','OUI']
     ];
     const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(';')).join('\n');
     downloadTextFile('modele_import_protocoles_complet.csv', csv, 'text/csv;charset=utf-8');
@@ -2590,7 +2593,9 @@
           const solName = val(row.Solvant,row.Sol);
           const solVol = val(row['Volume solvant cc'], row.Volume, row.Volume_solvant);
           const order = Number(val(row['Ordre de passage'], row.Ordre, row.Order)) || 0;
-          const drug = {name:med, ryt:val(row.Jours,row.Rythme_medicament), sol:[solVol ? `${solVol} cc` : '', solName].filter(Boolean).join(' '), dur:val(row.Duree,row.Durée), freq:val(row['Frequence / remarque'], row.Frequence, row.Remarque), order, hl:true};
+          const freqImport = val(row.Frequence, row['Frequence / remarque']);
+          const remarkImport = val(row.Remarque, row['Remarque clinique'], row.Commentaire);
+          const drug = {name:med, ryt:val(row.Jours,row.Rythme_medicament), sol:[solVol ? `${solVol} cc` : '', solName].filter(Boolean).join(' '), dur:val(row.Duree,row.Durée), freq:[freqImport ? `Frequence: ${freqImport}` : '', remarkImport].filter(Boolean).join(' - '), frequence:freqImport, remarque:remarkImport, order, hl:true};
           const light = norm(val(row['Protection lumiere'], row['Protection lumière'], row.Lumiere, row.Lumière));
           if(light === 'oui' || light === 'yes' || light === '1') drug.note = [drug.freq, 'Proteger contre la lumiere'].filter(Boolean).join(' - ');
           if(norm(med).match(/^(nacl|na cl|ssi|sg|g5|glucose|ringer|eau ppi|rinçage|rincage|rehydratation|réhydratation)/) || type.includes('support')){
@@ -3307,7 +3312,8 @@
       .proto-drug-grid{display:flex;flex-direction:column;gap:8px;margin-top:10px}
       .proto-drug-line{display:grid;grid-template-columns:70px minmax(220px,1.5fr) 120px 115px 120px 130px;gap:8px;align-items:center;background:#f8fbff;border:1px solid #dbe5f2;border-radius:8px;padding:9px}
       .proto-drug-line input,.proto-drug-line select{min-width:0}
-      .proto-drug-line [data-field="freq"]{min-width:180px}
+      .proto-drug-line [data-field="remark"]{grid-column:span 2}
+      .proto-drug-line [data-field="freq"],.proto-drug-line [data-field="limit"]{min-width:0}
       .unit-input{display:flex;align-items:center;gap:4px}
       .unit-input span{font-size:10px;color:#607080}
       .light-check{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center;gap:5px;font-size:11px!important;font-weight:800!important;color:#17324d!important;white-space:normal!important;line-height:1.1}
