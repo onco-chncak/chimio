@@ -61,6 +61,7 @@
   function allStoredCodeGratuiteValues(){
     const keys = [
       STORAGE.patients,
+      STORAGE.rdv,
       STORAGE.historique,
       STORAGE.okchimio,
       'chncak_okchimio',
@@ -76,6 +77,57 @@
       });
     });
     return out.filter(Boolean);
+  }
+
+  function patientTreatmentKey(item){
+    const p = item?.patient || item || {};
+    const code = val(p.codegratuite, p.codeGratuite, p.code, item?.codegratuite, item?.codeGratuite, item?.code);
+    if(code) return `code:${norm(code)}`;
+    const dossier = val(p.dossier, p.numeroDossier, item?.dossier, item?.numeroDossier);
+    const proto = val(item?.protoId, p.protoId, item?.protocole, item?.protocolName, p.protocole, p.proto);
+    if(dossier) return `dossier:${norm(dossier)}|${norm(proto)}`;
+    return `name:${norm(patientName(p) || patientName(item))}|${norm(proto)}`;
+  }
+
+  function dedupeByPatientTreatment(list){
+    const seen = new Set();
+    return (Array.isArray(list) ? list : []).filter(item => {
+      const key = patientTreatmentKey(item);
+      if(!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  function dedupeSorties(list){
+    const seen = new Set();
+    return (Array.isArray(list) ? list : []).filter(item => {
+      const key = val(item?.id, `${patientTreatmentKey(item)}|${val(item?.dateTs, item?.date)}|${val(item?.source)}`);
+      if(seen.has(String(key))) return false;
+      seen.add(String(key));
+      return true;
+    });
+  }
+
+  function normalizeOkStatus(item){
+    const raw = norm(val(item?.statut, item?.status, 'En attente'));
+    if(raw.includes('refus')) return 'refuse';
+    if(raw.includes('valid') || raw.includes('valide')) return 'valide';
+    return 'attente';
+  }
+
+  function getOkChimioList(){
+    const native = typeof getOkChimio === 'function' ? getOkChimio() : [];
+    const merged = [...readJson(STORAGE.okchimio, []), ...readJson('chncak_okchimio', []), ...(Array.isArray(native) ? native : [])];
+    return dedupeByPatientTreatment(merged);
+  }
+
+  function saveOkChimioList(list){
+    const clean = dedupeByPatientTreatment(list);
+    if(typeof saveOkChimio === 'function') saveOkChimio(clean);
+    writeJson(STORAGE.okchimio, clean);
+    writeJson('chncak_okchimio', clean);
+    return clean;
   }
 
   function maxKnownCodeGratuiteSequence(){
@@ -573,7 +625,15 @@
     const taille = Number(val(patient?.taille, patient?.height, 0));
     const surface = poids && taille ? Math.sqrt((poids * taille) / 3600) : 0;
     if(typeof drug.fix === 'number') return drug.fix;
-    if(drug.mgm2 && surface) return Math.round(Number(drug.mgm2) * surface);
+    if(drug.mgm2 && surface){
+      const dose = Math.round(Number(drug.mgm2) * surface);
+      if(drug.oral && catalogAliasKey(drug.name) === 'capecitabine'){
+        const daysMatch = String(val(drug.dur, drug.ryt, '')).match(/j\s*1\s*[–-]\s*j\s*(\d+)/i);
+        const days = daysMatch ? Number(daysMatch[1]) : 14;
+        return dose * 2 * days;
+      }
+      return dose;
+    }
     if(drug.mgkg && poids) return Math.round(Number(drug.mgkg) * poids);
     if(drug.avastin && poids) return Math.round(15 * poids);
     return 0;
@@ -646,6 +706,7 @@
     if(raw.includes('methotrex')) return 'methotrexate';
     if(raw.includes('etopos')) return 'etoposide';
     if(raw.includes('bleomyc')) return 'bleomycine';
+    if(raw.includes('capecitab')) return 'capecitabine';
     if(raw.includes('vincrist')) return 'vincristine';
     if(raw.includes('vinblast')) return 'vinblastine';
     if(raw.includes('vinorel') || raw.includes('navelbine')) return 'navelbine';
@@ -744,7 +805,7 @@
     const warnings = [];
     const details = [];
     const validatedDetails = pharmaValidatedFlacons(patient);
-    (proto.drugs || []).filter(d => !d.t && !d.oral && !isSupportOnlyDrug(d.name) && (d.mgm2 || d.mgkg || d.avastin || typeof d.fix === 'number')).forEach(drug => {
+    (proto.drugs || []).filter(d => !d.t && !isSupportOnlyDrug(d.name) && (d.mgm2 || d.mgkg || d.avastin || typeof d.fix === 'number')).forEach(drug => {
       const dose = doseForDrug(drug, patient);
       if(!dose){ warnings.push(`${drug.name}: dose non calculable.`); return; }
       let calc = calcDrugFlacons(drug.name, dose);
@@ -876,9 +937,9 @@
         .landscape-copy{min-width:0;padding:0 4.6mm;overflow:hidden}
         .landscape-copy:first-child{border-right:1.2px solid #000}
         .landscape-copy table{max-width:100%!important;width:100%!important;page-break-inside:avoid;border-collapse:collapse}
-        .landscape-copy table:first-child,.landscape-copy table:first-child *{font-size:7.8px!important;line-height:1.18!important;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important}
+        .landscape-copy table:first-child,.landscape-copy table:first-child *{font-size:8px!important;line-height:1.22!important;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important}
         .landscape-copy table:first-child img{max-height:46px!important;width:auto!important}
-        .landscape-copy th,.landscape-copy td{padding-top:5px!important;padding-bottom:5px!important}
+        .landscape-copy th,.landscape-copy td{padding-top:6px!important;padding-bottom:6px!important}
         .landscape-copy [style*="font-size:12px"]{font-size:12px!important}
         .landscape-copy [style*="font-size:11px"]{font-size:11.3px!important}
         .landscape-copy [style*="font-size:10px"]{font-size:10.8px!important}
@@ -1032,7 +1093,7 @@
     if(!proto) return {detailsData:[], warnings:[`Protocole introuvable pour ${patientName(patient) || 'ce patient'}.`]};
     const detailsData = [];
     const warnings = [];
-    (proto.drugs || []).filter(d => !d.t && !d.oral && !isSupportOnlyDrug(d.name) && (d.mgm2 || d.mgkg || d.avastin || typeof d.fix === 'number')).forEach(drug => {
+    (proto.drugs || []).filter(d => !d.t && !isSupportOnlyDrug(d.name) && (d.mgm2 || d.mgkg || d.avastin || typeof d.fix === 'number')).forEach(drug => {
       const dose = doseForDrug(drug, patient);
       if(!dose){ warnings.push(`${drug.name}: dose non calculable.`); return; }
       let calc = calcDrugFlacons(drug.name, dose);
@@ -1122,7 +1183,8 @@
       target?.parentNode?.insertBefore(host, target);
     }
     const today = todayIso();
-    const rows = readJson(STORAGE.rdv, []).filter(r => r.dateRdv === today).map(r => {
+    const todaysRdv = dedupeByPatientTreatment(readJson(STORAGE.rdv, []).filter(r => r.dateRdv === today));
+    const rows = todaysRdv.map(r => {
       const patient = rdvPatientForPreparation(r);
       const key = pharmaValidationKey(patient, r);
       const pharmaState = readJson('chncak_pharma_validations', {})[key];
@@ -1152,11 +1214,11 @@
     const host = document.getElementById('stats-content') || document.getElementById('page-stats');
     if(!host) return;
     const patients = readJson(STORAGE.patients, []);
-    const rdv = [...readJson(STORAGE.rdv, []), ...readJson('rdv', [])];
-    const hist = [...readJson(STORAGE.historique, []), ...readJson('historique', [])];
-    const sorties = [...readJson(STORAGE.sorties, []), ...readJson('chncak_stock_sorties', []), ...readJson('sorties', [])];
+    const rdv = dedupeByPatientTreatment([...readJson(STORAGE.rdv, []), ...readJson('rdv', [])]);
+    const hist = dedupeByPatientTreatment([...readJson(STORAGE.historique, []), ...readJson('historique', [])]);
+    const sorties = dedupeSorties([...readJson(STORAGE.sorties, []), ...readJson('chncak_stock_sorties', []), ...readJson('sorties', [])]);
     const hemaSorties = readJson('chncak_hematologie_sorties', []);
-    const ok = [...readJson(STORAGE.okchimio, []), ...readJson('chncak_okchimio', [])];
+    const ok = getOkChimioList();
     const meds = {};
     const ensureMed = name => {
       const key = val(name, 'Non renseigne');
@@ -1188,16 +1250,6 @@
         });
       }
     });
-    if(!Object.keys(meds).length){
-      hist.forEach(h => {
-        const proto = protocolsList().find(p => p.id === h.protoId || norm(p.name) === norm(h.protoName));
-        (proto?.drugs || []).filter(d => !d.t && !d.oral && (d.mgm2 || d.mgkg || d.avastin || typeof d.fix === 'number')).forEach(d => {
-          const med = ensureMed(d.name);
-          med.seances += 1;
-          med.preparations += 1;
-        });
-      });
-    }
     const medRows = Object.entries(meds).sort((a,b) => b[1].preparations - a[1].preparations).map(([name, d]) => `
       <tr><td>${esc(name)}</td><td>${d.preparations}</td><td>${d.seances}</td><td>${Math.round(d.dose).toLocaleString('fr-FR')} mg</td><td>${Math.round(d.wasteMg).toLocaleString('fr-FR')} mg</td><td>${d.wasteFlacons}</td><td>${d.flacons}</td></tr>
     `).join('');
@@ -1309,6 +1361,9 @@
     if(saveBtn && !document.getElementById('bio-result-date')){
       saveBtn.insertAdjacentHTML('beforebegin', '<div class="field clinical-bio-field" style="max-width:260px;margin-top:10px"><label>Date des resultats</label><input type="date" id="bio-result-date" value="'+todayIso()+'"><span class="bio-msg warn">Obligatoire pour valider le traitement</span></div>');
     }
+    if(saveBtn && !document.getElementById('bio-edit-latest-btn')){
+      saveBtn.insertAdjacentHTML('afterend', '<button id="bio-edit-latest-btn" class="btn-secondary" style="width:auto;margin-left:8px;padding:10px 14px" onclick="loadLatestBiologieForEdit()">Modifier le bilan du jour</button>');
+    }
     return out;
   };
 
@@ -1318,6 +1373,32 @@
     const patient = patients.find(p => patientShortCode(p) === code || patientCode(p) === code || String(p.id) === String(code));
     const input = document.getElementById('bio-patient');
     if(input) input.value = patient ? patientName(patient) : '';
+  };
+
+  function sameBiologiePatient(item, patient){
+    return (patientCode(patient) && val(item.code, item.codegratuite) === patientCode(patient)) ||
+      (patient.dossier && val(item.dossier) === patient.dossier) ||
+      norm(item.patient) === norm(patientName(patient));
+  }
+
+  window.loadLatestBiologieForEdit = function(){
+    const selected = document.getElementById('bio-patient-select')?.value || '';
+    const typedPatient = document.getElementById('bio-patient')?.value || '';
+    const todayPatients = readJson(STORAGE.rdv, []).filter(r => r.dateRdv === todayIso()).map(r => rdvPatientForPreparation(r) || r);
+    const patient = todayPatients.find(p => patientShortCode(p) === selected || patientCode(p) === selected || String(p.id) === String(selected) || (typedPatient && norm(patientName(p)) === norm(typedPatient)));
+    if(!patient) return alert('Selectionner le patient du jour a modifier.');
+    const list = readJson(STORAGE.biologie, readJson('biologie', []));
+    const existing = list.find(item => sameBiologiePatient(item, patient) && String(val(item.treatmentDate, item.validationDate, item.dateIso, item.dateTs)).slice(0, 10) === todayIso());
+    if(!existing) return alert('Aucun bilan du jour a modifier pour ce patient.');
+    ['hb','pnn','plaquettes','creat','asat','alat'].forEach(id => {
+      const el = document.getElementById(id);
+      if(el) el.value = existing[id] || '';
+    });
+    const dateEl = document.getElementById('bio-result-date');
+    if(dateEl) dateEl.value = String(val(existing.resultDate, existing.dateResultat, existing.dateTs, todayIso())).slice(0, 10);
+    const saveBtn = document.querySelector('#biologie-content .clinical-save');
+    if(saveBtn) saveBtn.dataset.editId = String(existing.id || existing.dateTs || '');
+    showToastSafe('Bilan charge pour modification.', 'info');
   };
 
   window.saveBiologie = function(){
@@ -1337,11 +1418,16 @@
     const hasRdvToday = readJson(STORAGE.rdv, []).some(r => r.dateRdv === today && ((patient.dossier && r.dossier === patient.dossier) || patientCode(patient) === val(r.codegratuite, r.code) || norm(patientName(patient)) === norm(patientName(r))));
     if(!hasRdvToday) return alert('La biologie ne peut etre validee que le jour du traitement du patient.');
     const resultDate = document.getElementById('bio-result-date')?.value || today;
+    const maxDays = patientAlreadyStartedTreatment(patient) ? 15 : 31;
+    const ageDays = daysBetweenIso(resultDate, today);
+    if(ageDays > maxDays) return alert(`Date des resultats trop ancienne (${ageDays} jours). Limite: ${maxDays === 15 ? '15 jours' : '1 mois'}.`);
     const entry = {
+      id: Date.now().toString(),
       patient: patientName(patient),
       code: patientCode(patient),
       dossier: val(patient.dossier, patient.numeroDossier),
       resultDate,
+      treatmentDate: today,
       hb: document.getElementById('hb')?.value || '',
       pnn: document.getElementById('pnn')?.value || '',
       plaquettes: document.getElementById('plaquettes')?.value || '',
@@ -1352,7 +1438,16 @@
       dateTs: new Date().toISOString()
     };
     const list = readJson(STORAGE.biologie, readJson('biologie', []));
-    list.push(entry);
+    const saveBtn = document.querySelector('#biologie-content .clinical-save');
+    const editId = saveBtn?.dataset.editId || '';
+    const existingIdx = list.findIndex(item => sameBiologiePatient(item, patient) && String(val(item.treatmentDate, item.validationDate, item.dateIso, item.dateTs)).slice(0, 10) === today);
+    if(existingIdx >= 0 && !editId){
+      alert('Biologie deja validee aujourd hui pour ce patient. Utilisez le bouton Modifier le bilan du jour en cas d erreur.');
+      return;
+    }
+    if(existingIdx >= 0) list[existingIdx] = {...list[existingIdx], ...entry, id:list[existingIdx].id || entry.id, modifiedAt:new Date().toISOString()};
+    else list.push(entry);
+    if(saveBtn) saveBtn.dataset.editId = '';
     writeJson(STORAGE.biologie, list);
     writeJson('biologie', list);
     window.renderBiologie?.();
@@ -1688,6 +1783,29 @@
     ].some(key => readJson(key, []).some(same));
   }
 
+  function clearProtocolFormForNextPatient(){
+    [
+      'prenom','nom','age','poids','taille','dossier','cubix','tel-patient','indication',
+      'localisation','type-histologie','stade','total-cures','cure-num'
+    ].forEach(id => {
+      const el = document.getElementById(id);
+      if(el) el.value = '';
+    });
+    const date = document.getElementById('date-protocole');
+    if(date) date.value = todayIso();
+    const code = document.getElementById('codegratuite');
+    if(code){
+      code.dataset.manual = '';
+      code.readOnly = true;
+    }
+    setProtocolAutoCode(true);
+    if(typeof updateProgress === 'function') updateProgress();
+    if(typeof renderPreview === 'function') renderPreview();
+    if(typeof renderPreparation === 'function') renderPreparation();
+    if(typeof renderSupport === 'function') renderSupport();
+    showToastSafe('Protocole sauvegarde. Formulaire pret pour le prochain patient.', 'success');
+  }
+
   window.saveProtocol = function(){
     setProtocolAutoCode(false);
     const patient = currentProtocolFormPatient();
@@ -1698,41 +1816,51 @@
       alert('Code de gratuite deja utilise. Enregistrement refuse pour eviter un doublon.');
       return;
     }
-    if(typeof saveToHistory === 'function') saveToHistory();
+    const history = readJson(STORAGE.historique, []);
+    const historyEntry = {
+      ...patient,
+      id: Date.now(),
+      date: new Date().toLocaleDateString('fr-FR'),
+      dateTs: Date.now(),
+      sc: typeof sc !== 'undefined' && Number(sc) ? Number(sc).toFixed(2) : '',
+      protoId: patient.protoId,
+      protoName: patient.protocole
+    };
+    history.unshift(historyEntry);
+    writeJson(STORAGE.historique, dedupeByPatientTreatment(history));
     const list = readJson(STORAGE.patients, []);
     const idx = list.findIndex(p => (patient.dossier && p.dossier === patient.dossier) || (norm(patientName(p)) === norm(`${patient.prenom} ${patient.nom}`)));
     const entry = {...patient, proto: patient.protocole, updatedAt:new Date().toISOString(), statut:'actif'};
     if(idx >= 0) list[idx] = {...list[idx], ...entry, id:list[idx].id || Date.now().toString()};
     else list.push({...entry, id:Date.now().toString()});
-    writeJson(STORAGE.patients, list);
-    const okList = readJson(STORAGE.okchimio, []);
-    const okExists = okList.some(item => (patient.dossier && item.dossier === patient.dossier) || (patient.codegratuite && patientCode(item) === patient.codegratuite));
+    writeJson(STORAGE.patients, dedupeByPatientTreatment(list));
+    const okList = getOkChimioList();
+    const okExists = okList.some(item => patientTreatmentKey(item) === patientTreatmentKey(entry));
     if(!okExists){
       okList.push({...entry, id:Date.now().toString(), patient:entry, statut:'En attente', dateCreation:new Date().toISOString()});
-      writeJson(STORAGE.okchimio, okList);
-      writeJson('chncak_okchimio', okList);
+      saveOkChimioList(okList);
     }
     window.renderPatientsList?.();
     window.renderOkChimio?.();
     reserveCodeGratuite(patient.codegratuite);
+    clearProtocolFormForNextPatient();
     openValidationEmail(patient);
   };
 
   window.validerOkChimio = function(id){
-    const list = typeof getOkChimio === 'function' ? getOkChimio() : readJson(STORAGE.okchimio, []);
+    const list = getOkChimioList();
     const idx = list.findIndex(item => String(item.id) === String(id));
     if(idx < 0) return;
     list[idx].statut = 'Valide';
     list[idx].dateValidation = new Date().toISOString();
-    if(typeof saveOkChimio === 'function') saveOkChimio(list);
-    else writeJson(STORAGE.okchimio, list);
+    saveOkChimioList(list);
     window.renderOkChimio?.();
     showToastSafe('Protocole valide. Ouverture du mail de notification.', 'success');
     openValidationEmail(list[idx]);
   };
 
   window.notifyProtocolValidation = function(id){
-    const list = typeof getOkChimio === 'function' ? getOkChimio() : readJson(STORAGE.okchimio, []);
+    const list = getOkChimioList();
     const entry = list.find(item => String(item.id) === String(id));
     if(entry) openValidationEmail(entry);
   };
@@ -1740,7 +1868,7 @@
   window.refuserOkChimio = function(id){
     const motif = prompt('Motif du refus :');
     if(!motif) return;
-    const list = typeof getOkChimio === 'function' ? getOkChimio() : readJson(STORAGE.okchimio, []);
+    const list = getOkChimioList();
     const idx = list.findIndex(item => String(item.id) === String(id));
     if(idx < 0) return;
     const refused = {...list[idx], statut:'Refuse', motifRefus:motif, dateRefus:new Date().toISOString()};
@@ -1748,20 +1876,17 @@
     archive.unshift(refused);
     writeJson('chncak_okchimio_refuses', archive.slice(0, 500));
     list.splice(idx, 1);
-    if(typeof saveOkChimio === 'function') saveOkChimio(list);
-    writeJson(STORAGE.okchimio, list);
-    writeJson('chncak_okchimio', list);
+    saveOkChimioList(list);
     window.renderOkChimio?.();
     showToastSafe('Protocole envoye pour verification et retire des OK chimio en attente.', 'info');
   };
 
   window.renderOkChimio = function(){
-    const list = typeof getOkChimio === 'function' ? getOkChimio() : readJson(STORAGE.okchimio, []);
-    const refusedArchive = readJson('chncak_okchimio_refuses', []);
-    const status = item => norm(val(item.statut, item.status, 'En attente'));
-    const enAttente = list.filter(x => status(x).includes('attente') || !status(x));
-    const valides = list.filter(x => status(x).includes('valide') || status(x).includes('valid'));
-    const refuses = [...list.filter(x => status(x).includes('refus')), ...refusedArchive];
+    const list = saveOkChimioList(getOkChimioList());
+    const refusedArchive = dedupeByPatientTreatment(readJson('chncak_okchimio_refuses', []));
+    const enAttente = list.filter(x => normalizeOkStatus(x) === 'attente');
+    const valides = list.filter(x => normalizeOkStatus(x) === 'valide');
+    const refuses = dedupeByPatientTreatment([...list.filter(x => normalizeOkStatus(x) === 'refuse'), ...refusedArchive]);
     const stats = document.getElementById('okchimio-stats');
     if(stats){
       stats.innerHTML = `
@@ -2844,8 +2969,8 @@
 
   function savedProtocolEntries(){
     const hist = readJson(STORAGE.historique, []);
-    const ok = readJson(STORAGE.okchimio, []).map(item => ({...(item.patient || {}), ...item}));
-    return [...hist, ...ok].filter(item => patientName(item) || val(item.dossier));
+    const ok = getOkChimioList().map(item => ({...(item.patient || {}), ...item}));
+    return dedupeByPatientTreatment([...hist, ...ok]).filter(item => patientName(item) || val(item.dossier));
   }
 
   function installApercuSearch(){
@@ -3610,7 +3735,7 @@
       .login-clock-card strong{font-size:38px}
       @media (max-width:900px){.dash-final-hero,.dash-final-main,.proto-editor-grid{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}.proto-drug-line{grid-template-columns:1fr 1fr}.proto-remove{grid-column:1/-1}}
       @media (max-width:900px){.dash-clock-lead,.dash-leadership,.suivi-actions-final{grid-template-columns:1fr}.dash-leadership .lead-director{grid-row:auto}.login-clock-card{position:static;margin:0 0 12px;background:rgba(255,255,255,.18)}}
-      @media print{.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:6px!important;line-height:.78!important;margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important}.protocol-print-fit table:first-child img{max-height:34px!important}}
+      @media print{.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:6.8px!important;line-height:1.05!important;margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important}.protocol-print-fit table:first-child img{max-height:38px!important}}
     `;
     document.head.appendChild(style);
     setTimeout(() => {

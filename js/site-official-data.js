@@ -1,6 +1,6 @@
 (function(){
   window.CHIMIOPRO_OFFICIAL_DATA = {
-  "version": "20260517h",
+  "version": "20260517o",
   "medecins": [
     {
       "id": "med_1778956586042",
@@ -406,6 +406,18 @@
       "cond": "B1",
       "qteStock": 50,
       "prixUnit": 45000,
+      "statutTarif": "Payant"
+    },
+    {
+      "name": "CAPECITABINE 500 MG CP",
+      "dci": "Capecitabine",
+      "dosages": [
+        500
+      ],
+      "forme": "Comprime",
+      "cond": "B1",
+      "qteStock": 0,
+      "prixUnit": 0,
       "statutTarif": "Payant"
     },
     {
