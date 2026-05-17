@@ -709,7 +709,8 @@
     const defaults = [
       ['TAXOL (Paclitaxel)','Paclitaxel',[100,300],'Injectable'],
       ['Acide folinique','Acide folinique',[50],'Injectable'],
-      ['RITUXIMAB','Rituximab',[100,500],'Injectable']
+      ['RITUXIMAB','Rituximab',[100,500],'Injectable'],
+      ['CAPECITABINE 500 MG CP','Capecitabine',[500],'Comprime']
     ];
     return defaults.map(([name,dci,dosages,forme]) => ({name,dci,dosages,forme,cond:'',qteStock:0,prixUnit:0,statutTarif:'Payant'}));
   }
@@ -808,6 +809,39 @@
     return warnings;
   }
 
+  function daysBetweenIso(fromDate, toDate){
+    const parse = value => {
+      const raw = String(value || '');
+      const fr = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if(fr) return new Date(`${fr[3]}-${fr[2].padStart(2, '0')}-${fr[1].padStart(2, '0')}T00:00:00`);
+      return new Date(raw.slice(0, 10) + 'T00:00:00');
+    };
+    const a = parse(fromDate);
+    const b = new Date(String(toDate || todayIso()).slice(0, 10) + 'T00:00:00');
+    if(isNaN(a) || isNaN(b)) return Infinity;
+    return Math.floor((b - a) / 86400000);
+  }
+
+  function patientAlreadyStartedTreatment(patient){
+    const code = patientCode(patient);
+    const dossier = val(patient?.dossier);
+    const same = item => (code && patientCode(item) === code) || (dossier && val(item.dossier, item.patient?.dossier) === dossier) || norm(patientName(item)) === norm(patientName(patient));
+    return readJson(STORAGE.sorties, []).some(same) ||
+      readJson(STORAGE.rdv, []).some(r => same(r) && (norm(val(r.status, r.statut)).includes('traite') || r.validatedAt || r.stockValide));
+  }
+
+  function bioDateWarnings(patient, rdv){
+    const bio = latestBiologieForPatient(patient, rdv);
+    if(!bio) return ['Aucun bilan biologique renseigne.'];
+    const resultDate = val(bio.resultDate, bio.dateResultat, bio.dateTs, bio.date);
+    const ageDays = daysBetweenIso(resultDate, val(rdv?.dateRdv, todayIso()));
+    const maxDays = patientAlreadyStartedTreatment(patient) ? 15 : 31;
+    if(ageDays > maxDays){
+      return [`Biologie trop ancienne (${ageDays} jours). Limite: ${maxDays === 15 ? '15 jours pour patient deja traite' : '1 mois pour premier traitement'}.`];
+    }
+    return [];
+  }
+
   function printHtml(html, width, height){
     const frame = document.getElementById('print-frame');
     if(!frame){
@@ -869,7 +903,12 @@
     const rdvText = rdvInput ? rdvInput.split('-').reverse().join('/') : '___/___/______';
     const protoDate = get('date-protocole');
     const dateProto = protoDate ? protoDate.split('-').reverse().join('/') : new Date().toLocaleDateString('fr-FR');
-    const contact = get('telephone') || get('contact') || get('tel') || '';
+    const patientRecord = readJson(STORAGE.patients, []).find(p =>
+      (get('dossier') && p.dossier === get('dossier')) ||
+      (get('codegratuite') && patientCode(p) === get('codegratuite')) ||
+      norm(patientName(p)) === norm(`${prenom} ${nom}`)
+    ) || {};
+    const contact = get('tel-patient') || get('telephone') || get('contact') || get('tel') || val(patientRecord.tel, patientRecord.contact, patientRecord.telephone);
     const logo = document.querySelector('.nav-logo img')?.src || '';
     const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Bon de rendez-vous</title>
       <style>
@@ -1253,7 +1292,10 @@
     const select = document.getElementById('bio-patient-select');
     if(!select) return;
     const current = select.value;
-    select.innerHTML = '<option value="">Selectionner patient</option>' + patients.map(p => {
+    const today = todayIso();
+    const todaysRdv = readJson(STORAGE.rdv, []).filter(r => r.dateRdv === today);
+    const allowedPatients = todaysRdv.map(r => rdvPatientForPreparation(r) || r);
+    select.innerHTML = '<option value="">Selectionner patient du jour</option>' + allowedPatients.map(p => {
       const code = patientShortCode(p);
       return `<option value="${esc(code)}"${current === code ? ' selected' : ''}>${esc(code || '-')} - ${esc(patientName(p) || '-')}</option>`;
     }).join('');
@@ -1263,6 +1305,10 @@
   window.renderBiologie = function(){
     const out = typeof nativeRenderBiologieFinal === 'function' ? nativeRenderBiologieFinal.apply(this, arguments) : undefined;
     normalizeBiologiePatientOptions();
+    const saveBtn = document.querySelector('#biologie-content .clinical-save');
+    if(saveBtn && !document.getElementById('bio-result-date')){
+      saveBtn.insertAdjacentHTML('beforebegin', '<div class="field clinical-bio-field" style="max-width:260px;margin-top:10px"><label>Date des resultats</label><input type="date" id="bio-result-date" value="'+todayIso()+'"><span class="bio-msg warn">Obligatoire pour valider le traitement</span></div>');
+    }
     return out;
   };
 
@@ -1279,17 +1325,23 @@
     const selected = select?.value || '';
     const typedPatient = document.getElementById('bio-patient')?.value || '';
     const patients = readJson(STORAGE.patients, []);
-    const patient = patients.find(p =>
+    const todayPatients = readJson(STORAGE.rdv, []).filter(r => r.dateRdv === todayIso()).map(r => rdvPatientForPreparation(r) || r);
+    const patient = [...patients, ...todayPatients].find(p =>
       patientShortCode(p) === selected ||
       patientCode(p) === selected ||
       String(p.id) === String(selected) ||
       (typedPatient && norm(patientName(p)) === norm(typedPatient))
     );
-    if(!patient) return alert('Selectionner un patient.');
+    if(!patient) return alert('Selectionner un patient qui a rendez-vous aujourd hui.');
+    const today = todayIso();
+    const hasRdvToday = readJson(STORAGE.rdv, []).some(r => r.dateRdv === today && ((patient.dossier && r.dossier === patient.dossier) || patientCode(patient) === val(r.codegratuite, r.code) || norm(patientName(patient)) === norm(patientName(r))));
+    if(!hasRdvToday) return alert('La biologie ne peut etre validee que le jour du traitement du patient.');
+    const resultDate = document.getElementById('bio-result-date')?.value || today;
     const entry = {
       patient: patientName(patient),
       code: patientCode(patient),
       dossier: val(patient.dossier, patient.numeroDossier),
+      resultDate,
       hb: document.getElementById('hb')?.value || '',
       pnn: document.getElementById('pnn')?.value || '',
       plaquettes: document.getElementById('plaquettes')?.value || '',
@@ -1356,7 +1408,9 @@
         <td>${esc(val(r.medecin, '-'))}</td>
         <td><span class="dash-status ${normStatus(val(r.status, r.statut)).includes('traite') ? 'ok' : ''}">${esc(val(r.status, r.statut, 'planifie'))}</span></td>
       </tr>`).join('');
+    const adminTools = isAdminUser() ? '<div id="official-github-admin-tools" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px 0"><button id="official-github-data-dashboard" class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button><button id="code-gratuite-start-dashboard" class="btn-secondary official-github-mini" onclick="setCodeGratuiteStart()" style="background:#fff7e6!important;color:#7A4B00!important;border-color:#F0C060!important">Depart Code Gratuite</button></div>' : '';
     el.innerHTML = `
+      ${adminTools}
       <div class="dashboard-shell dash-final">
         <div class="dash-final-hero">
           <div class="dash-final-title">
@@ -1399,6 +1453,56 @@
       </div>`;
   };
 
+  function protocolIntervalDays(proto, rdv){
+    const text = norm(`${val(proto?.rythme, proto?.badge, rdv?.proto, rdv?.rythme)} ${(proto?.drugs || []).map(d => d.ryt || '').join(' ')}`);
+    if(text.includes('j8')) return 7;
+    if(text.includes('j15') || text.includes('j14')) return 14;
+    if(text.includes('j28')) return 28;
+    if(text.includes('j21')) return 21;
+    return 21;
+  }
+
+  function addDaysIso(dateIso, days){
+    const d = new Date(String(dateIso || todayIso()).slice(0, 10) + 'T00:00:00');
+    d.setDate(d.getDate() + Number(days || 0));
+    return d.toISOString().slice(0, 10);
+  }
+
+  function ensureNextRdvAfterTreatment(patient, rdv){
+    const proto = protocolsList().find(p => p.id === val(patient?.protoId, rdv?.protoId) || norm(p.name) === norm(val(patient?.proto, rdv?.proto)));
+    const defaultDate = addDaysIso(val(rdv?.dateRdv, todayIso()), protocolIntervalDays(proto, rdv));
+    const nextDate = prompt(`Date du prochain rendez-vous obligatoire pour ${patientName(patient)} :`, defaultDate);
+    if(!nextDate) {
+      alert('Traitement annule : le prochain rendez-vous est obligatoire.');
+      return null;
+    }
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)){
+      alert('Date invalide. Format attendu : AAAA-MM-JJ.');
+      return null;
+    }
+    const list = readJson(STORAGE.rdv, []);
+    const exists = list.some(r => r.dateRdv === nextDate && ((patient?.dossier && r.dossier === patient.dossier) || norm(patientName(r)) === norm(patientName(patient))));
+    if(!exists){
+      const entry = {
+        ...rdv,
+        id: Date.now(),
+        dateRdv: nextDate,
+        status: 'planifie',
+        statut: 'Planifie',
+        validatedAt: '',
+        stockValide: false,
+        cureNum: Number(val(rdv?.cureNum, patient?.cure, 0)) + 1 || val(rdv?.cureNum, patient?.cure, ''),
+        createdFromTreatment: val(rdv?.id, ''),
+        createdAt: new Date().toISOString()
+      };
+      list.push(entry);
+      list.sort((a,b) => String(a.dateRdv || '').localeCompare(String(b.dateRdv || '')));
+      writeJson(STORAGE.rdv, list);
+      return entry;
+    }
+    return list.find(r => r.dateRdv === nextDate && ((patient?.dossier && r.dossier === patient.dossier) || norm(patientName(r)) === norm(patientName(patient))));
+  }
+
   window.traiterRdvStandalone = function(id){
     const list = readJson(STORAGE.rdv, []);
     const idx = list.findIndex(r => String(r.id) === String(id));
@@ -1434,9 +1538,15 @@
     }
     const warningsBio = bioWarnings(bio);
     if(warningsBio.length && !confirm('Bilan biologique a verifier :\n- ' + warningsBio.join('\n- ') + '\n\nContinuer et marquer patient traite ?')) return;
+    const oldBio = bioDateWarnings(patient, rdv);
+    if(oldBio.length) return alert(oldBio.join('\n'));
+    const nextRdv = ensureNextRdvAfterTreatment(patient, rdv);
+    if(!nextRdv) return;
     const stock = deductStockForPatient({...patient, protoId: val(patient.protoId, rdv.protoId), proto: val(patient.proto, rdv.proto)}, 'RDV traite');
-    list[idx] = {...rdv, status:'traite', statut:'Traite', validatedAt:new Date().toISOString(), stockWarnings:stock.warnings, stockDetails:stock.details};
-    writeJson(STORAGE.rdv, list);
+    const updatedRdvList = readJson(STORAGE.rdv, list);
+    const updatedIdx = updatedRdvList.findIndex(r => String(r.id) === String(id));
+    if(updatedIdx >= 0) updatedRdvList[updatedIdx] = {...updatedRdvList[updatedIdx], status:'traite', statut:'Traite', validatedAt:new Date().toISOString(), stockWarnings:stock.warnings, stockDetails:stock.details};
+    writeJson(STORAGE.rdv, updatedRdvList);
     const pidx = patients.findIndex(p => String(p.id) === String(patient.id) || (p.dossier && p.dossier === patient.dossier));
     if(pidx >= 0){
       patients[pidx].statut = 'Traité';
@@ -1447,7 +1557,8 @@
     window.renderRdvList?.();
     window.renderDashboard?.();
     window.renderPharmacie?.();
-    alert(`Patient traite. Stock deduit pour ${stock.updated} medicament(s).${stock.warnings.length ? '\n\nAvertissements:\n' + stock.warnings.join('\n') : ''}`);
+    window.renderBiologie?.();
+    alert(`Patient traite. Prochain RDV: ${nextRdv.dateRdv.split('-').reverse().join('/')}. Stock deduit pour ${stock.updated} medicament(s).${stock.warnings.length ? '\n\nAvertissements:\n' + stock.warnings.join('\n') : ''}`);
   };
 
   window.setStatut = function(patientId, statut){
@@ -1552,6 +1663,7 @@
       dossier: document.getElementById('dossier')?.value || '',
       cubix: document.getElementById('cubix')?.value || '',
       codegratuite: document.getElementById('codegratuite')?.value?.trim() || '',
+      tel: document.getElementById('tel-patient')?.value || '',
       medecin: document.getElementById('medecin-select')?.value || '',
       localisation: document.getElementById('localisation')?.value || '',
       indication: document.getElementById('indication')?.value || '',
@@ -1565,7 +1677,15 @@
   function savedCodeExists(code){
     if(!code) return false;
     const same = item => String(val(item.codegratuite, item.codeGratuite, item.code, item.patient?.codegratuite, item.patient?.codeGratuite)).trim() === String(code).trim();
-    return readJson(STORAGE.historique, []).some(same) || readJson(STORAGE.okchimio, []).some(same);
+    return [
+      STORAGE.patients,
+      STORAGE.rdv,
+      STORAGE.historique,
+      STORAGE.okchimio,
+      'chncak_okchimio',
+      'chncak_rdv',
+      'chncak_hematologie_patients'
+    ].some(key => readJson(key, []).some(same));
   }
 
   window.saveProtocol = function(){
@@ -1573,11 +1693,9 @@
     const patient = currentProtocolFormPatient();
     if(!patient.prenom || !patient.nom) return alert('Veuillez renseigner au minimum prenom et nom.');
     if(!patient.dossier) return alert('Veuillez renseigner le numero de dossier.');
-    if(patient.codegratuite && savedCodeExists(patient.codegratuite) && document.getElementById('codegratuite')?.dataset.manual !== '1'){
-      patient.codegratuite = setProtocolAutoCode(true);
-    }
-    if(patient.codegratuite && savedCodeExists(patient.codegratuite) && document.getElementById('codegratuite')?.dataset.manual !== '1'){
-      alert('Code de gratuite deja utilise. Enregistrement refuse.');
+    if(!patient.codegratuite) patient.codegratuite = setProtocolAutoCode(true);
+    if(patient.codegratuite && savedCodeExists(patient.codegratuite)){
+      alert('Code de gratuite deja utilise. Enregistrement refuse pour eviter un doublon.');
       return;
     }
     if(typeof saveToHistory === 'function') saveToHistory();
@@ -1635,6 +1753,42 @@
     writeJson('chncak_okchimio', list);
     window.renderOkChimio?.();
     showToastSafe('Protocole envoye pour verification et retire des OK chimio en attente.', 'info');
+  };
+
+  window.renderOkChimio = function(){
+    const list = typeof getOkChimio === 'function' ? getOkChimio() : readJson(STORAGE.okchimio, []);
+    const refusedArchive = readJson('chncak_okchimio_refuses', []);
+    const status = item => norm(val(item.statut, item.status, 'En attente'));
+    const enAttente = list.filter(x => status(x).includes('attente') || !status(x));
+    const valides = list.filter(x => status(x).includes('valide') || status(x).includes('valid'));
+    const refuses = [...list.filter(x => status(x).includes('refus')), ...refusedArchive];
+    const stats = document.getElementById('okchimio-stats');
+    if(stats){
+      stats.innerHTML = `
+        <div style="text-align:center;padding:12px;background:#FFF3DC;border-radius:4px"><div style="font-size:24px;font-weight:700;color:#E67E22">${enAttente.length}</div><div style="font-size:10px;color:#888">EN ATTENTE</div></div>
+        <div style="text-align:center;padding:12px;background:#E4F5ED;border-radius:4px"><div style="font-size:24px;font-weight:700;color:#0B5E3C">${valides.length}</div><div style="font-size:10px;color:#888">VALIDES</div></div>
+        <div style="text-align:center;padding:12px;background:#FDEAEA;border-radius:4px"><div style="font-size:24px;font-weight:700;color:#E74C3C">${refuses.length}</div><div style="font-size:10px;color:#888">REFUSES</div></div>`;
+    }
+    const host = document.getElementById('okchimio-list');
+    if(!host) return;
+    if(!enAttente.length){
+      host.innerHTML = '<div style="text-align:center;padding:40px;color:#888"><div style="font-size:48px">OK</div><div>Aucun protocole en attente</div></div>';
+      return;
+    }
+    host.innerHTML = `<table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#f5f5f5"><th style="padding:10px;text-align:left">Date</th><th style="padding:10px;text-align:left">Patient</th><th style="padding:10px;text-align:left">Dossier</th><th style="padding:10px;text-align:left">Protocole</th><th style="padding:10px;text-align:center">Cure</th><th style="padding:10px;text-align:left">Medecin</th><th style="padding:10px;text-align:center">Actions</th></tr></thead>
+      <tbody>${enAttente.map(e => {
+        const p = e.patient || e;
+        return `<tr style="border-bottom:1px solid #eee">
+          <td style="padding:10px">${esc(val(e.dateCreation, e.date) ? new Date(val(e.dateCreation, e.date)).toLocaleDateString('fr-FR') : '-')}</td>
+          <td style="padding:10px;font-weight:600">${esc(patientName(p))}</td>
+          <td style="padding:10px">${esc(val(p.dossier, e.dossier, '-'))}</td>
+          <td style="padding:10px"><span style="background:#EEF4FD;color:#0A3D7A;padding:4px 8px;border-radius:4px">${esc(val(e.protocole, e.protocolName, p.protocole, p.proto, '-'))}</span></td>
+          <td style="padding:10px;text-align:center">C${esc(val(e.cure, p.cure, '-'))}</td>
+          <td style="padding:10px">${esc(val(e.medecin, p.medecin, '-'))}</td>
+          <td style="padding:10px;text-align:center"><button onclick="previewProtocol('${esc(e.id)}')" style="background:#2196F3;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">Apercu</button><button onclick="refuserOkChimio('${esc(e.id)}')" style="background:#E74C3C;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">Refuser</button><button onclick="validerOkChimio('${esc(e.id)}')" style="background:#27AE60;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">Valider</button></td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
   };
 
   window.clearClinicalModuleData = function(module){
@@ -3061,6 +3215,8 @@
   };
 
   function cleanupLoginAndButtons(){
+    document.body.classList.toggle('admin-session', isAdminUser());
+    document.body.classList.toggle('pharmacien-session', isPharmacienUser());
     const login = document.getElementById('login-screen');
     if(login){
       Array.from(login.querySelectorAll('div')).forEach(div => {
@@ -3100,7 +3256,7 @@
     }
     const dashPage = document.getElementById('page-dashboard');
     if(dashPage && isAdminUser() && !document.getElementById('official-github-data-dashboard')){
-      document.getElementById('dashboard-content')?.insertAdjacentHTML('afterbegin', '<div id="official-github-admin-tools" style="display:flex;gap:6px;flex-wrap:wrap"><button id="official-github-data-dashboard" class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button><button id="code-gratuite-start-dashboard" class="btn-secondary official-github-mini" onclick="setCodeGratuiteStart()">Depart Code</button></div>');
+      document.getElementById('dashboard-content')?.insertAdjacentHTML('afterbegin', '<div id="official-github-admin-tools" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px 0"><button id="official-github-data-dashboard" class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button><button id="code-gratuite-start-dashboard" class="btn-secondary official-github-mini" onclick="setCodeGratuiteStart()" style="background:#fff7e6!important;color:#7A4B00!important;border-color:#F0C060!important">Depart Code Gratuite</button></div>');
     }
     const pharmaPage = document.getElementById('page-pharmacie');
     if(pharmaPage && isAdminUser() && !document.getElementById('official-github-data-pharma')){
@@ -3240,7 +3396,23 @@
       setTimeout(() => { loadEntryIntoForm({...patient, ...rdv}); ensurePreparationPrintReady(); }, 150);
       return;
     }
-    return typeof nativeValidateStockFromRdv === 'function' ? nativeValidateStockFromRdv.apply(this, arguments) : undefined;
+    const bioProblems = patient ? bioDateWarnings(patient, rdv) : [];
+    if(bioProblems.length){
+      alert(bioProblems.join('\n'));
+      if(typeof showPage === 'function') showPage('biologie', document.querySelector(".tab-btn[onclick*=\"biologie\"]"));
+      return;
+    }
+    const nextRdv = patient ? ensureNextRdvAfterTreatment(patient, rdv) : null;
+    if(patient && !nextRdv) return;
+    const out = typeof nativeValidateStockFromRdv === 'function' ? nativeValidateStockFromRdv.apply(this, arguments) : undefined;
+    setTimeout(() => {
+      window.renderRdvList?.();
+      window.drawRdvRows?.();
+      window.renderDashboard?.();
+      if(document.getElementById('page-preparation')?.classList.contains('active')) ensurePreparationPrintReady();
+      if(document.getElementById('page-biologie')?.classList.contains('active')) window.renderBiologie?.();
+    }, 120);
+    return out;
   };
 
   window.unlockCodeGratuiteManual = function(){
@@ -3311,7 +3483,6 @@
       .dashboard-photo-btn{display:none!important}
       .page{max-width:1580px}
       #page-apercu > div,#page-preparation > div,#page-support > div,#page-stats > div,#page-programme > div[style*="max-width"],#page-patients > div,#patients-rdv-list,#page-rdv > div{max-width:1460px!important}
-      body:not(.admin-session) .official-github-mini{display:none!important}
       body:not(.pharmacien-session) #page-pharmacie button[onclick*="saveCatalog"],
       body:not(.pharmacien-session) #page-pharmacie button[onclick*="scrollToCatalog"],
       body:not(.pharmacien-session) #page-pharmacie button[onclick*="addMissingDrugToCatalog"]{display:none!important}

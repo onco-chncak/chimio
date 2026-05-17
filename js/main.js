@@ -4650,6 +4650,7 @@ const DEFAULT_CATALOG = [
   // â”€â”€ Antimétabolites â”€â”€
   {name:'GEMCITABINE',             dci:'Gemcitabine',          dosages:[1000,200],    forme:'Injectable', cond:'B1',  qteStock:20,  prixUnit:55000, statutTarif:'Payant'},
   {name:'5-FLUOROURACILE',         dci:'Fluoro 5 uracile',    dosages:[500],         forme:'Injectable', cond:'B10', qteStock:100, prixUnit:4500, statutTarif:'Gratuit'},
+  {name:'CAPECITABINE 500 MG CP',  dci:'Capecitabine',        dosages:[500],         forme:'Comprime',   cond:'B1',  qteStock:0,   prixUnit:0, statutTarif:'Payant'},
   {name:'LEUCOVORINE (LV)',        dci:'Folinate de calcium',  dosages:[50],          forme:'Injectable', cond:'B5',  qteStock:30,  prixUnit:5000, statutTarif:'Gratuit'},
   {name:'MÉTHOTREXATE',            dci:'Méthotrexate',         dosages:[500],         forme:'Injectable', cond:'B5',  qteStock:20,  prixUnit:15000, statutTarif:'Gratuit'},
   // â”€â”€ Topo-isomérases â”€â”€
