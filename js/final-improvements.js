@@ -172,15 +172,26 @@
   function getOkChimioList(){
     const native = typeof getOkChimio === 'function' ? getOkChimio() : [];
     const merged = [...readJson(STORAGE.okchimio, []), ...readJson('chncak_okchimio', []), ...(Array.isArray(native) ? native : [])];
-    return dedupeByPatientTreatment(merged);
+    return dedupeByPatientTreatment(merged).map(ensureOkChimioId);
   }
 
   function saveOkChimioList(list){
-    const clean = dedupeByPatientTreatment(list);
+    const clean = dedupeByPatientTreatment(list).map(ensureOkChimioId);
     if(typeof saveOkChimio === 'function') saveOkChimio(clean);
     writeJson(STORAGE.okchimio, clean);
     writeJson('chncak_okchimio', clean);
     return clean;
+  }
+
+  function ensureOkChimioId(item){
+    if(!item) return item;
+    const key = patientTreatmentKey(item);
+    return {...item, id: val(item.id, key ? `ok_${key}` : `ok_${Date.now()}_${Math.random().toString(36).slice(2)}`)};
+  }
+
+  function findOkChimioEntry(list, id){
+    const target = String(id);
+    return (Array.isArray(list) ? list : []).findIndex(item => String(item.id) === target || patientTreatmentKey(item) === target || `ok_${patientTreatmentKey(item)}` === target);
   }
 
   function maxKnownCodeGratuiteSequence(){
@@ -1537,17 +1548,36 @@
     showToastSafe('Suivi patient enregistre de facon complete.', 'success');
   };
 
+  function biologieCandidatePatients(){
+    const today = todayIso();
+    const todaysRdv = readJson(STORAGE.rdv, []).filter(r => r.dateRdv === today).map(r => ({...(rdvPatientForPreparation(r) || r), ...r, bioSource:'RDV du jour'}));
+    const okValidated = getOkChimioList()
+      .filter(item => normalizeOkStatus(item) === 'valide')
+      .map(item => ({...(item.patient || {}), ...item, bioSource:'OK Chimio valide'}));
+    const saved = savedProtocolEntries().map(item => ({...item, bioSource:'Protocole sauvegarde'}));
+    const patients = readJson(STORAGE.patients, []).map(item => ({...item, bioSource:'Registre patient'}));
+    return dedupeByPatientTreatment([...todaysRdv, ...okValidated, ...saved, ...patients]);
+  }
+
+  function findBiologieCandidate(code, typedPatient){
+    return biologieCandidatePatients().find(p =>
+      patientShortCode(p) === code ||
+      patientCode(p) === code ||
+      String(p.id) === String(code) ||
+      patientTreatmentKey(p) === code ||
+      (typedPatient && norm(patientName(p)) === norm(typedPatient))
+    );
+  }
+
   function normalizeBiologiePatientOptions(){
-    const patients = readJson(STORAGE.patients, []);
     const select = document.getElementById('bio-patient-select');
     if(!select) return;
     const current = select.value;
-    const today = todayIso();
-    const todaysRdv = readJson(STORAGE.rdv, []).filter(r => r.dateRdv === today);
-    const allowedPatients = todaysRdv.map(r => rdvPatientForPreparation(r) || r);
-    select.innerHTML = '<option value="">Selectionner patient du jour</option>' + allowedPatients.map(p => {
-      const code = patientShortCode(p);
-      return `<option value="${esc(code)}"${current === code ? ' selected' : ''}>${esc(code || '-')} - ${esc(patientName(p) || '-')}</option>`;
+    const allowedPatients = biologieCandidatePatients();
+    select.innerHTML = '<option value="">Selectionner patient / protocole</option>' + allowedPatients.map(p => {
+      const code = val(patientShortCode(p), p.id, patientTreatmentKey(p));
+      const selected = current === code || current === String(p.id) || current === patientTreatmentKey(p) ? ' selected' : '';
+      return `<option value="${esc(code)}"${selected}>${esc(patientShortCode(p) || '-')} - ${esc(patientName(p) || '-')} - ${esc(protocolNameFor(p))} (${esc(val(p.bioSource, 'registre'))})</option>`;
     }).join('');
   }
 
@@ -1567,8 +1597,7 @@
 
   window.loadBiologiePatient = function(){
     const code = document.getElementById('bio-patient-select')?.value;
-    const patients = readJson(STORAGE.patients, []);
-    const patient = patients.find(p => patientShortCode(p) === code || patientCode(p) === code || String(p.id) === String(code));
+    const patient = findBiologieCandidate(code, '');
     const input = document.getElementById('bio-patient');
     if(input) input.value = patient ? patientName(patient) : '';
   };
@@ -1582,9 +1611,8 @@
   window.loadLatestBiologieForEdit = function(){
     const selected = document.getElementById('bio-patient-select')?.value || '';
     const typedPatient = document.getElementById('bio-patient')?.value || '';
-    const todayPatients = readJson(STORAGE.rdv, []).filter(r => r.dateRdv === todayIso()).map(r => rdvPatientForPreparation(r) || r);
-    const patient = todayPatients.find(p => patientShortCode(p) === selected || patientCode(p) === selected || String(p.id) === String(selected) || (typedPatient && norm(patientName(p)) === norm(typedPatient)));
-    if(!patient) return alert('Selectionner le patient du jour a modifier.');
+    const patient = findBiologieCandidate(selected, typedPatient);
+    if(!patient) return alert('Selectionner le patient a modifier.');
     const list = readJson(STORAGE.biologie, readJson('biologie', []));
     const existing = list.find(item => sameBiologiePatient(item, patient) && String(val(item.treatmentDate, item.validationDate, item.dateIso, item.dateTs)).slice(0, 10) === todayIso());
     if(!existing) return alert('Aucun bilan du jour a modifier pour ce patient.');
@@ -1603,15 +1631,8 @@
     const select = document.getElementById('bio-patient-select');
     const selected = select?.value || '';
     const typedPatient = document.getElementById('bio-patient')?.value || '';
-    const patients = readJson(STORAGE.patients, []);
-    const todayPatients = readJson(STORAGE.rdv, []).filter(r => r.dateRdv === todayIso()).map(r => rdvPatientForPreparation(r) || r);
-    const patient = [...patients, ...todayPatients].find(p =>
-      patientShortCode(p) === selected ||
-      patientCode(p) === selected ||
-      String(p.id) === String(selected) ||
-      (typedPatient && norm(patientName(p)) === norm(typedPatient))
-    );
-    if(!patient) return alert('Selectionner un patient qui a rendez-vous aujourd hui.');
+    const patient = findBiologieCandidate(selected, typedPatient);
+    if(!patient) return alert('Selectionner un patient/protocole sauvegarde ou valide dans OK Chimio.');
     const today = todayIso();
     const hasRdvToday = readJson(STORAGE.rdv, []).some(r => r.dateRdv === today && ((patient.dossier && r.dossier === patient.dossier) || patientCode(patient) === val(r.codegratuite, r.code) || norm(patientName(patient)) === norm(patientName(r))));
     if(!hasRdvToday) return alert('La biologie ne peut etre validee que le jour du traitement du patient.');
@@ -2071,14 +2092,14 @@
 
   window.validerOkChimio = function(id){
     const list = getOkChimioList();
-    const idx = list.findIndex(item => String(item.id) === String(id));
-    if(idx < 0) return;
-    list[idx].statut = 'Valide';
-    list[idx].dateValidation = new Date().toISOString();
+    const idx = findOkChimioEntry(list, id);
+    if(idx < 0) return alert('Protocole introuvable dans OK Chimio.');
+    list[idx] = ensureOkChimioId({...list[idx], statut:'Valide', status:'Valide', dateValidation:new Date().toISOString()});
     saveOkChimioList(list);
     window.renderOkChimio?.();
+    window.renderBiologie?.();
     showToastSafe('Protocole valide. Ouverture du mail de notification.', 'success');
-    openValidationEmail(list[idx]);
+    try { openValidationEmail(list[idx]); } catch(e){}
   };
 
   window.notifyProtocolValidation = function(id){
@@ -2089,7 +2110,8 @@
 
   window.previewProtocol = function(id){
     const list = getOkChimioList();
-    const entry = list.find(item => String(item.id) === String(id));
+    const idx = findOkChimioEntry(list, id);
+    const entry = idx >= 0 ? list[idx] : null;
     if(!entry) return alert('Protocole introuvable dans OK Chimio.');
     const patient = {...(entry.patient || {}), ...entry};
     if(!loadEntryIntoForm(patient)) return alert('Impossible de charger ce patient pour l apercu.');
@@ -2107,15 +2129,16 @@
     if(motifInput === null) return;
     const motif = String(motifInput || '').trim() || 'A verifier';
     const list = getOkChimioList();
-    const idx = list.findIndex(item => String(item.id) === String(id));
+    const idx = findOkChimioEntry(list, id);
     if(idx < 0) return alert('Protocole introuvable dans OK Chimio.');
-    const refused = {...list[idx], statut:'Refuse', motifRefus:motif, dateRefus:new Date().toISOString()};
+    const refused = ensureOkChimioId({...list[idx], statut:'Refuse', status:'Refuse', motifRefus:motif, dateRefus:new Date().toISOString()});
     const archive = readJson('chncak_okchimio_refuses', []);
     archive.unshift(refused);
     writeJson('chncak_okchimio_refuses', archive.slice(0, 500));
     list.splice(idx, 1);
     saveOkChimioList(list);
     window.renderOkChimio?.();
+    window.renderBiologie?.();
     showToastSafe('Protocole envoye pour verification et retire des OK chimio en attente.', 'info');
   };
 
