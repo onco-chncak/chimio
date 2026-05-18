@@ -139,6 +139,22 @@
     });
   }
 
+  function dedupeDrugDoseRows(rows){
+    const grouped = new Map();
+    (Array.isArray(rows) ? rows : []).forEach(row => {
+      const alias = catalogAliasKey(row?.name);
+      if(!alias) return;
+      const existing = grouped.get(alias);
+      if(existing){
+        existing.dose += Number(row.dose || 0);
+        existing.sourceNames = [...new Set([...(existing.sourceNames || []), ...(row.sourceNames || []), row.name].filter(Boolean))];
+      } else {
+        grouped.set(alias, {...row, dose:Number(row.dose || 0), sourceNames:[...(row.sourceNames || []), row.name].filter(Boolean)});
+      }
+    });
+    return Array.from(grouped.values());
+  }
+
   function reliquatFlaconsFromCalc(calc){
     const sizes = (calc?.flacons || []).map(Number).filter(Boolean);
     const largest = sizes.length ? Math.max(...sizes) : 0;
@@ -704,11 +720,17 @@
     if(!calc || sizes.length <= 1) return calc;
     const defaults = {};
     (calc.flacons || []).forEach(size => { defaults[size] = (defaults[size] || 0) + 1; });
+    const defaultText = sizes.map(size => `${size}mg=${defaults[size] || 0}`).join('; ');
+    const answer = prompt(`${drugName}\nDose calculee: ${dose} mg\nIndiquer les flacons utilises par dosage.\nExemple: ${defaultText}`, defaultText);
+    if(answer === null) return null;
+    const parsed = {};
+    String(answer).split(/[;,]+/).forEach(part => {
+      const match = part.trim().match(/(\d+(?:[.,]\d+)?)\s*(?:mg)?\s*[:=]\s*(\d+(?:[.,]\d+)?)/i);
+      if(match) parsed[Number(match[1].replace(',', '.'))] = Number(match[2].replace(',', '.'));
+    });
     const used = [];
     for(const size of sizes){
-      const answer = prompt(`${drugName}\nCombien de flacon(s) ${size} mg utilises ?`, String(defaults[size] || 0));
-      if(answer === null) return null;
-      const count = Number(String(answer).replace(',', '.'));
+      const count = Number(parsed[size] ?? defaults[size] ?? 0);
       if(!Number.isFinite(count) || count < 0) return null;
       for(let i = 0; i < Math.floor(count); i++) used.push(size);
     }
@@ -846,7 +868,7 @@
     const warnings = [];
     const details = [];
     const validatedDetails = pharmaValidatedFlacons(patient, rdv);
-    activeDrugDoseRows(proto, patient).forEach(row => {
+    dedupeDrugDoseRows(activeDrugDoseRows(proto, patient)).forEach(row => {
       const dose = row.dose;
       if(!dose){ warnings.push(`${row.name}: dose non calculable.`); return; }
       let calc = calcDrugFlacons(row.name, dose);
@@ -1169,7 +1191,7 @@
     if(!proto) return {detailsData:[], warnings:[`Protocole introuvable pour ${patientName(patient) || 'ce patient'}.`]};
     const detailsData = [];
     const warnings = [];
-    activeDrugDoseRows(proto, patient).forEach(row => {
+    dedupeDrugDoseRows(activeDrugDoseRows(proto, patient)).forEach(row => {
       const dose = row.dose;
       if(!dose){ warnings.push(`${row.name}: dose non calculable.`); return; }
       let calc = calcDrugFlacons(row.name, dose);
