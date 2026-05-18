@@ -961,7 +961,41 @@
   }
 
   function compactPrintableProtocol(html){
-    return String(html || '');
+    const body = String(html || '');
+    const extra = protocolPrintPatientSummary();
+    if(!extra || body.includes('protocol-patient-summary')) return body;
+    const patched = body.replace(/(<div style="border:1\.5px solid #000[\s\S]*?<\/div>\s*<\/div>)/, `$1${extra}`);
+    return patched === body ? `${extra}${body}` : patched;
+  }
+
+  function formOrLastPatientValue(id, keys){
+    const current = document.getElementById(id)?.value;
+    if(current) return current;
+    const last = readJson(LAST_PROTOCOL_PATIENT_KEY, {});
+    return val(...keys.map(key => last[key]));
+  }
+
+  function protocolPrintPatientSummary(){
+    const prenom = formOrLastPatientValue('prenom', ['prenom']);
+    const nom = formOrLastPatientValue('nom', ['nom']);
+    if(!prenom && !nom) return '';
+    const poids = formOrLastPatientValue('poids', ['poids']);
+    const taille = formOrLastPatientValue('taille', ['taille']);
+    const age = formOrLastPatientValue('age', ['age']);
+    const localisation = formOrLastPatientValue('localisation', ['localisation', 'diagnostic']);
+    const histologie = formOrLastPatientValue('type-histologie', ['histologie', 'typeHistologie', 'type_histologie']);
+    const stade = formOrLastPatientValue('stade', ['stade', 'phase', 'phaseDiagnostic']);
+    const indication = formOrLastPatientValue('indication', ['indication']);
+    const surface = (typeof sc !== 'undefined' && Number(sc)) ? Number(sc).toFixed(2) : val(readJson(LAST_PROTOCOL_PATIENT_KEY, {}).sc);
+    const cell = (label, value) => `<div><span>${label}</span><b>${esc(val(value, '-'))}</b></div>`;
+    return `<div class="protocol-patient-summary" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 7px;border:1px solid #0A3D7A;background:#F7FAFE;padding:5px 7px;margin:0 0 6px 0;font-size:9.4px;line-height:1.25">
+      ${cell('Age', age ? `${age} ans` : '')}
+      ${cell('Poids', poids ? `${poids} kg` : '')}
+      ${cell('Taille / SC', `${taille ? taille + ' cm' : '-'}${surface ? ' / ' + surface + ' m2' : ''}`)}
+      ${cell('Localisation', localisation)}
+      ${cell('Phase diagnostic', val(stade, histologie))}
+      ${cell('Indication', indication)}
+    </div>`;
   }
 
   window.printFromApercu = function(){
@@ -1373,10 +1407,14 @@
         <div class="clinical-form-grid suivi-extra-grid" style="margin-top:10px">
           <div class="field"><label>Date evaluation</label><input type="date" id="suivi-date-evaluation" value="${todayIso()}"></div>
           <div class="field"><label>Type evaluation</label><select id="suivi-type-evaluation"><option value="">Choisir</option><option>Clinique</option><option>Scanner/TDM</option><option>IRM</option><option>Marqueurs tumoraux</option><option>Clinique + imagerie</option></select></div>
-          <div class="field"><label>Toxicite principale</label><input type="text" id="suivi-toxicite" placeholder="ex: neuropathie, diarrhee, neutropenie"></div>
+          <div class="field"><label>ECOG</label><select id="suivi-ecog"><option value="">Choisir</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+          <div class="field"><label>Poids actuel (kg)</label><input type="number" id="suivi-poids-actuel" min="1" max="300" step="0.1"></div>
+          <div class="field"><label>Examen clinique</label><select id="suivi-examen-clinique"><option value="">Choisir</option><option>Stable</option><option>Ameliore</option><option>Aggrave</option><option>AEG</option><option>Douleur</option><option>Autre</option></select></div>
+          <div class="field"><label>Toxicite principale</label><select id="suivi-toxicite"><option value="">Choisir</option><option>Aucune</option><option>Neuropathie</option><option>Diarrhee</option><option>Vomissements</option><option>Neutropenie</option><option>Anemie</option><option>Thrombopenie</option><option>Mucite</option><option>Syndrome main-pied</option><option>Autre</option></select></div>
           <div class="field"><label>Grade toxicite</label><select id="suivi-grade-toxicite"><option value="">Choisir</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
           <div class="field"><label>Decision therapeutique</label><select id="suivi-decision"><option value="">Choisir</option><option>Continuer meme protocole</option><option>Adapter dose</option><option>Reporter cure</option><option>Changer protocole</option><option>Arret traitement</option></select></div>
           <div class="field"><label>Prochaine evaluation</label><input type="date" id="suivi-prochaine-evaluation"></div>
+          <div class="field" style="grid-column:1/-1"><label>Conclusion evaluation</label><select id="suivi-conclusion"><option value="">Choisir</option><option>Benefice clinique</option><option>Maladie controlee</option><option>Progression suspectee</option><option>Toxicite limitante</option><option>Evaluation incomplete</option></select></div>
           <div class="field" style="grid-column:1/-1"><label>Observation detaillee</label><input type="text" id="suivi-observation" placeholder="Symptomes, tolerance, imagerie, decision RCP..."></div>
         </div>`);
     }
@@ -1394,6 +1432,20 @@
   const nativeRenderSuiviFinal = window.renderSuivi;
   window.renderSuivi = renderSuiviFinal;
 
+  const nativeAutoFillSuiviFields = window.autoFillSuiviFields;
+  window.autoFillSuiviFields = function(){
+    const out = typeof nativeAutoFillSuiviFields === 'function' ? nativeAutoFillSuiviFields.apply(this, arguments) : undefined;
+    const code = document.getElementById('suivi-patient')?.value;
+    const patients = readJson(STORAGE.patients, []);
+    const patient = patients.find((p, i) => patientShortCode(p) === code || patientCode(p) === code || String(i) === String(code));
+    const set = (id, value) => { const el = document.getElementById(id); if(el && !el.value) el.value = value || ''; };
+    if(patient){
+      set('suivi-poids-actuel', val(patient.poids, patient.weight));
+      set('suivi-date-debut', val(patient.dateDebut, patient.dateProto, patient.dateProtocole, patient.date));
+    }
+    return out;
+  };
+
   window.saveReponseTumorale = function(){
     const code = document.getElementById('suivi-patient')?.value;
     const cures = Number(document.getElementById('suivi-cures')?.value);
@@ -1402,15 +1454,32 @@
     const dateEvaluation = document.getElementById('suivi-date-evaluation')?.value;
     const typeEvaluation = document.getElementById('suivi-type-evaluation')?.value;
     const decision = document.getElementById('suivi-decision')?.value;
+    const ecog = document.getElementById('suivi-ecog')?.value;
+    const poidsActuel = Number(document.getElementById('suivi-poids-actuel')?.value);
+    const examenClinique = document.getElementById('suivi-examen-clinique')?.value;
+    const toxicite = document.getElementById('suivi-toxicite')?.value;
+    const gradeToxicite = document.getElementById('suivi-grade-toxicite')?.value;
+    const conclusion = document.getElementById('suivi-conclusion')?.value;
+    const observation = document.getElementById('suivi-observation')?.value?.trim() || '';
     if(!code) return alert('Selectionner un patient.');
     if(!cures || cures < 1) return alert('Indiquer un nombre de cures valide.');
     if(!compliant) return alert('Indiquer si le traitement est compliant.');
     if(!reponse) return alert('Selectionner la reponse tumorale.');
     if(!dateEvaluation) return alert('Renseigner la date d evaluation.');
     if(!typeEvaluation) return alert('Renseigner le type d evaluation.');
+    if(ecog === '') return alert('Renseigner le score ECOG.');
+    if(!poidsActuel || poidsActuel < 1) return alert('Renseigner le poids actuel.');
+    if(!examenClinique) return alert('Renseigner l examen clinique.');
+    if(!toxicite) return alert('Renseigner la toxicite principale, meme si aucune.');
+    if(gradeToxicite === '') return alert('Renseigner le grade de toxicite.');
     if(!decision) return alert('Renseigner la decision therapeutique.');
+    if(!conclusion) return alert('Renseigner la conclusion de l evaluation.');
+    if(observation.length < 8) return alert('Ajouter une observation detaillee.');
     const patients = readJson(STORAGE.patients, []);
     const patient = patients.find((p, i) => patientShortCode(p) === code || patientCode(p) === code || String(i) === String(code));
+    if(!patient) return alert('Patient introuvable dans le registre.');
+    const totalCures = Number(val(patient.totalCures, patient.total, 0));
+    if(totalCures && cures > totalCures && !confirm(`Le nombre de cures (${cures}) depasse le total prevu (${totalCures}). Continuer ?`)) return;
     const list = readJson(STORAGE.suivi, readJson('suivi', []));
     const existing = list.find(s => s.patientCode === code);
     list.push({
@@ -1426,11 +1495,15 @@
       dateDebut: document.getElementById('suivi-date-debut')?.value || existing?.dateDebut || new Date().toLocaleDateString('fr-FR'),
       dateEvaluation,
       typeEvaluation,
-      toxicite: document.getElementById('suivi-toxicite')?.value || '',
-      gradeToxicite: document.getElementById('suivi-grade-toxicite')?.value || '',
+      ecog,
+      poidsActuel,
+      examenClinique,
+      toxicite,
+      gradeToxicite,
       decision,
       prochaineEvaluation: document.getElementById('suivi-prochaine-evaluation')?.value || '',
-      observation: document.getElementById('suivi-observation')?.value || '',
+      conclusion,
+      observation,
       date: new Date().toLocaleDateString('fr-FR'),
       dateTs: new Date().toISOString()
     });
@@ -1863,6 +1936,9 @@
       medecin: document.getElementById('medecin-select')?.value || '',
       localisation: document.getElementById('localisation')?.value || '',
       indication: document.getElementById('indication')?.value || '',
+      histologie: document.getElementById('type-histologie')?.value || '',
+      stade: document.getElementById('stade')?.value || '',
+      phaseDiagnostic: document.getElementById('stade')?.value || '',
       protoId: proto?.id || '',
       protocole: proto?.name || '',
       dateProto: document.getElementById('date-protocole')?.value || '',
