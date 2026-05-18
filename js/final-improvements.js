@@ -1946,7 +1946,18 @@
 
   function currentProtocolFormPatient(){
     const proto = protocolsList().find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
+    const formIds = [
+      'prenom','nom','age','poids','taille','sexe','dossier','cubix','codegratuite','tel-patient',
+      'date-protocole','indication','medecin-select','localisation','type-histologie','stade',
+      'atcd-select','atcd','creatinine','auc-cible','auc-custom','date-rdv','total-cures','cure-num'
+    ];
+    const formSnapshot = formIds.reduce((acc, id) => {
+      const el = document.getElementById(id);
+      if(el) acc[id] = el.value || '';
+      return acc;
+    }, {});
     return {
+      formSnapshot,
       prenom: document.getElementById('prenom')?.value?.trim() || '',
       nom: document.getElementById('nom')?.value?.trim() || '',
       age: document.getElementById('age')?.value || '',
@@ -1960,6 +1971,8 @@
       medecin: document.getElementById('medecin-select')?.value || '',
       localisation: document.getElementById('localisation')?.value || '',
       indication: document.getElementById('indication')?.value || '',
+      atcd: typeof getAtcd === 'function' ? getAtcd() : val(document.getElementById('atcd')?.value, document.getElementById('atcd-select')?.value),
+      antecedents: typeof getAtcd === 'function' ? getAtcd() : val(document.getElementById('atcd')?.value, document.getElementById('atcd-select')?.value),
       histologie: document.getElementById('type-histologie')?.value || '',
       stade: document.getElementById('stade')?.value || '',
       phaseDiagnostic: document.getElementById('stade')?.value || '',
@@ -1967,8 +1980,10 @@
       protocole: proto?.name || '',
       dateProto: document.getElementById('date-protocole')?.value || '',
       dateRdv: document.getElementById('date-rdv')?.value || '',
+      creatinine: document.getElementById('creatinine')?.value || '',
       carboDose: (typeof carboDose !== 'undefined' && Number(carboDose)) ? Number(carboDose) : '',
       auc: document.getElementById('auc-cible')?.value || '',
+      aucCustom: document.getElementById('auc-custom')?.value || '',
       clairance: document.getElementById('res-clcr')?.textContent || '',
       cure: document.getElementById('cure-num')?.value || '',
       totalCures: document.getElementById('total-cures')?.value || ''
@@ -3220,16 +3235,7 @@
     const idx = Number(document.getElementById('apercu-patient-select')?.value);
     const entry = savedProtocolEntries()[idx];
     if(!entry) return alert('Selectionner un patient.');
-    const set = (id, value) => { const el = document.getElementById(id); if(el) el.value = value || ''; };
-    set('prenom', val(entry.prenom, entry.patient?.prenom));
-    set('nom', val(entry.nom, entry.patient?.nom));
-    set('age', entry.age); set('poids', entry.poids); set('taille', entry.taille);
-    set('dossier', entry.dossier); set('cubix', entry.cubix); set('codegratuite', patientCode(entry));
-    set('localisation', val(entry.localisation, entry.diagnostic)); set('indication', entry.indication);
-    const protoId = val(entry.protoId, protocolsList().find(p => norm(p.name) === norm(val(entry.protoName, entry.protocole, entry.protocolName)))?.id);
-    if(protoId && typeof selectProto === 'function') selectProto(protoId);
-    if(typeof calcSC === 'function') calcSC();
-    if(typeof update === 'function') update();
+    if(!loadEntryIntoForm(entry)) return alert('Impossible de restaurer ce protocole.');
     if(typeof renderApercu === 'function') renderApercu();
   };
 
@@ -3257,14 +3263,36 @@
   function loadEntryIntoForm(entry){
     if(!entry) return false;
     const set = (id, value) => { const el = document.getElementById(id); if(el) el.value = value || ''; };
+    Object.entries(entry.formSnapshot || {}).forEach(([id, value]) => set(id, value));
     set('prenom', val(entry.prenom, entry.patient?.prenom));
     set('nom', val(entry.nom, entry.patient?.nom));
-    set('age', entry.age); set('poids', entry.poids); set('taille', entry.taille);
+    set('age', entry.age); set('poids', entry.poids); set('taille', entry.taille); set('sexe', entry.sexe);
     set('dossier', entry.dossier); set('cubix', entry.cubix); set('codegratuite', patientCode(entry));
-    set('localisation', val(entry.localisation, entry.diagnostic)); set('indication', entry.indication);
+    set('tel-patient', val(entry.tel, entry.contact, entry.telephone));
+    set('date-protocole', val(entry.dateProto, entry.dateProtocole, entry.formSnapshot?.['date-protocole']));
+    set('date-rdv', val(entry.dateRdv, entry.prochainRdv, entry.rdv, entry.formSnapshot?.['date-rdv']));
+    set('medecin-select', val(entry.medecin, entry.formSnapshot?.['medecin-select']));
+    set('localisation', val(entry.localisation, entry.diagnostic));
+    set('indication', val(entry.indication, entry.formSnapshot?.indication));
+    set('type-histologie', val(entry.histologie, entry.typeHistologie, entry.formSnapshot?.['type-histologie']));
+    set('stade', val(entry.stade, entry.phaseDiagnostic, entry.formSnapshot?.stade));
+    set('creatinine', val(entry.creatinine, entry.formSnapshot?.creatinine));
+    set('auc-cible', val(entry.auc, entry.formSnapshot?.['auc-cible']));
+    set('auc-custom', val(entry.aucCustom, entry.formSnapshot?.['auc-custom']));
+    set('total-cures', val(entry.totalCures, entry.formSnapshot?.['total-cures']));
+    set('cure-num', val(entry.cure, entry.formSnapshot?.['cure-num']));
+    const atcdValue = val(entry.atcd, entry.antecedents, entry.formSnapshot?.atcd, entry.formSnapshot?.['atcd-select']);
+    if(atcdValue){
+      const select = document.getElementById('atcd-select');
+      const hasOption = select && Array.from(select.options).some(option => option.value === atcdValue);
+      set('atcd-select', hasOption ? atcdValue : 'autre');
+      if(typeof onAtcdChange === 'function') onAtcdChange();
+      set('atcd', hasOption ? '' : atcdValue);
+    }
     const protoId = val(entry.protoId, protocolsList().find(p => norm(p.name) === norm(val(entry.protoName, entry.protocole, entry.protocolName, entry.proto)))?.id);
     if(protoId && typeof selectProto === 'function') selectProto(protoId);
     if(typeof calcSC === 'function') calcSC();
+    if(typeof calcCarbo === 'function') calcCarbo();
     if(typeof update === 'function') update();
     return true;
   }
