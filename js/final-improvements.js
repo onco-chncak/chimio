@@ -976,9 +976,9 @@
     const histologie = formOrLastPatientValue('type-histologie', ['histologie', 'typeHistologie', 'type_histologie']);
     const stade = formOrLastPatientValue('stade', ['stade', 'phase', 'phaseDiagnostic']);
     const parts = [];
-    if(histologie && localisation) parts.push(`${histologie} de localisation ${localisation}`);
+    if(histologie && localisation) parts.push(`${histologie} ${localisation}`);
     else if(histologie) parts.push(histologie);
-    else if(localisation) parts.push(`Localisation ${localisation}`);
+    else if(localisation) parts.push(localisation);
     if(stade) parts.push(`au stade ${stade}`);
     return parts.join(', ') || '-';
   }
