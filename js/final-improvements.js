@@ -975,7 +975,12 @@
     const localisation = formOrLastPatientValue('localisation', ['localisation', 'diagnostic']);
     const histologie = formOrLastPatientValue('type-histologie', ['histologie', 'typeHistologie', 'type_histologie']);
     const stade = formOrLastPatientValue('stade', ['stade', 'phase', 'phaseDiagnostic']);
-    return [localisation, stade, histologie].map(x => String(x || '').trim()).filter(Boolean).join(' - ') || '-';
+    const parts = [];
+    if(histologie && localisation) parts.push(`${histologie} de localisation ${localisation}`);
+    else if(histologie) parts.push(histologie);
+    else if(localisation) parts.push(`Localisation ${localisation}`);
+    if(stade) parts.push(`au stade ${stade}`);
+    return parts.join(', ') || '-';
   }
 
   function enhancePrintableProtocolPatientLine(html){
