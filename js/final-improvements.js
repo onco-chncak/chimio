@@ -784,7 +784,7 @@
   }
 
   function isSupportOnlyDrug(name){
-    return ['support magnesium','support calcium','support prednisone','support nacl','support g5','kytril','hydrocortisone'].includes(catalogAliasKey(name));
+    return ['support magnesium','support calcium','support prednisone','support nacl','support g5'].includes(catalogAliasKey(name));
   }
 
   function cleanPharmacyCatalog(list){
@@ -834,7 +834,9 @@
       ['TAXOL (Paclitaxel)','Paclitaxel',[100,300],'Injectable'],
       ['Acide folinique','Acide folinique',[50],'Injectable'],
       ['RITUXIMAB','Rituximab',[100,500],'Injectable'],
-      ['CAPECITABINE 500 MG CP','Capecitabine',[500],'Comprime']
+      ['CAPECITABINE 500 MG CP','Capecitabine',[500],'Comprime'],
+      ['HYDROCORTISONE','Hydrocortisone',[100],'Injectable'],
+      ['KYTRIL','Granisetron',[3],'Injectable']
     ];
     return defaults.map(([name,dci,dosages,forme]) => ({name,dci,dosages,forme,cond:'',qteStock:0,prixUnit:0,statutTarif:'Payant'}));
   }
@@ -2070,12 +2072,28 @@
     if(entry) openValidationEmail(entry);
   };
 
+  window.previewProtocol = function(id){
+    const list = getOkChimioList();
+    const entry = list.find(item => String(item.id) === String(id));
+    if(!entry) return alert('Protocole introuvable dans OK Chimio.');
+    const patient = {...(entry.patient || {}), ...entry};
+    if(!loadEntryIntoForm(patient)) return alert('Impossible de charger ce patient pour l apercu.');
+    if(typeof showPage === 'function') showPage('apercu', document.querySelector(".tab-btn[onclick*=\"apercu\"]"));
+    setTimeout(() => {
+      if(typeof calcSC === 'function') calcSC();
+      if(typeof update === 'function') update();
+      if(typeof renderApercu === 'function') renderApercu();
+      installApercuSearch();
+    }, 80);
+  };
+
   window.refuserOkChimio = function(id){
-    const motif = prompt('Motif du refus :');
-    if(!motif) return;
+    const motifInput = prompt('Motif du refus :', 'A verifier');
+    if(motifInput === null) return;
+    const motif = String(motifInput || '').trim() || 'A verifier';
     const list = getOkChimioList();
     const idx = list.findIndex(item => String(item.id) === String(id));
-    if(idx < 0) return;
+    if(idx < 0) return alert('Protocole introuvable dans OK Chimio.');
     const refused = {...list[idx], statut:'Refuse', motifRefus:motif, dateRefus:new Date().toISOString()};
     const archive = readJson('chncak_okchimio_refuses', []);
     archive.unshift(refused);
