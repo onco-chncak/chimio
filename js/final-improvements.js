@@ -1027,7 +1027,20 @@
   function enhancePrintableProtocolPatientLine(html){
     const phrase = esc(protocolLocalisationsPhrase());
     const indication = esc(protocolIndicationPhrase());
+    const last = readJson(LAST_PROTOCOL_PATIENT_KEY, {});
+    const dossier = esc(formOrLastPatientValue('dossier', ['dossier', 'numeroDossier']));
+    const cubix = esc(formOrLastPatientValue('cubix', ['cubix', 'idCubix']));
+    const code = esc(formOrLastPatientValue('codegratuite', ['codegratuite', 'codeGratuite', 'code']));
+    const dateProto = formOrLastPatientValue('date-protocole', ['dateProto', 'dateProtocole']) || todayIso();
+    const dateTxt = esc(dateProto ? String(dateProto).split('-').reverse().join('/') : '');
+    const barcode = esc(val(last.codeBarre, last.codebarre, code));
+    const headerInfo = `<b>N° Dossier : ${dossier || '________'}</b><br>
+        <span style="font-size:8.5px">Date : <b>${dateTxt}</b></span><br>
+        ${cubix ? `<span style="font-size:8.5px">ID Cubix : <b>${cubix}</b></span><br>` : ''}
+        ${code ? `<span style="font-size:8.5px">Code Gratuite : <b>${code}</b></span><br>` : ''}
+        ${barcode ? `<span style="font-size:8.5px">Code barre : <b style="font-family:'Libre Barcode 39','Courier New',monospace;font-size:18px;letter-spacing:.08em">*${barcode}*</b></span>` : ''}`;
     return html
+      .replace(/<b>CHNCAK[\s\S]*?<\/td>/, `${headerInfo}</td>`)
       .replace(/Localisation\s*:/g, 'Localisations :')
       .replace(/(<div style="font-size:10px;margin-bottom:2px">Localisations :\s*<b>)([\s\S]*?)(<\/b><\/div>)/, `$1${phrase}$3`)
       .replace(/(<div style="font-size:9px;margin-top:2px">\s*Indication :\s*<b>)([\s\S]*?)(<\/b>\s*<\/div>)/, `$1${indication}$3`);
@@ -1969,7 +1982,7 @@
     const proto = protocolsList().find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
     const formIds = [
       'prenom','nom','age','poids','taille','sexe','dossier','cubix','codegratuite','tel-patient',
-      'date-protocole','indication','medecin-select','localisation','type-histologie','stade',
+      'date-protocole','indication','medecin-select','localisation','type-histologie','stade','nationalite','ligne-traitement',
       'atcd-select','atcd','creatinine','auc-cible','auc-custom','date-rdv','total-cures','cure-num'
     ];
     const formSnapshot = formIds.reduce((acc, id) => {
@@ -1985,6 +1998,9 @@
       poids: document.getElementById('poids')?.value || '',
       taille: document.getElementById('taille')?.value || '',
       sexe: document.getElementById('sexe')?.value || '',
+      nationalite: document.getElementById('nationalite')?.value || '',
+      ligne: document.getElementById('ligne-traitement')?.value || '',
+      ligneTraitement: document.getElementById('ligne-traitement')?.value || '',
       dossier: document.getElementById('dossier')?.value || '',
       cubix: document.getElementById('cubix')?.value || '',
       codegratuite: document.getElementById('codegratuite')?.value?.trim() || '',
@@ -2028,7 +2044,7 @@
   function clearProtocolFormForNextPatient(){
     [
       'prenom','nom','age','poids','taille','dossier','cubix','tel-patient','indication',
-      'localisation','type-histologie','stade','total-cures','cure-num'
+      'localisation','type-histologie','stade','nationalite','ligne-traitement','total-cures','cure-num'
     ].forEach(id => {
       const el = document.getElementById(id);
       if(el) el.value = '';
@@ -3290,6 +3306,8 @@
     set('prenom', val(entry.prenom, entry.patient?.prenom));
     set('nom', val(entry.nom, entry.patient?.nom));
     set('age', entry.age); set('poids', entry.poids); set('taille', entry.taille); set('sexe', entry.sexe);
+    set('nationalite', val(entry.nationalite, entry.formSnapshot?.nationalite));
+    set('ligne-traitement', val(entry.ligne, entry.ligneTraitement, entry.line, entry.formSnapshot?.['ligne-traitement']));
     set('dossier', entry.dossier); set('cubix', entry.cubix); set('codegratuite', patientCode(entry));
     set('tel-patient', val(entry.tel, entry.contact, entry.telephone));
     set('date-protocole', val(entry.dateProto, entry.dateProtocole, entry.formSnapshot?.['date-protocole']));
