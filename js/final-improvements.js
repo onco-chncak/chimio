@@ -33,6 +33,7 @@
   const patientBarcode = p => val(p?.codeBarre, p?.codebarre, p?.codegratuite, p?.codeGratuite, p?.code, p?.dossier);
   const todayIso = () => new Date().toISOString().slice(0, 10);
   const CODE_GRATUITE_COUNTER_KEY = 'chncak_code_gratuite_counter';
+  const LAST_PROTOCOL_PATIENT_KEY = 'chncak_last_protocol_patient';
 
   function codeYearFromDate(value){
     const d = value ? new Date(value) : new Date();
@@ -107,6 +108,42 @@
       seen.add(String(key));
       return true;
     });
+  }
+
+  function dedupeRdv(list){
+    const seen = new Set();
+    return (Array.isArray(list) ? list : []).filter(item => {
+      const key = val(item?.id, `${patientTreatmentKey(item)}|${val(item?.dateRdv, item?.date)}`);
+      if(seen.has(String(key))) return false;
+      seen.add(String(key));
+      return true;
+    });
+  }
+
+  function activeDrugDoseRows(proto, patient){
+    const grouped = new Map();
+    (proto?.drugs || [])
+      .filter(d => !d.t && !isSupportOnlyDrug(d.name) && (d.mgm2 || d.mgkg || d.avastin || d.carbo || typeof d.fix === 'number'))
+      .forEach(drug => {
+        const dose = doseForDrug(drug, patient);
+        const alias = catalogAliasKey(drug.name);
+        if(!dose) return;
+        const row = grouped.get(alias) || {name: drug.name, dose: 0, sourceNames: []};
+        row.dose += Number(dose || 0);
+        row.sourceNames.push(drug.name);
+        grouped.set(alias, row);
+      });
+    return Array.from(grouped.values()).map(row => {
+      const item = findCatalogItem(row.name, readJson(STORAGE.catalog, []));
+      return {...row, name: val(item?.name, row.name)};
+    });
+  }
+
+  function reliquatFlaconsFromCalc(calc){
+    const sizes = (calc?.flacons || []).map(Number).filter(Boolean);
+    const largest = sizes.length ? Math.max(...sizes) : 0;
+    if(!largest) return 0;
+    return Math.round((Number(calc.reliquat || 0) / largest) * 100) / 100;
   }
 
   function normalizeOkStatus(item){
@@ -628,22 +665,26 @@
     if(drug.mgm2 && surface){
       const dose = Math.round(Number(drug.mgm2) * surface);
       if(drug.oral && catalogAliasKey(drug.name) === 'capecitabine'){
-        const daysMatch = String(val(drug.dur, drug.ryt, '')).match(/j\s*1\s*[–-]\s*j\s*(\d+)/i);
-        const days = daysMatch ? Number(daysMatch[1]) : 14;
+        const dayNumbers = String(val(drug.dur, drug.ryt, '')).replace(/[^0-9]+/g, ' ').trim().split(/\s+/).map(Number).filter(Boolean);
+        const days = dayNumbers.length ? Math.max(...dayNumbers) : 14;
         return dose * 2 * days;
       }
       return dose;
     }
     if(drug.mgkg && poids) return Math.round(Number(drug.mgkg) * poids);
     if(drug.avastin && poids) return Math.round(15 * poids);
+    if(drug.carbo){
+      const directDose = Number(val(patient?.carboDose, patient?.doseCarbo, patient?.carboplatineDose, 0));
+      if(directDose) return Math.round(directDose);
+      const auc = Number(val(drug.auc, typeof drug.carbo === 'number' ? drug.carbo : '', patient?.auc, 5)) || 5;
+      const clcr = Number(val(patient?.clairance, patient?.clcr, patient?.gfr, 0));
+      if(clcr) return Math.round(auc * (clcr + 25));
+      if(poids) return Math.round(auc * (poids * 0.8 + 25));
+    }
     return 0;
   }
 
   function calcDrugFlacons(name, dose){
-    if(typeof calcFlacons === 'function'){
-      const native = calcFlacons(name, dose);
-      if(native && native.drug) return native;
-    }
     const catalog = cleanPharmacyCatalog(readJson(STORAGE.catalog, []));
     const item = findCatalogItem(name, catalog);
     const sizes = (item?.dosages || item?.flacons || []).map(Number).filter(Boolean).sort((a,b) => b-a);
@@ -797,35 +838,35 @@
     if(changed || list.length !== original.length) syncCatalogGlobal(list);
   }
 
-  function deductStockForPatient(patient, sourceLabel){
+  function deductStockForPatient(patient, sourceLabel, rdv){
     const proto = findProtocolByPatient(patient);
     if(!proto) return {updated:0, warnings:[`Protocole introuvable pour ${patientName(patient) || 'ce patient'}.`], details:[]};
     const catalog = readJson(STORAGE.catalog, []);
     let updated = 0;
     const warnings = [];
     const details = [];
-    const validatedDetails = pharmaValidatedFlacons(patient);
-    (proto.drugs || []).filter(d => !d.t && !isSupportOnlyDrug(d.name) && (d.mgm2 || d.mgkg || d.avastin || typeof d.fix === 'number')).forEach(drug => {
-      const dose = doseForDrug(drug, patient);
-      if(!dose){ warnings.push(`${drug.name}: dose non calculable.`); return; }
-      let calc = calcDrugFlacons(drug.name, dose);
-      const matchedItem = findCatalogItem(drug.name, catalog);
+    const validatedDetails = pharmaValidatedFlacons(patient, rdv);
+    activeDrugDoseRows(proto, patient).forEach(row => {
+      const dose = row.dose;
+      if(!dose){ warnings.push(`${row.name}: dose non calculable.`); return; }
+      let calc = calcDrugFlacons(row.name, dose);
+      const matchedItem = findCatalogItem(row.name, catalog);
       const idx = catalog.findIndex(item => item === matchedItem);
-      if(!calc || idx < 0){ warnings.push(`${drug.name}: medicament non trouve dans Pharmacie Centrale.`); return; }
-      const validated = validatedDetails.find(item => catalogAliasKey(item.name) === catalogAliasKey(drug.name));
+      if(!calc || idx < 0){ warnings.push(`${row.name}: medicament non trouve dans Pharmacie Centrale.`); return; }
+      const validated = validatedDetails.find(item => catalogAliasKey(item.name) === catalogAliasKey(row.name));
       if(validated?.flacons?.length){
         const flacons = validated.flacons.map(Number).filter(Boolean);
         const totalMg = flacons.reduce((sum, size) => sum + size, 0);
         calc = {...calc, nbFlacons:flacons.length, flacons, totalMg, reliquat:Math.max(0, Math.round((totalMg - dose) * 10) / 10)};
       } else {
-        calc = confirmFlaconsByDosage(drug.name, dose, calc);
-        if(!calc){ warnings.push(`${drug.name}: deduction annulee ou quantites invalides.`); return; }
+        calc = confirmFlaconsByDosage(row.name, dose, calc);
+        if(!calc){ warnings.push(`${row.name}: deduction annulee ou quantites invalides.`); return; }
       }
       const stock = Number(catalog[idx].qteStock ?? catalog[idx].stock ?? 0);
-      if(stock < calc.nbFlacons){ warnings.push(`${drug.name}: stock insuffisant (${stock} flacon(s), besoin ${calc.nbFlacons}).`); return; }
+      if(stock < calc.nbFlacons){ warnings.push(`${row.name}: stock insuffisant (${stock} flacon(s), besoin ${calc.nbFlacons}).`); return; }
       catalog[idx].qteStock = stock - calc.nbFlacons;
       updated++;
-      details.push({name: drug.name, dose, nbFlacons: calc.nbFlacons, reliquatMg: Number(calc.reliquat || 0), flacons: calc.flacons || []});
+      details.push({name: row.name, dose, nbFlacons: calc.nbFlacons, reliquatMg: Number(calc.reliquat || 0), reliquatFlacons: reliquatFlaconsFromCalc(calc), flacons: calc.flacons || []});
     });
     writeJson(STORAGE.catalog, catalog);
     const sorties = readJson(STORAGE.sorties, []);
@@ -955,21 +996,22 @@
   };
 
   window.printBonRDV = function(){
-    const proto = protocolsList().find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
+    const last = readJson(LAST_PROTOCOL_PATIENT_KEY, {});
+    const proto = protocolsList().find(p => p.id === (typeof selId !== 'undefined' ? selId : '') || p.id === last.protoId || norm(p.name) === norm(last.protocole));
     const get = id => document.getElementById(id)?.value || '';
-    const prenom = get('prenom');
-    const nom = get('nom');
+    const prenom = get('prenom') || val(last.prenom);
+    const nom = get('nom') || val(last.nom);
     if(!prenom || !nom) return alert('Renseignez le patient avant d imprimer le bon de rendez-vous.');
-    const rdvInput = get('date-rdv');
+    const rdvInput = get('date-rdv') || val(last.dateRdv);
     const rdvText = rdvInput ? rdvInput.split('-').reverse().join('/') : '___/___/______';
-    const protoDate = get('date-protocole');
+    const protoDate = get('date-protocole') || val(last.dateProto);
     const dateProto = protoDate ? protoDate.split('-').reverse().join('/') : new Date().toLocaleDateString('fr-FR');
     const patientRecord = readJson(STORAGE.patients, []).find(p =>
-      (get('dossier') && p.dossier === get('dossier')) ||
-      (get('codegratuite') && patientCode(p) === get('codegratuite')) ||
+      (val(get('dossier'), last.dossier) && p.dossier === val(get('dossier'), last.dossier)) ||
+      (val(get('codegratuite'), last.codegratuite) && patientCode(p) === val(get('codegratuite'), last.codegratuite)) ||
       norm(patientName(p)) === norm(`${prenom} ${nom}`)
     ) || {};
-    const contact = get('tel-patient') || get('telephone') || get('contact') || get('tel') || val(patientRecord.tel, patientRecord.contact, patientRecord.telephone);
+    const contact = get('tel-patient') || get('telephone') || get('contact') || get('tel') || val(last.tel, patientRecord.tel, patientRecord.contact, patientRecord.telephone);
     const logo = document.querySelector('.nav-logo img')?.src || '';
     const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Bon de rendez-vous</title>
       <style>
@@ -992,8 +1034,8 @@
         <div class="rdv-head"><img src="${logo}"><div class="ministry">Republique du Senegal<br><b>Un peuple - un but - une foi</b><br>Ministere de la Sante et de l'Action Sociale<br><b>Centre Hospitalier National Cheikh Ahmadoul Khadim</b><br><b>Service d'Oncologie - Radiotherapie</b></div><img src="${logo}"></div>
         <div class="title">BON DE RENDEZ-VOUS</div>
         <div class="line"><span>Prenom et nom</span><b>${esc(`${prenom} ${nom}`.toUpperCase())}</b></div>
-        <div class="line"><span>Numero dossier</span><b>${esc(val(get('dossier'), get('cubix'), '-'))}</b></div>
-        <div class="line"><span>ID CUBIX</span><b>${esc(val(get('cubix'), '-'))}</b></div>
+        <div class="line"><span>Numero dossier</span><b>${esc(val(get('dossier'), last.dossier, get('cubix'), last.cubix, '-'))}</b></div>
+        <div class="line"><span>ID CUBIX</span><b>${esc(val(get('cubix'), last.cubix, '-'))}</b></div>
         <div class="line"><span>Contact</span><b>${esc(val(contact, '-'))}</b></div>
         <div class="line"><span>Protocole</span><b>${esc(proto?.name || '-')}</b></div>
         <div class="line"><span>Date protocole</span><b>${esc(dateProto)}</b></div>
@@ -1093,14 +1135,14 @@
     if(!proto) return {detailsData:[], warnings:[`Protocole introuvable pour ${patientName(patient) || 'ce patient'}.`]};
     const detailsData = [];
     const warnings = [];
-    (proto.drugs || []).filter(d => !d.t && !isSupportOnlyDrug(d.name) && (d.mgm2 || d.mgkg || d.avastin || typeof d.fix === 'number')).forEach(drug => {
-      const dose = doseForDrug(drug, patient);
-      if(!dose){ warnings.push(`${drug.name}: dose non calculable.`); return; }
-      let calc = calcDrugFlacons(drug.name, dose);
-      if(!calc){ warnings.push(`${drug.name}: medicament non trouve dans Pharmacie Centrale.`); return; }
-      calc = confirmFlaconsByDosage(drug.name, dose, calc);
-      if(!calc){ warnings.push(`${drug.name}: validation annulee ou quantites invalides.`); return; }
-      detailsData.push({name:drug.name, dose, nbFlacons:calc.nbFlacons, reliquatMg:Number(calc.reliquat || 0), flacons:calc.flacons || []});
+    activeDrugDoseRows(proto, patient).forEach(row => {
+      const dose = row.dose;
+      if(!dose){ warnings.push(`${row.name}: dose non calculable.`); return; }
+      let calc = calcDrugFlacons(row.name, dose);
+      if(!calc){ warnings.push(`${row.name}: medicament non trouve dans Pharmacie Centrale.`); return; }
+      calc = confirmFlaconsByDosage(row.name, dose, calc);
+      if(!calc){ warnings.push(`${row.name}: validation annulee ou quantites invalides.`); return; }
+      detailsData.push({name:row.name, dose, nbFlacons:calc.nbFlacons, reliquatMg:Number(calc.reliquat || 0), reliquatFlacons:reliquatFlaconsFromCalc(calc), flacons:calc.flacons || []});
     });
     return {detailsData, warnings};
   }
@@ -1214,7 +1256,7 @@
     const host = document.getElementById('stats-content') || document.getElementById('page-stats');
     if(!host) return;
     const patients = readJson(STORAGE.patients, []);
-    const rdv = dedupeByPatientTreatment([...readJson(STORAGE.rdv, []), ...readJson('rdv', [])]);
+    const rdv = dedupeRdv([...readJson(STORAGE.rdv, []), ...readJson('rdv', [])]);
     const hist = dedupeByPatientTreatment([...readJson(STORAGE.historique, []), ...readJson('historique', [])]);
     const sorties = dedupeSorties([...readJson(STORAGE.sorties, []), ...readJson('chncak_stock_sorties', []), ...readJson('sorties', [])]);
     const hemaSorties = readJson('chncak_hematologie_sorties', []);
@@ -1269,7 +1311,7 @@
       return acc;
     }, {});
     const miniRows = obj => Object.entries(obj).sort((a,b) => b[1] - a[1]).map(([k,v]) => `<div class="dash-line"><span>${esc(k)}</span><strong>${v}</strong></div>`).join('') || '<div class="dash-empty">Aucune donnee.</div>';
-    const diagnosticProtocolRows = Object.entries([...patients, ...hist].reduce((acc, item) => {
+    const diagnosticProtocolRows = Object.entries(dedupeByPatientTreatment(patients).reduce((acc, item) => {
       const diagnostic = val(item.localisation, item.diagnostic, item.indication, 'Diagnostic non renseigne');
       const protocole = protocolNameFor(item);
       const key = `${diagnostic}|||${protocole}`;
@@ -1281,8 +1323,8 @@
     }).join('');
     const maxPrep = Math.max(1, ...Object.values(meds).map(d => d.preparations));
     const chartRows = Object.entries(meds).sort((a,b) => b[1].preparations - a[1].preparations).slice(0, 10).map(([name, d]) => `<div class="stats-bar-row"><span>${esc(name)}</span><div><i style="width:${Math.max(5, Math.round(d.preparations / maxPrep * 100))}%"></i></div><strong>${d.preparations}</strong></div>`).join('');
-    const preparations = sorties.length || hist.length;
-    const seances = rdv.filter(r => norm(r.status || r.statut).includes('traite') || r.validatedAt).length || ok.filter(o => norm(o.statut).includes('valid')).length || hist.length;
+    const preparations = sorties.length;
+    const seances = rdv.filter(r => norm(r.status || r.statut).includes('traite') || r.validatedAt).length || sorties.length;
     const totalDose = Object.values(meds).reduce((sum, item) => sum + Number(item.dose || 0), 0);
     const totalWaste = Object.values(meds).reduce((sum, item) => sum + Number(item.wasteMg || 0), 0);
     const totalFlacons = Object.values(meds).reduce((sum, item) => sum + Number(item.flacons || 0), 0);
@@ -1299,7 +1341,7 @@
           <div class="stats-box"><h3>Flacons utilises</h3><p>${totalFlacons}</p></div>
           <div class="stats-box"><h3>Sorties hematologie</h3><p>${hemaSorties.length}</p></div>
         </div>
-        <div class="stats-final-note">Statistiques issues des preparations validees, sorties de stock, OK Chimio et anciennes sauvegardes disponibles.</div>
+        <div class="stats-final-note">Statistiques medicaments calculees uniquement a partir des traitements faits et sorties de stock validees. Les diagnostics par protocole viennent du registre patients deduplique.</div>
         <div class="card stats-section-card"><div class="card-header"><h2>Graphique medicaments</h2></div><div class="card-body">${chartRows || '<div class="dash-empty">Aucune donnee medicament.</div>'}</div></div>
         <div class="card stats-section-card"><div class="card-header"><h2>Medicaments utilises</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Preparations</th><th>Seances</th><th>Dose totale utilisee</th><th>Dose totale jetee</th><th>Reliquat flacons</th><th>Flacons utilises</th></tr></thead><tbody>${medRows || '<tr><td colspan="7" class="dash-empty">Aucune sortie de stock validee.</td></tr>'}</tbody></table></div></div>
         <div class="card stats-section-card"><div class="card-header"><h2>Hematologie - sorties medicaments</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Nombre de sorties</th><th>Quantite totale</th></tr></thead><tbody>${hemaRows || '<tr><td colspan="3" class="dash-empty">Aucune sortie hematologie.</td></tr>'}</tbody></table></div></div>
@@ -1325,6 +1367,19 @@
 
   function renderSuiviFinal(){
     if(typeof nativeRenderSuiviFinal === 'function') nativeRenderSuiviFinal();
+    const saveBtn = document.querySelector('#suivi-content .clinical-save');
+    if(saveBtn && !document.getElementById('suivi-date-evaluation')){
+      saveBtn.insertAdjacentHTML('beforebegin', `
+        <div class="clinical-form-grid suivi-extra-grid" style="margin-top:10px">
+          <div class="field"><label>Date evaluation</label><input type="date" id="suivi-date-evaluation" value="${todayIso()}"></div>
+          <div class="field"><label>Type evaluation</label><select id="suivi-type-evaluation"><option value="">Choisir</option><option>Clinique</option><option>Scanner/TDM</option><option>IRM</option><option>Marqueurs tumoraux</option><option>Clinique + imagerie</option></select></div>
+          <div class="field"><label>Toxicite principale</label><input type="text" id="suivi-toxicite" placeholder="ex: neuropathie, diarrhee, neutropenie"></div>
+          <div class="field"><label>Grade toxicite</label><select id="suivi-grade-toxicite"><option value="">Choisir</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+          <div class="field"><label>Decision therapeutique</label><select id="suivi-decision"><option value="">Choisir</option><option>Continuer meme protocole</option><option>Adapter dose</option><option>Reporter cure</option><option>Changer protocole</option><option>Arret traitement</option></select></div>
+          <div class="field"><label>Prochaine evaluation</label><input type="date" id="suivi-prochaine-evaluation"></div>
+          <div class="field" style="grid-column:1/-1"><label>Observation detaillee</label><input type="text" id="suivi-observation" placeholder="Symptomes, tolerance, imagerie, decision RCP..."></div>
+        </div>`);
+    }
     const table = document.querySelector('#suivi-content .suivi-table tbody');
     if(!table) return;
     const patients = readJson(STORAGE.patients, []);
@@ -1338,6 +1393,52 @@
 
   const nativeRenderSuiviFinal = window.renderSuivi;
   window.renderSuivi = renderSuiviFinal;
+
+  window.saveReponseTumorale = function(){
+    const code = document.getElementById('suivi-patient')?.value;
+    const cures = Number(document.getElementById('suivi-cures')?.value);
+    const compliant = document.getElementById('suivi-compliant')?.value;
+    const reponse = document.getElementById('reponse-tumorale')?.value;
+    const dateEvaluation = document.getElementById('suivi-date-evaluation')?.value;
+    const typeEvaluation = document.getElementById('suivi-type-evaluation')?.value;
+    const decision = document.getElementById('suivi-decision')?.value;
+    if(!code) return alert('Selectionner un patient.');
+    if(!cures || cures < 1) return alert('Indiquer un nombre de cures valide.');
+    if(!compliant) return alert('Indiquer si le traitement est compliant.');
+    if(!reponse) return alert('Selectionner la reponse tumorale.');
+    if(!dateEvaluation) return alert('Renseigner la date d evaluation.');
+    if(!typeEvaluation) return alert('Renseigner le type d evaluation.');
+    if(!decision) return alert('Renseigner la decision therapeutique.');
+    const patients = readJson(STORAGE.patients, []);
+    const patient = patients.find((p, i) => patientShortCode(p) === code || patientCode(p) === code || String(i) === String(code));
+    const list = readJson(STORAGE.suivi, readJson('suivi', []));
+    const existing = list.find(s => s.patientCode === code);
+    list.push({
+      id: Date.now().toString(),
+      patientCode: code,
+      patientName: patient ? `${code} - ${patientName(patient)}` : code,
+      dossier: val(patient?.dossier),
+      protocole: protocolNameFor(patient || {}),
+      localisation: val(patient?.localisation, patient?.diagnostic),
+      cures,
+      compliant,
+      reponse,
+      dateDebut: document.getElementById('suivi-date-debut')?.value || existing?.dateDebut || new Date().toLocaleDateString('fr-FR'),
+      dateEvaluation,
+      typeEvaluation,
+      toxicite: document.getElementById('suivi-toxicite')?.value || '',
+      gradeToxicite: document.getElementById('suivi-grade-toxicite')?.value || '',
+      decision,
+      prochaineEvaluation: document.getElementById('suivi-prochaine-evaluation')?.value || '',
+      observation: document.getElementById('suivi-observation')?.value || '',
+      date: new Date().toLocaleDateString('fr-FR'),
+      dateTs: new Date().toISOString()
+    });
+    writeJson(STORAGE.suivi, list);
+    writeJson('suivi', list);
+    window.renderSuivi?.();
+    showToastSafe('Suivi patient enregistre de facon complete.', 'success');
+  };
 
   function normalizeBiologiePatientOptions(){
     const patients = readJson(STORAGE.patients, []);
@@ -1637,7 +1738,7 @@
     if(oldBio.length) return alert(oldBio.join('\n'));
     const nextRdv = ensureNextRdvAfterTreatment(patient, rdv);
     if(!nextRdv) return;
-    const stock = deductStockForPatient({...patient, protoId: val(patient.protoId, rdv.protoId), proto: val(patient.proto, rdv.proto)}, 'RDV traite');
+    const stock = deductStockForPatient({...patient, protoId: val(patient.protoId, rdv.protoId), proto: val(patient.proto, rdv.proto), carboDose:val(patient.carboDose, rdv.carboDose), clairance:val(patient.clairance, rdv.clairance), auc:val(patient.auc, rdv.auc)}, 'RDV traite', rdv);
     const updatedRdvList = readJson(STORAGE.rdv, list);
     const updatedIdx = updatedRdvList.findIndex(r => String(r.id) === String(id));
     if(updatedIdx >= 0) updatedRdvList[updatedIdx] = {...updatedRdvList[updatedIdx], status:'traite', statut:'Traite', validatedAt:new Date().toISOString(), stockWarnings:stock.warnings, stockDetails:stock.details};
@@ -1764,6 +1865,11 @@
       indication: document.getElementById('indication')?.value || '',
       protoId: proto?.id || '',
       protocole: proto?.name || '',
+      dateProto: document.getElementById('date-protocole')?.value || '',
+      dateRdv: document.getElementById('date-rdv')?.value || '',
+      carboDose: (typeof carboDose !== 'undefined' && Number(carboDose)) ? Number(carboDose) : '',
+      auc: document.getElementById('auc-cible')?.value || '',
+      clairance: document.getElementById('res-clcr')?.textContent || '',
       cure: document.getElementById('cure-num')?.value || '',
       totalCures: document.getElementById('total-cures')?.value || ''
     };
@@ -1843,6 +1949,7 @@
     window.renderPatientsList?.();
     window.renderOkChimio?.();
     reserveCodeGratuite(patient.codegratuite);
+    writeJson(LAST_PROTOCOL_PATIENT_KEY, entry);
     clearProtocolFormForNextPatient();
     openValidationEmail(patient);
   };
@@ -3501,20 +3608,46 @@
 
   const nativeSaveRdvAndConfirm = window.saveRdvAndConfirm;
   window.saveRdvAndConfirm = function(){
-    const rdvVal = document.getElementById('date-rdv')?.value;
+    const last = readJson(LAST_PROTOCOL_PATIENT_KEY, {});
+    const rdvVal = document.getElementById('date-rdv')?.value || val(last.dateRdv);
     if(rdvVal){
       const list = readJson(STORAGE.rdv, []);
-      const currentDossier = document.getElementById('dossier')?.value || '';
+      const currentDossier = document.getElementById('dossier')?.value || val(last.dossier);
       const existingSameDay = list.filter(r => r.dateRdv === rdvVal && (!currentDossier || r.dossier !== currentDossier));
       if(existingSameDay.length >= 2 && !confirm('Attention : il y a deja 2 nouveaux rendez-vous ce jour-la. Continuer quand meme ?')) return;
+    }
+    const formHasPatient = !!(document.getElementById('prenom')?.value || document.getElementById('nom')?.value);
+    if(!formHasPatient && last.prenom && last.nom && rdvVal){
+      const list = readJson(STORAGE.rdv, []);
+      const entry = {
+        ...last,
+        id: Date.now(),
+        dateRdv: rdvVal,
+        proto: val(last.protocole, last.proto),
+        status: 'planifie',
+        statut: 'Planifie',
+        createdAt: new Date().toISOString()
+      };
+      const key = patientTreatmentKey(entry);
+      const idx = list.findIndex(r => patientTreatmentKey(r) === key && r.dateRdv === rdvVal);
+      if(idx >= 0) list[idx] = {...list[idx], ...entry, id:list[idx].id};
+      else list.push(entry);
+      list.sort((a,b) => String(a.dateRdv || '').localeCompare(String(b.dateRdv || '')));
+      writeJson(STORAGE.rdv, dedupeRdv(list));
+      window.renderRdvList?.();
+      showToastSafe('RDV enregistre pour le dernier patient sauvegarde.', 'success');
+      return;
     }
     return typeof nativeSaveRdvAndConfirm === 'function' ? nativeSaveRdvAndConfirm.apply(this, arguments) : undefined;
   };
 
   const nativeValidateStockFromRdv = window.validateStockFromRdv;
   window.validateStockFromRdv = function(id){
-    const rdv = readJson(STORAGE.rdv, []).find(r => String(r.id) === String(id));
+    const list = readJson(STORAGE.rdv, []);
+    const rdv = list.find(r => String(r.id) === String(id));
     const patient = rdv ? readJson(STORAGE.patients, []).find(p => (p.dossier && p.dossier === rdv.dossier) || norm(patientName(p)) === norm(patientName(rdv))) || rdv : null;
+    if(!rdv || !patient) return alert('Rendez-vous introuvable.');
+    if(norm(val(rdv.status, rdv.statut)).includes('traite') || rdv.validatedAt) return alert('Patient deja traite.');
     if(patient && !hasPharmaValidation(patient, rdv)){
       alert('Validation pharmacien obligatoire avant de traiter ce rendez-vous.');
       if(typeof showPage === 'function') showPage('preparation', document.querySelector(".tab-btn[onclick*=\"preparation\"]"));
@@ -3529,15 +3662,25 @@
     }
     const nextRdv = patient ? ensureNextRdvAfterTreatment(patient, rdv) : null;
     if(patient && !nextRdv) return;
-    const out = typeof nativeValidateStockFromRdv === 'function' ? nativeValidateStockFromRdv.apply(this, arguments) : undefined;
+    if(!confirm(`Marquer traite et deduire le stock pour :\n${patientName(patient)} - ${val(rdv.proto, patient.proto, patient.protocole)} ?`)) return;
+    const stock = deductStockForPatient({...patient, protoId:val(patient.protoId, rdv.protoId), proto:val(patient.proto, rdv.proto), carboDose:val(patient.carboDose, rdv.carboDose), clairance:val(patient.clairance, rdv.clairance), auc:val(patient.auc, rdv.auc)}, 'RDV traite', rdv);
+    const updatedList = readJson(STORAGE.rdv, list);
+    const idx = updatedList.findIndex(r => String(r.id) === String(id));
+    if(idx >= 0){
+      updatedList[idx] = {...updatedList[idx], status:'traite', statut:'Traite', validatedAt:new Date().toISOString(), stockValide:true, stockWarnings:stock.warnings, stockDetails:stock.details};
+      writeJson(STORAGE.rdv, updatedList);
+    }
     setTimeout(() => {
       window.renderRdvList?.();
       window.drawRdvRows?.();
       window.renderDashboard?.();
+      window.renderPharmacie?.();
+      window.renderStats?.();
       if(document.getElementById('page-preparation')?.classList.contains('active')) ensurePreparationPrintReady();
       if(document.getElementById('page-biologie')?.classList.contains('active')) window.renderBiologie?.();
     }, 120);
-    return out;
+    alert(`Patient traite. Prochain RDV: ${nextRdv.dateRdv.split('-').reverse().join('/')}. Stock deduit pour ${stock.updated} medicament(s).${stock.warnings.length ? '\n\nAvertissements:\n' + stock.warnings.join('\n') : ''}`);
+    return stock;
   };
 
   window.unlockCodeGratuiteManual = function(){
