@@ -961,11 +961,7 @@
   }
 
   function compactPrintableProtocol(html){
-    const body = String(html || '');
-    const extra = protocolPrintPatientSummary();
-    if(!extra || body.includes('protocol-patient-summary')) return body;
-    const patched = body.replace(/(<div style="border:1\.5px solid #000[\s\S]*?<\/div>\s*<\/div>)/, `$1${extra}`);
-    return patched === body ? `${extra}${body}` : patched;
+    return enhancePrintableProtocolPatientLine(String(html || ''));
   }
 
   function formOrLastPatientValue(id, keys){
@@ -975,27 +971,18 @@
     return val(...keys.map(key => last[key]));
   }
 
-  function protocolPrintPatientSummary(){
-    const prenom = formOrLastPatientValue('prenom', ['prenom']);
-    const nom = formOrLastPatientValue('nom', ['nom']);
-    if(!prenom && !nom) return '';
-    const poids = formOrLastPatientValue('poids', ['poids']);
-    const taille = formOrLastPatientValue('taille', ['taille']);
-    const age = formOrLastPatientValue('age', ['age']);
+  function protocolLocalisationsPhrase(){
     const localisation = formOrLastPatientValue('localisation', ['localisation', 'diagnostic']);
     const histologie = formOrLastPatientValue('type-histologie', ['histologie', 'typeHistologie', 'type_histologie']);
     const stade = formOrLastPatientValue('stade', ['stade', 'phase', 'phaseDiagnostic']);
-    const indication = formOrLastPatientValue('indication', ['indication']);
-    const surface = (typeof sc !== 'undefined' && Number(sc)) ? Number(sc).toFixed(2) : val(readJson(LAST_PROTOCOL_PATIENT_KEY, {}).sc);
-    const cell = (label, value) => `<div><span>${label}</span><b>${esc(val(value, '-'))}</b></div>`;
-    return `<div class="protocol-patient-summary" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 7px;border:1px solid #0A3D7A;background:#F7FAFE;padding:5px 7px;margin:0 0 6px 0;font-size:9.4px;line-height:1.25">
-      ${cell('Age', age ? `${age} ans` : '')}
-      ${cell('Poids', poids ? `${poids} kg` : '')}
-      ${cell('Taille / SC', `${taille ? taille + ' cm' : '-'}${surface ? ' / ' + surface + ' m2' : ''}`)}
-      ${cell('Localisation', localisation)}
-      ${cell('Phase diagnostic', val(stade, histologie))}
-      ${cell('Indication', indication)}
-    </div>`;
+    return [localisation, stade, histologie].map(x => String(x || '').trim()).filter(Boolean).join(' - ') || '-';
+  }
+
+  function enhancePrintableProtocolPatientLine(html){
+    const phrase = esc(protocolLocalisationsPhrase());
+    return html
+      .replace(/Localisation\s*:/g, 'Localisations :')
+      .replace(/(<div style="font-size:10px;margin-bottom:2px">Localisations :\s*<b>)([\s\S]*?)(<\/b><\/div>)/, `$1${phrase}$3`);
   }
 
   window.printFromApercu = function(){
