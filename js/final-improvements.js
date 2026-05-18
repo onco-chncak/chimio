@@ -983,11 +983,19 @@
     return parts.join(', ') || '-';
   }
 
+  function protocolIndicationPhrase(){
+    const selected = typeof selId !== 'undefined' ? selId : '';
+    const proto = protocolsList().find(p => p.id === selected);
+    return formOrLastPatientValue('indication', ['indication']) || val(proto?.indication, proto?.detail, '-');
+  }
+
   function enhancePrintableProtocolPatientLine(html){
     const phrase = esc(protocolLocalisationsPhrase());
+    const indication = esc(protocolIndicationPhrase());
     return html
       .replace(/Localisation\s*:/g, 'Localisations :')
-      .replace(/(<div style="font-size:10px;margin-bottom:2px">Localisations :\s*<b>)([\s\S]*?)(<\/b><\/div>)/, `$1${phrase}$3`);
+      .replace(/(<div style="font-size:10px;margin-bottom:2px">Localisations :\s*<b>)([\s\S]*?)(<\/b><\/div>)/, `$1${phrase}$3`)
+      .replace(/(<div style="font-size:9px;margin-top:2px">\s*Indication :\s*<b>)([\s\S]*?)(<\/b>\s*<\/div>)/, `$1${indication}$3`);
   }
 
   window.printFromApercu = function(){
