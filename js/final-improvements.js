@@ -1740,28 +1740,54 @@
     });
   }
 
-  function deleteMatchingPatientData(patient){
-    const same = item => patientTreatmentKey(item) === patientTreatmentKey(patient) ||
-      (patient.dossier && val(item.dossier, item.patient?.dossier) === patient.dossier) ||
-      norm(patientName(item)) === norm(patientName(patient));
-    [STORAGE.patients, STORAGE.historique, STORAGE.okchimio, 'chncak_okchimio', STORAGE.rdv, 'rdv', STORAGE.biologie, 'biologie', STORAGE.suivi, 'suivi'].forEach(key => {
+  function exactRecordMatch(item, target){
+    if(!item || !target) return false;
+    const itemId = String(val(item.id, item.dateTs, item.createdAt, item.dateCreation));
+    const targetId = String(val(target.id, target.dateTs, target.createdAt, target.dateCreation));
+    if(itemId && targetId && itemId === targetId) return true;
+    const itemPatientId = String(val(item.patient?.id, item.patient?.dateTs, item.patient?.createdAt));
+    if(itemPatientId && targetId && itemPatientId === targetId) return true;
+    return false;
+  }
+
+  function removeOneFromStorage(key, predicate){
+    const list = readJson(key, []);
+    if(!Array.isArray(list)) return false;
+    const idx = list.findIndex(predicate);
+    if(idx < 0) return false;
+    list.splice(idx, 1);
+    writeJson(key, list);
+    return true;
+  }
+
+  function deleteSingleSavedProtocol(entry){
+    let removed = false;
+    removed = removeOneFromStorage(STORAGE.historique, item => exactRecordMatch(item, entry)) || removed;
+    removed = removeOneFromStorage('historique', item => exactRecordMatch(item, entry)) || removed;
+    removed = removeOneFromStorage(STORAGE.okchimio, item => exactRecordMatch(item, entry) || exactRecordMatch(item.patient, entry)) || removed;
+    removed = removeOneFromStorage('chncak_okchimio', item => exactRecordMatch(item, entry) || exactRecordMatch(item.patient, entry)) || removed;
+    return removed;
+  }
+
+  function deleteExactPatientRecord(patient){
+    [STORAGE.patients, 'patients'].forEach(key => {
       const list = readJson(key, []);
-      if(Array.isArray(list)) writeJson(key, list.filter(item => !same(item)));
+      if(Array.isArray(list)) writeJson(key, list.filter(item => !exactRecordMatch(item, patient)));
     });
   }
 
   window.deletePatientEverywhere = function(id){
     const patient = readJson(STORAGE.patients, []).find(p => String(p.id) === String(id));
     if(!patient) return alert('Patient introuvable.');
-    askAdminCode(`supprimer ${patientName(patient)}`, () => {
-      deleteMatchingPatientData(patient);
+    askAdminCode(`supprimer uniquement cette ligne patient: ${patientName(patient)}`, () => {
+      deleteExactPatientRecord(patient);
       window.renderPatientsList?.();
       window.renderBiologie?.();
       window.renderSuivi?.();
       window.renderOkChimio?.();
       renderPreparationTodayList();
       cleanupLoginAndButtons();
-      showToastSafe('Patient supprime des listes principales.', 'success');
+      showToastSafe('Ligne patient supprimee sans effacer les homonymes.', 'success');
     });
   };
 
@@ -3581,15 +3607,15 @@
     const idx = Number(document.getElementById('apercu-patient-select')?.value);
     const entry = savedProtocolEntries()[idx];
     if(!entry) return alert('Selectionner un patient a supprimer.');
-    askAdminCode(`supprimer ${patientName(entry) || 'ce patient'} de l apercu`, () => {
-      deleteMatchingPatientData(entry);
+    askAdminCode(`supprimer uniquement cette ligne: ${patientName(entry) || 'ce patient'}`, () => {
+      const removed = deleteSingleSavedProtocol(entry);
       installApercuSearch();
       window.renderPatientsList?.();
       window.renderBiologie?.();
       window.renderSuivi?.();
       window.renderOkChimio?.();
       renderPreparationTodayList();
-      showToastSafe('Patient/protocole supprime.', 'success');
+      showToastSafe(removed ? 'Ligne/protocole supprime sans effacer les autres lignes similaires.' : 'Aucune ligne exacte trouvee a supprimer.', removed ? 'success' : 'warning');
     });
   };
 
