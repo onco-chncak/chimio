@@ -1354,9 +1354,20 @@
       const time = itemTime(item);
       return time && time >= statsResetAt;
     };
-    const patients = readJson(STORAGE.patients, []).filter(afterStatsReset);
-    const rdv = dedupeRdv([...readJson(STORAGE.rdv, []), ...readJson('rdv', [])]).filter(afterStatsReset);
-    const hist = dedupeByPatientTreatment([...readJson(STORAGE.historique, []), ...readJson('historique', [])]).filter(afterStatsReset);
+    const allPatients = readJson(STORAGE.patients, []);
+    const allRdv = dedupeRdv([...readJson(STORAGE.rdv, []), ...readJson('rdv', [])]);
+    const hist = dedupeByPatientTreatment([...readJson(STORAGE.historique, []), ...readJson('historique', [])]);
+    const patients = allPatients;
+    const rdv = allRdv.filter(afterStatsReset);
+    const samePatientForStats = (a, b) => {
+      const dossierA = norm(val(a?.dossier, a?.patient?.dossier));
+      const dossierB = norm(val(b?.dossier, b?.patient?.dossier));
+      const codeA = norm(val(a?.codegratuite, a?.codeGratuite, a?.code, a?.patient?.codegratuite, a?.patient?.codeGratuite));
+      const codeB = norm(val(b?.codegratuite, b?.codeGratuite, b?.code, b?.patient?.codegratuite, b?.patient?.codeGratuite));
+      const nameA = norm(patientName(a));
+      const nameB = norm(patientName(b));
+      return (dossierA && dossierA === dossierB) || (codeA && codeA === codeB) || (nameA && nameA === nameB);
+    };
     const isMedicationStatSortie = item => {
       const time = itemTime(item);
       if(medicationResetAt && (!time || time < medicationResetAt)) return false;
@@ -1425,18 +1436,32 @@
       const [diagnostic, protocole] = key.split('|||');
       return `<tr><td>${esc(diagnostic)}</td><td>${esc(protocole)}</td><td>${count}</td></tr>`;
     }).join('');
+    const treatedRdv = allRdv.filter(r => norm(val(r.status, r.statut)).includes('traite') || r.validatedAt || r.stockValide).filter(afterStatsReset);
+    const today = todayIso();
+    const patientHasFutureRdv = patient => allRdv.some(r => samePatientForStats(patient, r) && !(norm(val(r.status, r.statut)).includes('traite') || r.validatedAt) && val(r.dateRdv, r.date) >= today);
+    const patientTreatedRdvCount = patient => allRdv.filter(r => samePatientForStats(patient, r) && (norm(val(r.status, r.statut)).includes('traite') || r.validatedAt || r.stockValide)).length;
+    const patientCompleted = patient => {
+      const total = Number(val(patient.totalCures, patient.totalCycles, patient.total, patient.curesPrevues, 0));
+      const current = Number(val(patient.cure, patient.cureNum, patient.cycle, patient.numeroCure, patient.numCure, 0));
+      const status = norm(val(patient.statut, patient.status));
+      return status.includes('termine') || status.includes('archive') || (total && (current >= total || patientTreatedRdvCount(patient) >= total));
+    };
+    const patientsTermines = patients.filter(patientCompleted).length;
+    const patientsEnCours = patients.filter(p => !patientCompleted(p) && patientHasFutureRdv(p)).length;
+    const patientsTraites = patients.filter(p => patientTreatedRdvCount(p) > 0).length;
+    const patientsSansRdv = Math.max(0, patients.length - patientsTermines - patientsEnCours);
     const maxPrep = Math.max(1, ...Object.values(meds).map(d => d.preparations));
     const chartRows = Object.entries(meds).sort((a,b) => b[1].preparations - a[1].preparations).slice(0, 10).map(([name, d]) => `<div class="stats-bar-row"><span>${esc(name)}</span><div><i style="width:${Math.max(5, Math.round(d.preparations / maxPrep * 100))}%"></i></div><strong>${d.preparations}</strong></div>`).join('');
-    const preparations = sorties.length;
-    const seances = rdv.filter(r => norm(r.status || r.statut).includes('traite') || r.validatedAt).length || sorties.length;
+    const preparations = Object.values(meds).reduce((sum, item) => sum + Number(item.preparations || 0), 0);
+    const seances = treatedRdv.length || sorties.length;
     const totalDose = Object.values(meds).reduce((sum, item) => sum + Number(item.dose || 0), 0);
     const totalWaste = Object.values(meds).reduce((sum, item) => sum + Number(item.wasteMg || 0), 0);
     const totalFlacons = Object.values(meds).reduce((sum, item) => sum + Number(item.flacons || 0), 0);
     host.innerHTML = `
       <div class="clinical-shell stats-full">
-        ${isAdminUser() ? '<div class="stats-final-note" style="display:flex;justify-content:space-between;gap:12px;align-items:center"><span>Compteurs des blocs statistiques: seules les donnees apres le depart officiel sont comptees.</span><button class="btn-secondary official-github-mini" onclick="resetAllStatCounters()">Remettre compteurs a zero</button></div>' : ''}
+        ${isAdminUser() ? '<div class="stats-final-note" style="display:flex;justify-content:space-between;gap:12px;align-items:center"><span>Compteurs d activite: les preparations, seances, doses, flacons et sorties hematologie suivent le depart officiel. Patients et protocoles viennent du registre actuel.</span><button class="btn-secondary official-github-mini" onclick="resetAllStatCounters()">Remettre compteurs a zero</button></div>' : ''}
         <div class="stats-summary-grid">
-          <div class="stats-box"><h3>Patients</h3><p>${patients.length}</p></div>
+          <div class="stats-box"><h3>Patients</h3><p>${patients.length}</p><small>${patientsTraites} traites | ${patientsEnCours} en cours | ${patientsTermines} termines${patientsSansRdv ? ` | ${patientsSansRdv} sans RDV actif` : ''}</small></div>
           <div class="stats-box"><h3>Preparations</h3><p>${preparations}</p></div>
           <div class="stats-box"><h3>Seances chimio</h3><p>${seances}</p></div>
           <div class="stats-box"><h3>Protocoles sauvegardes</h3><p>${hist.length}</p></div>
@@ -1446,7 +1471,7 @@
           <div class="stats-box"><h3>Flacons utilises</h3><p>${totalFlacons}</p></div>
           <div class="stats-box"><h3>Sorties hematologie</h3><p>${hemaSorties.length}</p></div>
         </div>
-        <div class="stats-final-note">Statistiques medicaments calculees uniquement a partir des traitements faits et sorties de stock validees apres la derniere remise a zero.${statsResetAt ? ` Depart blocs: ${esc(new Date(statsResetAt).toLocaleString('fr-FR'))}.` : ''}${medicationResetAt ? ` Depart medicaments: ${esc(new Date(medicationResetAt).toLocaleString('fr-FR'))}.` : ''} Les diagnostics par protocole viennent du registre patients deduplique.</div>
+        <div class="stats-final-note">Patients: registre patients. Preparations: nombre de medicaments prepares/valides. Seances: RDV traites, sinon sorties de stock. Protocoles sauvegardes: historique des protocoles sauvegardes.${statsResetAt ? ` Depart activite: ${esc(new Date(statsResetAt).toLocaleString('fr-FR'))}.` : ''}${medicationResetAt ? ` Depart medicaments: ${esc(new Date(medicationResetAt).toLocaleString('fr-FR'))}.` : ''}</div>
         <div class="card stats-section-card"><div class="card-header"><h2>Graphique medicaments</h2>${isAdminUser() ? '<button class="btn-secondary official-github-mini" onclick="resetMedicationStats()">Remettre a zero</button>' : ''}</div><div class="card-body">${chartRows || '<div class="dash-empty">Aucune donnee medicament.</div>'}</div></div>
         <div class="card stats-section-card"><div class="card-header"><h2>Medicaments utilises</h2>${isAdminUser() ? '<button class="btn-secondary official-github-mini" onclick="resetMedicationStats()">Remettre a zero</button>' : ''}</div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Preparations</th><th>Seances</th><th>Dose totale utilisee</th><th>Dose totale jetee</th><th>Reliquat flacons</th><th>Flacons utilises</th></tr></thead><tbody>${medRows || '<tr><td colspan="7" class="dash-empty">Aucune sortie de stock validee.</td></tr>'}</tbody></table></div></div>
         <div class="card stats-section-card"><div class="card-header"><h2>Hematologie - sorties medicaments</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Nombre de sorties</th><th>Quantite totale</th></tr></thead><tbody>${hemaRows || '<tr><td colspan="3" class="dash-empty">Aucune sortie hematologie.</td></tr>'}</tbody></table></div></div>
