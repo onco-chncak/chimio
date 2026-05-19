@@ -6,6 +6,7 @@
   const CODE_ADMIN = '2026';
   const VALIDATION_EMAIL = 'onco.chn.cak@gmail.com';
   const STAT_MED_RESET_KEY = 'chncak_stats_medicaments_reset_after';
+  const STAT_BLOCK_RESET_KEY = 'chncak_stats_blocs_reset_after';
   const STORAGE = {
     patients: 'chncak_patients',
     rdv: 'chncak_rdv',
@@ -1338,24 +1339,31 @@
   function renderStatsFinal(){
     const host = document.getElementById('stats-content') || document.getElementById('page-stats');
     if(!host) return;
-    const patients = readJson(STORAGE.patients, []);
-    const rdv = dedupeRdv([...readJson(STORAGE.rdv, []), ...readJson('rdv', [])]);
-    const hist = dedupeByPatientTreatment([...readJson(STORAGE.historique, []), ...readJson('historique', [])]);
+    const statsResetAt = Number(localStorage.getItem(STAT_BLOCK_RESET_KEY) || 0);
     const medicationResetAt = Number(localStorage.getItem(STAT_MED_RESET_KEY) || 0);
-    const sortieTime = item => {
-      const raw = val(item.dateTs, item.createdAt, item.updatedAt, item.date);
+    const itemTime = item => {
+      const raw = val(item.dateTs, item.createdAt, item.updatedAt, item.dateCreation, item.dateValidation, item.validatedAt, item.treatedAt, item.dateTraitement, item.id);
       if(!raw) return 0;
       if(typeof raw === 'number') return raw;
+      if(/^\d{11,}$/.test(String(raw))) return Number(raw);
       const parsed = Date.parse(raw);
       return Number.isFinite(parsed) ? parsed : 0;
     };
+    const afterStatsReset = item => {
+      if(!statsResetAt) return true;
+      const time = itemTime(item);
+      return time && time >= statsResetAt;
+    };
+    const patients = readJson(STORAGE.patients, []).filter(afterStatsReset);
+    const rdv = dedupeRdv([...readJson(STORAGE.rdv, []), ...readJson('rdv', [])]).filter(afterStatsReset);
+    const hist = dedupeByPatientTreatment([...readJson(STORAGE.historique, []), ...readJson('historique', [])]).filter(afterStatsReset);
     const isMedicationStatSortie = item => {
-      const time = sortieTime(item);
+      const time = itemTime(item);
       if(medicationResetAt && (!time || time < medicationResetAt)) return false;
       return Array.isArray(item.detailsData) || String(item.details || '').trim() !== '';
     };
     const sorties = dedupeSorties([...readJson(STORAGE.sorties, []), ...readJson('chncak_stock_sorties', []), ...readJson('sorties', [])]).filter(isMedicationStatSortie);
-    const hemaSorties = readJson('chncak_hematologie_sorties', []);
+    const hemaSorties = readJson('chncak_hematologie_sorties', []).filter(afterStatsReset);
     const ok = getOkChimioList();
     const meds = {};
     const ensureMed = name => {
@@ -1426,6 +1434,7 @@
     const totalFlacons = Object.values(meds).reduce((sum, item) => sum + Number(item.flacons || 0), 0);
     host.innerHTML = `
       <div class="clinical-shell stats-full">
+        ${isAdminUser() ? '<div class="stats-final-note" style="display:flex;justify-content:space-between;gap:12px;align-items:center"><span>Compteurs des blocs statistiques: seules les donnees apres le depart officiel sont comptees.</span><button class="btn-secondary official-github-mini" onclick="resetAllStatCounters()">Remettre compteurs a zero</button></div>' : ''}
         <div class="stats-summary-grid">
           <div class="stats-box"><h3>Patients</h3><p>${patients.length}</p></div>
           <div class="stats-box"><h3>Preparations</h3><p>${preparations}</p></div>
@@ -1437,7 +1446,7 @@
           <div class="stats-box"><h3>Flacons utilises</h3><p>${totalFlacons}</p></div>
           <div class="stats-box"><h3>Sorties hematologie</h3><p>${hemaSorties.length}</p></div>
         </div>
-        <div class="stats-final-note">Statistiques medicaments calculees uniquement a partir des traitements faits et sorties de stock validees apres la derniere remise a zero.${medicationResetAt ? ` Depart officiel: ${esc(new Date(medicationResetAt).toLocaleString('fr-FR'))}.` : ''} Les diagnostics par protocole viennent du registre patients deduplique.</div>
+        <div class="stats-final-note">Statistiques medicaments calculees uniquement a partir des traitements faits et sorties de stock validees apres la derniere remise a zero.${statsResetAt ? ` Depart blocs: ${esc(new Date(statsResetAt).toLocaleString('fr-FR'))}.` : ''}${medicationResetAt ? ` Depart medicaments: ${esc(new Date(medicationResetAt).toLocaleString('fr-FR'))}.` : ''} Les diagnostics par protocole viennent du registre patients deduplique.</div>
         <div class="card stats-section-card"><div class="card-header"><h2>Graphique medicaments</h2>${isAdminUser() ? '<button class="btn-secondary official-github-mini" onclick="resetMedicationStats()">Remettre a zero</button>' : ''}</div><div class="card-body">${chartRows || '<div class="dash-empty">Aucune donnee medicament.</div>'}</div></div>
         <div class="card stats-section-card"><div class="card-header"><h2>Medicaments utilises</h2>${isAdminUser() ? '<button class="btn-secondary official-github-mini" onclick="resetMedicationStats()">Remettre a zero</button>' : ''}</div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Preparations</th><th>Seances</th><th>Dose totale utilisee</th><th>Dose totale jetee</th><th>Reliquat flacons</th><th>Flacons utilises</th></tr></thead><tbody>${medRows || '<tr><td colspan="7" class="dash-empty">Aucune sortie de stock validee.</td></tr>'}</tbody></table></div></div>
         <div class="card stats-section-card"><div class="card-header"><h2>Hematologie - sorties medicaments</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Nombre de sorties</th><th>Quantite totale</th></tr></thead><tbody>${hemaRows || '<tr><td colspan="3" class="dash-empty">Aucune sortie hematologie.</td></tr>'}</tbody></table></div></div>
@@ -1459,6 +1468,18 @@
       window.renderStats?.();
       window.renderDashboard?.();
       showToastSafe('Compteurs medicaments remis a zero. Les anciennes sorties de test seront ignorees.', 'success');
+    });
+  };
+
+  window.resetAllStatCounters = function(){
+    askAdminCode('remettre a zero les compteurs statistiques', () => {
+      const now = Date.now();
+      localStorage.setItem(STAT_BLOCK_RESET_KEY, String(now));
+      localStorage.setItem(STAT_MED_RESET_KEY, String(now));
+      [STORAGE.sorties, 'chncak_stock_sorties', 'sorties'].forEach(key => localStorage.removeItem(key));
+      window.renderStats?.();
+      window.renderDashboard?.();
+      showToastSafe('Compteurs statistiques remis a zero. Les anciennes donnees de test seront ignorees dans les blocs.', 'success');
     });
   };
 
