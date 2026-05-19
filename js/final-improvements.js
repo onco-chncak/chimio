@@ -7,6 +7,7 @@
   const VALIDATION_EMAIL = 'onco.chn.cak@gmail.com';
   const STAT_MED_RESET_KEY = 'chncak_stats_medicaments_reset_after';
   const STAT_BLOCK_RESET_KEY = 'chncak_stats_blocs_reset_after';
+  const RESTORED_PROTOCOL_KEY = 'chncak_restored_protocol_lock';
   const STORAGE = {
     patients: 'chncak_patients',
     rdv: 'chncak_rdv',
@@ -2216,6 +2217,70 @@
     ].some(key => readJson(key, []).some(same));
   }
 
+  function savedProtocolExists(patient){
+    if(!patient) return false;
+    const same = item => patientTreatmentKey(item) === patientTreatmentKey(patient) ||
+      ((patient.dossier || patient.codegratuite) &&
+        val(item.dossier, item.patient?.dossier) === patient.dossier &&
+        String(val(item.codegratuite, item.codeGratuite, item.code, item.patient?.codegratuite, item.patient?.codeGratuite)).trim() === String(patient.codegratuite || '').trim() &&
+        norm(protocolNameFor(item)) === norm(protocolNameFor(patient)));
+    return [
+      STORAGE.historique,
+      STORAGE.okchimio,
+      'chncak_okchimio',
+      STORAGE.patients
+    ].some(key => readJson(key, []).some(same));
+  }
+
+  function setRestoredProtocolMode(entry){
+    const btn = document.getElementById('btn-save');
+    const key = patientTreatmentKey(entry);
+    if(btn){
+      btn.dataset.restoredKey = key;
+      btn.dataset.restoredLocked = '1';
+      btn.disabled = true;
+      btn.textContent = 'Consultation - deja sauvegarde';
+      btn.title = 'Ce protocole vient de l apercu/RDV. Il est deja sauvegarde, donc la resauvegarde est bloquee pour eviter les doublons.';
+    }
+    writeJson(RESTORED_PROTOCOL_KEY, {key, at:new Date().toISOString()});
+  }
+
+  function clearRestoredProtocolMode(){
+    const btn = document.getElementById('btn-save');
+    if(btn){
+      btn.dataset.restoredKey = '';
+      btn.dataset.restoredLocked = '';
+      btn.disabled = false;
+      btn.textContent = '💾 Sauvegarder';
+      btn.title = '';
+    }
+    localStorage.removeItem(RESTORED_PROTOCOL_KEY);
+  }
+
+  function bindRestoredProtocolUnlock(){
+    const page = document.getElementById('page-protocole');
+    if(!page || page.dataset.restoreUnlockBound === '1') return;
+    page.dataset.restoreUnlockBound = '1';
+    page.addEventListener('input', event => {
+      const btn = document.getElementById('btn-save');
+      if(btn?.dataset.restoredLocked === '1' && event.target && ['INPUT','SELECT','TEXTAREA'].includes(event.target.tagName)){
+        btn.disabled = false;
+        btn.dataset.restoredLocked = '';
+        btn.textContent = 'Sauvegarder les modifications';
+        btn.title = 'Attention : verifiez qu il s agit bien d une modification, pas d une nouvelle sauvegarde identique.';
+      }
+    }, true);
+    page.addEventListener('change', event => {
+      const btn = document.getElementById('btn-save');
+      if(btn?.dataset.restoredLocked === '1' && event.target && ['INPUT','SELECT','TEXTAREA'].includes(event.target.tagName)){
+        btn.disabled = false;
+        btn.dataset.restoredLocked = '';
+        btn.textContent = 'Sauvegarder les modifications';
+        btn.title = 'Attention : verifiez qu il s agit bien d une modification, pas d une nouvelle sauvegarde identique.';
+      }
+    }, true);
+  }
+
   function clearProtocolFormForNextPatient(){
     [
       'prenom','nom','age','poids','taille','sexe','dossier','cubix','tel-patient','indication',
@@ -2253,6 +2318,10 @@
   window.saveProtocol = function(){
     const saveBtn = document.getElementById('btn-save');
     if(saveBtn?.dataset.saving === '1') return;
+    if(saveBtn?.dataset.restoredLocked === '1'){
+      alert('Ce protocole est deja sauvegarde. Il a ete ouvert depuis l apercu/RDV en consultation pour eviter un doublon.');
+      return;
+    }
     if(saveBtn) saveBtn.dataset.saving = '1';
     setProtocolAutoCode(false);
     const patient = currentProtocolFormPatient();
@@ -2262,6 +2331,11 @@
     if(!patient.codegratuite) patient.codegratuite = setProtocolAutoCode(true);
     if(patient.codegratuite && savedCodeExists(patient.codegratuite, patient)){
       alert('Code de gratuite deja utilise. Enregistrement refuse pour eviter un doublon.');
+      finish();
+      return;
+    }
+    if(savedProtocolExists(patient)){
+      alert('Ce protocole existe deja pour ce patient. Enregistrement refuse pour eviter un doublon.');
       finish();
       return;
     }
@@ -2294,6 +2368,7 @@
     reserveCodeGratuite(patient.codegratuite);
     writeJson(LAST_PROTOCOL_PATIENT_KEY, entry);
     clearProtocolFormForNextPatient();
+    clearRestoredProtocolMode();
     try { openValidationEmail(patient); } catch(e){}
     finish();
   };
@@ -3498,6 +3573,7 @@
     const entry = {...patient, ...rdv, dateRdv:val(rdv.dateRdv, rdv.date), proto:val(rdv.proto, patient.proto), protocole:val(rdv.proto, patient.protocole), protoId:val(rdv.protoId, patient.protoId)};
     if(!loadEntryIntoForm(entry)) writeJson(LAST_PROTOCOL_PATIENT_KEY, entry);
     else writeJson(LAST_PROTOCOL_PATIENT_KEY, entry);
+    setRestoredProtocolMode(entry);
     window.printBonRDV();
   };
 
@@ -3574,6 +3650,7 @@
     if(typeof calcSC === 'function') calcSC();
     if(typeof calcCarbo === 'function') calcCarbo();
     if(typeof update === 'function') update();
+    setRestoredProtocolMode(entry);
     return true;
   }
 
@@ -4008,6 +4085,7 @@
     if(id === 'suivi') setTimeout(() => { renderSuiviFinal(); cleanupLoginAndButtons(); }, 80);
     if(id === 'biologie') setTimeout(() => { window.renderBiologie?.(); normalizeBiologiePatientOptions(); cleanupLoginAndButtons(); }, 80);
     if(id === 'hematologie') setTimeout(() => { window.renderHematologie?.(); cleanupLoginAndButtons(); }, 50);
+    if(id === 'protocole') setTimeout(bindRestoredProtocolUnlock, 20);
     if(id === 'programme') setTimeout(cleanupLoginAndButtons, 20);
     if(id === 'preparation') setTimeout(ensurePreparationPrintReady, 80);
     if(id === 'pharmacie') setTimeout(lockPharmacyStockControls, 80);
