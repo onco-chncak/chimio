@@ -1103,7 +1103,7 @@
         *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
         .rdv-page{width:281mm;min-height:194mm;display:grid;grid-template-columns:1fr 1fr;gap:8mm;align-items:start}
         .rdv-card{width:100%;min-height:188mm;border:2px solid #0A3D7A;border-radius:8px;padding:8mm 9mm;display:flex;flex-direction:column;gap:5.5mm}
-        .rdv-blank{border-left:1px dashed #cbd5e1;min-height:188mm}
+        .rdv-blank{border-right:1px dashed #cbd5e1;min-height:188mm}
         .rdv-head{display:grid;grid-template-columns:52px 1fr 52px;gap:6px;align-items:start;text-align:center}
         .rdv-head img{width:52px;height:52px;object-fit:contain}
         .ministry{font-size:9px;line-height:1.15}.ministry b{font-size:9.5px}
@@ -1114,7 +1114,7 @@
         .rdv-date span{display:block;font-size:12px;text-transform:uppercase;color:#0B5E3C;font-weight:800}.rdv-date strong{display:block;font-size:27px;margin-top:3px;color:#111}
         .ticket{font-size:16px;font-weight:900;color:#7A4B00;background:#fff7e6;border:1.5px solid #f0c060;border-radius:5px;text-align:center;padding:6px}
         .foot{margin-top:auto;font-size:11.5px;line-height:1.35;color:#4b5563;text-align:center}
-      </style></head><body><main class="rdv-page"><section class="rdv-card">
+      </style></head><body><main class="rdv-page"><section class="rdv-blank"></section><section class="rdv-card">
         <div class="rdv-head"><img src="${logo}"><div class="ministry">Republique du Senegal<br><b>Un peuple - un but - une foi</b><br>Ministere de la Sante et de l'Action Sociale<br><b>Centre Hospitalier National Cheikh Ahmadoul Khadim</b><br><b>Service d'Oncologie - Radiotherapie</b></div><img src="${logo}"></div>
         <div class="title">BON DE RENDEZ-VOUS</div>
         <div class="line"><span>Prenom et nom</span><b>${esc(`${prenom} ${nom}`.toUpperCase())}</b></div>
@@ -1126,7 +1126,7 @@
         <div class="ticket">Prix du ticket : 25 000 FCFA</div>
         <div class="rdv-date"><span>Date du prochain rendez-vous</span><strong>${esc(rdvText)} a 07h30</strong></div>
         <div class="foot">Merci de venir avec les resultats de biologie demandes et de se presenter au service d'oncologie-radiotherapie.</div>
-      </section><section class="rdv-blank"></section></main></body></html>`;
+      </section></main></body></html>`;
     printHtml(html, '297mm', '210mm');
   };
 
@@ -1356,7 +1356,11 @@
     };
     const allPatients = readJson(STORAGE.patients, []);
     const allRdv = dedupeRdv([...readJson(STORAGE.rdv, []), ...readJson('rdv', [])]);
-    const hist = dedupeByPatientTreatment([...readJson(STORAGE.historique, []), ...readJson('historique', [])]);
+    const histRaw = [...readJson(STORAGE.historique, []), ...readJson('historique', [])].filter(item => patientName(item) || val(item.dossier));
+    const hist = Array.from(new Map(histRaw.map((item, index) => {
+      const key = val(item.id, item.dateTs, `${patientTreatmentKey(item)}|${val(item.dateProto, item.dateProtocole, item.date)}|${val(item.cure, item.cureNum)}|${index}`);
+      return [String(key), item];
+    })).values());
     const patients = allPatients;
     const rdv = allRdv.filter(afterStatsReset);
     const samePatientForStats = (a, b) => {
@@ -1449,7 +1453,6 @@
     const patientsTermines = patients.filter(patientCompleted).length;
     const patientsEnCours = patients.filter(p => !patientCompleted(p) && patientHasFutureRdv(p)).length;
     const patientsTraites = patients.filter(p => patientTreatedRdvCount(p) > 0).length;
-    const patientsSansRdv = Math.max(0, patients.length - patientsTermines - patientsEnCours);
     const maxPrep = Math.max(1, ...Object.values(meds).map(d => d.preparations));
     const chartRows = Object.entries(meds).sort((a,b) => b[1].preparations - a[1].preparations).slice(0, 10).map(([name, d]) => `<div class="stats-bar-row"><span>${esc(name)}</span><div><i style="width:${Math.max(5, Math.round(d.preparations / maxPrep * 100))}%"></i></div><strong>${d.preparations}</strong></div>`).join('');
     const preparations = Object.values(meds).reduce((sum, item) => sum + Number(item.preparations || 0), 0);
@@ -1461,7 +1464,7 @@
       <div class="clinical-shell stats-full">
         ${isAdminUser() ? '<div class="stats-final-note" style="display:flex;justify-content:space-between;gap:12px;align-items:center"><span>Compteurs d activite: les preparations, seances, doses, flacons et sorties hematologie suivent le depart officiel. Patients et protocoles viennent du registre actuel.</span><button class="btn-secondary official-github-mini" onclick="resetAllStatCounters()">Remettre compteurs a zero</button></div>' : ''}
         <div class="stats-summary-grid">
-          <div class="stats-box"><h3>Patients</h3><p>${patients.length}</p><small>${patientsTraites} traites | ${patientsEnCours} en cours | ${patientsTermines} termines${patientsSansRdv ? ` | ${patientsSansRdv} sans RDV actif` : ''}</small></div>
+          <div class="stats-box"><h3>Patients</h3><p>${patients.length}</p><small>${patientsTraites} traites | ${patientsEnCours} en cours | ${patientsTermines} termines</small></div>
           <div class="stats-box"><h3>Preparations</h3><p>${preparations}</p></div>
           <div class="stats-box"><h3>Seances chimio</h3><p>${seances}</p></div>
           <div class="stats-box"><h3>Protocoles sauvegardes</h3><p>${hist.length}</p></div>
@@ -3454,7 +3457,7 @@
     const entries = savedProtocolEntries();
     const options = entries.map((item, index) => `<option value="${index}">${esc(patientName(item))} - Dossier ${esc(val(item.dossier, '-'))}</option>`).join('');
     const anchor = page.querySelector('[style*="justify-content:space-between"]') || page.firstElementChild;
-    anchor?.insertAdjacentHTML('afterend', `<div id="apercu-patient-loader" class="card" style="margin:12px 0"><div class="card-body" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap"><div class="field" style="flex:1;min-width:260px;margin:0"><label>Selectionner un patient sauvegarde</label><input id="apercu-patient-search" type="text" placeholder="Commencer a taper le nom..." oninput="filterApercuPatients()"><select id="apercu-patient-select"><option value="">Patient - dossier</option>${options}</select></div><button class="btn-primary" style="width:auto;padding:10px 18px" onclick="loadSavedProtocolPreview()">Rechercher</button><button class="btn-secondary" style="width:auto;padding:10px 14px" onclick="deleteSelectedApercuPatient()">Supprimer</button></div></div>`);
+    anchor?.insertAdjacentHTML('afterend', `<div id="apercu-patient-loader" class="card" style="margin:12px 0"><div class="card-body" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap"><div class="field" style="flex:1;min-width:260px;margin:0"><label>Selectionner un patient sauvegarde</label><input id="apercu-patient-search" type="text" placeholder="Commencer a taper le nom..." oninput="filterApercuPatients()"><select id="apercu-patient-select"><option value="">Patient - dossier</option>${options}</select></div><button class="btn-primary" style="width:auto;padding:10px 18px" onclick="loadSavedProtocolPreview()">Rechercher</button><button class="btn-secondary" style="width:auto;padding:10px 14px;background:#fff7e6;color:#7A4B00;border-color:#f0c060" onclick="printSelectedApercuRdv()">Bon RDV</button><button class="btn-secondary" style="width:auto;padding:10px 14px" onclick="deleteSelectedApercuPatient()">Supprimer</button></div></div>`);
   }
 
   window.filterApercuPatients = function(){
@@ -3473,6 +3476,29 @@
     if(!entry) return alert('Selectionner un patient.');
     if(!loadEntryIntoForm(entry)) return alert('Impossible de restaurer ce protocole.');
     if(typeof renderApercu === 'function') renderApercu();
+  };
+
+  window.printSelectedApercuRdv = function(){
+    const idx = Number(document.getElementById('apercu-patient-select')?.value);
+    const entry = savedProtocolEntries()[idx];
+    if(!entry) return alert('Selectionner un patient.');
+    if(!loadEntryIntoForm(entry)) return alert('Impossible de charger ce patient pour le bon de RDV.');
+    writeJson(LAST_PROTOCOL_PATIENT_KEY, {...entry, dateRdv:val(entry.dateRdv, entry.rdv, entry.prochainRdv, entry.formSnapshot?.['date-rdv'])});
+    window.printBonRDV();
+  };
+
+  window.printBonRdvFromRdv = function(id){
+    const rdv = readJson(STORAGE.rdv, []).find(r => String(r.id) === String(id));
+    if(!rdv) return alert('Rendez-vous introuvable.');
+    const patient = readJson(STORAGE.patients, []).find(p =>
+      (p.dossier && p.dossier === rdv.dossier) ||
+      (patientCode(p) && patientCode(p) === val(rdv.codegratuite, rdv.code)) ||
+      norm(patientName(p)) === norm(patientName(rdv))
+    ) || {};
+    const entry = {...patient, ...rdv, dateRdv:val(rdv.dateRdv, rdv.date), proto:val(rdv.proto, patient.proto), protocole:val(rdv.proto, patient.protocole), protoId:val(rdv.protoId, patient.protoId)};
+    if(!loadEntryIntoForm(entry)) writeJson(LAST_PROTOCOL_PATIENT_KEY, entry);
+    else writeJson(LAST_PROTOCOL_PATIENT_KEY, entry);
+    window.printBonRDV();
   };
 
   window.deleteSelectedApercuPatient = function(){

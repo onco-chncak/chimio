@@ -167,6 +167,7 @@ function drawRdvRows(){
         <span class="rdv-status-pill" style="background:${statusInfo.color}">${statusInfo.label}</span>
         <div class="rdv-actions">
           ${treatButton}
+          <button onclick="printBonRdvFromRdv(${r.id})">Bon RDV</button>
           <button onclick="editRdvStandalone(${r.id})">Modifier</button>
           <button onclick="deleteRdvStandalone(${r.id})">Supprimer</button>
         </div>
