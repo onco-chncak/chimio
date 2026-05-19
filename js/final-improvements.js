@@ -2307,7 +2307,7 @@
     }, true);
   }
 
-  function clearProtocolFormForNextPatient(){
+  function clearProtocolFormForNextPatient(message){
     [
       'prenom','nom','age','poids','taille','sexe','dossier','cubix','tel-patient','indication',
       'localisation','type-histologie','stade','nationalite','ligne-traitement','atcd','creatinine','auc-custom','date-rdv','total-cures','cure-num'
@@ -2338,8 +2338,14 @@
     if(typeof renderPreview === 'function') renderPreview();
     if(typeof renderPreparation === 'function') renderPreparation();
     if(typeof renderSupport === 'function') renderSupport();
-    showToastSafe('Protocole sauvegarde. Formulaire pret pour le prochain patient.', 'success');
+    showToastSafe(message || 'Protocole sauvegarde. Formulaire pret pour le prochain patient.', 'success');
   }
+
+  window.clearProtocolFormDiscreet = function(){
+    if(!confirm('Vider le formulaire du protocole en cours ?\n\nAucune donnee ne sera sauvegardee.')) return;
+    clearRestoredProtocolMode();
+    clearProtocolFormForNextPatient('Formulaire vide. Prochain code gratuite propose.');
+  };
 
   window.saveProtocol = function(){
     const saveBtn = document.getElementById('btn-save');
