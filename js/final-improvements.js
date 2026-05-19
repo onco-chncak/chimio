@@ -5,6 +5,7 @@
 (function(){
   const CODE_ADMIN = '2026';
   const VALIDATION_EMAIL = 'onco.chn.cak@gmail.com';
+  const STAT_MED_RESET_KEY = 'chncak_stats_medicaments_reset_after';
   const STORAGE = {
     patients: 'chncak_patients',
     rdv: 'chncak_rdv',
@@ -1340,7 +1341,20 @@
     const patients = readJson(STORAGE.patients, []);
     const rdv = dedupeRdv([...readJson(STORAGE.rdv, []), ...readJson('rdv', [])]);
     const hist = dedupeByPatientTreatment([...readJson(STORAGE.historique, []), ...readJson('historique', [])]);
-    const sorties = dedupeSorties([...readJson(STORAGE.sorties, []), ...readJson('chncak_stock_sorties', []), ...readJson('sorties', [])]);
+    const medicationResetAt = Number(localStorage.getItem(STAT_MED_RESET_KEY) || 0);
+    const sortieTime = item => {
+      const raw = val(item.dateTs, item.createdAt, item.updatedAt, item.date);
+      if(!raw) return 0;
+      if(typeof raw === 'number') return raw;
+      const parsed = Date.parse(raw);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const isMedicationStatSortie = item => {
+      const time = sortieTime(item);
+      if(medicationResetAt && (!time || time < medicationResetAt)) return false;
+      return Array.isArray(item.detailsData) || String(item.details || '').trim() !== '';
+    };
+    const sorties = dedupeSorties([...readJson(STORAGE.sorties, []), ...readJson('chncak_stock_sorties', []), ...readJson('sorties', [])]).filter(isMedicationStatSortie);
     const hemaSorties = readJson('chncak_hematologie_sorties', []);
     const ok = getOkChimioList();
     const meds = {};
@@ -1423,9 +1437,9 @@
           <div class="stats-box"><h3>Flacons utilises</h3><p>${totalFlacons}</p></div>
           <div class="stats-box"><h3>Sorties hematologie</h3><p>${hemaSorties.length}</p></div>
         </div>
-        <div class="stats-final-note">Statistiques medicaments calculees uniquement a partir des traitements faits et sorties de stock validees. Les diagnostics par protocole viennent du registre patients deduplique.</div>
-        <div class="card stats-section-card"><div class="card-header"><h2>Graphique medicaments</h2></div><div class="card-body">${chartRows || '<div class="dash-empty">Aucune donnee medicament.</div>'}</div></div>
-        <div class="card stats-section-card"><div class="card-header"><h2>Medicaments utilises</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Preparations</th><th>Seances</th><th>Dose totale utilisee</th><th>Dose totale jetee</th><th>Reliquat flacons</th><th>Flacons utilises</th></tr></thead><tbody>${medRows || '<tr><td colspan="7" class="dash-empty">Aucune sortie de stock validee.</td></tr>'}</tbody></table></div></div>
+        <div class="stats-final-note">Statistiques medicaments calculees uniquement a partir des traitements faits et sorties de stock validees apres la derniere remise a zero.${medicationResetAt ? ` Depart officiel: ${esc(new Date(medicationResetAt).toLocaleString('fr-FR'))}.` : ''} Les diagnostics par protocole viennent du registre patients deduplique.</div>
+        <div class="card stats-section-card"><div class="card-header"><h2>Graphique medicaments</h2>${isAdminUser() ? '<button class="btn-secondary official-github-mini" onclick="resetMedicationStats()">Remettre a zero</button>' : ''}</div><div class="card-body">${chartRows || '<div class="dash-empty">Aucune donnee medicament.</div>'}</div></div>
+        <div class="card stats-section-card"><div class="card-header"><h2>Medicaments utilises</h2>${isAdminUser() ? '<button class="btn-secondary official-github-mini" onclick="resetMedicationStats()">Remettre a zero</button>' : ''}</div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Preparations</th><th>Seances</th><th>Dose totale utilisee</th><th>Dose totale jetee</th><th>Reliquat flacons</th><th>Flacons utilises</th></tr></thead><tbody>${medRows || '<tr><td colspan="7" class="dash-empty">Aucune sortie de stock validee.</td></tr>'}</tbody></table></div></div>
         <div class="card stats-section-card"><div class="card-header"><h2>Hematologie - sorties medicaments</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Nombre de sorties</th><th>Quantite totale</th></tr></thead><tbody>${hemaRows || '<tr><td colspan="3" class="dash-empty">Aucune sortie hematologie.</td></tr>'}</tbody></table></div></div>
         <div class="clinical-report-grid">
           <div class="card"><div class="card-header"><h2>Protocoles</h2></div><div class="card-body">${miniRows(countBy(patients, p => val(p.proto, p.protocole, p.protoName)))}</div></div>
@@ -1436,6 +1450,17 @@
       </div>`;
   }
   window.renderStats = renderStatsFinal;
+
+  window.resetMedicationStats = function(){
+    askAdminCode('remettre a zero les statistiques medicaments', () => {
+      const now = Date.now();
+      localStorage.setItem(STAT_MED_RESET_KEY, String(now));
+      [STORAGE.sorties, 'chncak_stock_sorties', 'sorties'].forEach(key => localStorage.removeItem(key));
+      window.renderStats?.();
+      window.renderDashboard?.();
+      showToastSafe('Compteurs medicaments remis a zero. Les anciennes sorties de test seront ignorees.', 'success');
+    });
+  };
 
   window.printStats = function(){
     renderStatsFinal();
