@@ -1319,7 +1319,7 @@
         <td><b>${esc(patientName(patient) || `${val(r.prenom)} ${val(r.nom)}`)}</b><div class="dash-muted">${esc(val(patient.dossier, r.dossier, patientCode(patient), ''))}</div></td>
         <td>${esc(protocolNameFor({...patient, protoId:val(patient.protoId, r.protoId), proto:val(patient.proto, r.proto)}))}</td>
         <td>${validated ? '<span class="clinical-pill ok">Fiche validee</span>' : needsVerification ? '<span class="clinical-pill warn">Verification demandee</span>' : '<span class="clinical-pill warn">En attente</span>'}</td>
-        <td>${validated ? '<button class="btn-sm" disabled>Validee</button>' : `<button class="btn-sm primary" onclick="validatePreparationForRdv(${esc(r.id)})">Valider la fiche</button>`}</td>
+        <td>${validated ? '<button class="btn-sm" disabled>Validee</button>' : `<button class="btn-sm primary" onclick="validatePreparationForRdv(${esc(r.id)})">Valider la fiche</button>`}<button class="btn-sm" style="margin-left:5px" onclick="deletePreparationRdv('${esc(r.id)}')">Supprimer</button></td>
       </tr>`;
     }).join('');
     host.innerHTML = `
@@ -1327,7 +1327,7 @@
         <div class="card-header"><div class="card-num" style="background:#0B5E3C">J</div><h2>Rendez-vous du jour a preparer</h2></div>
         <div class="card-body dash-table-wrap">
           <table class="dash-table prep-rdv-table">
-            <thead><tr><th>Heure</th><th>Patient</th><th>Protocole</th><th>Etat fiche</th><th>Action</th></tr></thead>
+            <thead><tr><th>Heure</th><th>Patient</th><th>Protocole</th><th>Etat fiche</th><th>Actions</th></tr></thead>
             <tbody>${rows || '<tr><td colspan="5" class="dash-empty">Aucun rendez-vous programme ce jour.</td></tr>'}</tbody>
           </table>
         </div>
@@ -1475,10 +1475,42 @@
       if(patient && cells[13]) cells[13].textContent = protocolNameFor(patient);
       if(patient && cells[18] && cells[13]?.textContent.trim() === '-') cells[18].innerHTML = '<span class="clinical-pill warn">Protocole absent</span>';
     });
+    addSuiviDeleteButtons();
   }
 
   const nativeRenderSuiviFinal = window.renderSuivi;
   window.renderSuivi = renderSuiviFinal;
+
+  function addSuiviDeleteButtons(){
+    const data = readJson(STORAGE.suivi, readJson('suivi', []));
+    const tables = Array.from(document.querySelectorAll('#suivi-content .dash-table'));
+    const table = tables.find(t => (t.textContent || '').toLowerCase().includes('reponse')) || tables[tables.length - 1];
+    if(!table || !data.length) return;
+    const headRow = table.querySelector('thead tr');
+    if(headRow && !headRow.querySelector('.suivi-action-head')){
+      const th = document.createElement('th');
+      th.className = 'suivi-action-head';
+      th.textContent = 'Actions';
+      headRow.appendChild(th);
+    }
+    Array.from(table.querySelectorAll('tbody tr')).forEach((row, index) => {
+      if(row.querySelector('.suivi-delete-btn') || !data[index]) return;
+      const td = document.createElement('td');
+      td.innerHTML = `<button class="btn-secondary suivi-delete-btn" style="padding:5px 8px;font-size:11px" onclick="deleteSuiviEntry('${esc(val(data[index].id, data[index].dateTs))}')">Supprimer</button>`;
+      row.appendChild(td);
+    });
+  }
+
+  window.deleteSuiviEntry = function(id){
+    askAdminCode('supprimer cette ligne de suivi', () => {
+      [STORAGE.suivi, 'suivi'].forEach(key => {
+        const list = readJson(key, []);
+        if(Array.isArray(list)) writeJson(key, list.filter(item => String(val(item.id, item.dateTs)) !== String(id)));
+      });
+      window.renderSuivi?.();
+      showToastSafe('Ligne de suivi supprimee.', 'success');
+    });
+  };
 
   const nativeAutoFillSuiviFields = window.autoFillSuiviFields;
   window.autoFillSuiviFields = function(){
@@ -1605,6 +1637,7 @@
     if(saveBtn && !document.getElementById('bio-edit-latest-btn')){
       saveBtn.insertAdjacentHTML('afterend', '<button id="bio-edit-latest-btn" class="btn-secondary" style="width:auto;margin-left:8px;padding:10px 14px" onclick="loadLatestBiologieForEdit()">Modifier le bilan du jour</button>');
     }
+    addBiologieDeleteButtons();
     return out;
   };
 
@@ -1613,6 +1646,69 @@
     const patient = findBiologieCandidate(code, '');
     const input = document.getElementById('bio-patient');
     if(input) input.value = patient ? patientName(patient) : '';
+  };
+
+  function addBiologieDeleteButtons(){
+    const data = readJson(STORAGE.biologie, readJson('biologie', []));
+    const headRow = document.querySelector('#biologie-content .dash-table thead tr');
+    if(headRow && !headRow.querySelector('.bio-action-head')){
+      const th = document.createElement('th');
+      th.className = 'bio-action-head';
+      th.textContent = 'Actions';
+      headRow.appendChild(th);
+    }
+    document.querySelectorAll('#biologie-content .dash-table tbody tr').forEach((row, index) => {
+      if(row.querySelector('.bio-delete-btn') || !data[index]) return;
+      const td = document.createElement('td');
+      td.innerHTML = `<button class="btn-secondary bio-delete-btn" style="padding:5px 8px;font-size:11px" onclick="deleteBiologieEntry('${esc(val(data[index].id, data[index].dateTs))}')">Supprimer</button>`;
+      row.appendChild(td);
+    });
+  }
+
+  function deleteMatchingPatientData(patient){
+    const same = item => patientTreatmentKey(item) === patientTreatmentKey(patient) ||
+      (patient.dossier && val(item.dossier, item.patient?.dossier) === patient.dossier) ||
+      norm(patientName(item)) === norm(patientName(patient));
+    [STORAGE.patients, STORAGE.historique, STORAGE.okchimio, 'chncak_okchimio', STORAGE.rdv, 'rdv', STORAGE.biologie, 'biologie', STORAGE.suivi, 'suivi'].forEach(key => {
+      const list = readJson(key, []);
+      if(Array.isArray(list)) writeJson(key, list.filter(item => !same(item)));
+    });
+  }
+
+  window.deletePatientEverywhere = function(id){
+    const patient = readJson(STORAGE.patients, []).find(p => String(p.id) === String(id));
+    if(!patient) return alert('Patient introuvable.');
+    askAdminCode(`supprimer ${patientName(patient)}`, () => {
+      deleteMatchingPatientData(patient);
+      window.renderPatientsList?.();
+      window.renderBiologie?.();
+      window.renderSuivi?.();
+      window.renderOkChimio?.();
+      renderPreparationTodayList();
+      cleanupLoginAndButtons();
+      showToastSafe('Patient supprime des listes principales.', 'success');
+    });
+  };
+
+  window.deleteBiologieEntry = function(id){
+    askAdminCode('supprimer ce bilan biologique', () => {
+      [STORAGE.biologie, 'biologie'].forEach(key => {
+        const list = readJson(key, []);
+        if(Array.isArray(list)) writeJson(key, list.filter(item => String(val(item.id, item.dateTs)) !== String(id)));
+      });
+      window.renderBiologie?.();
+      showToastSafe('Bilan biologique supprime.', 'success');
+    });
+  };
+
+  window.deletePreparationRdv = function(id){
+    askAdminCode('supprimer ce rendez-vous de preparation', () => {
+      const list = readJson(STORAGE.rdv, []);
+      writeJson(STORAGE.rdv, list.filter(item => String(item.id) !== String(id)));
+      renderPreparationTodayList();
+      window.renderRdvList?.();
+      showToastSafe('Ligne preparation supprimee.', 'success');
+    });
   };
 
   function sameBiologiePatient(item, patient){
@@ -1971,7 +2067,7 @@
     const list = readJson(STORAGE.patients, []).filter(p => !q || norm(`${p.prenom} ${p.nom} ${p.dossier} ${p.proto} ${p.protocole} ${p.medecin}`).includes(q));
     const rows = list.map((p, i) => {
       const proto = val(p.proto, p.protocole, p.protoName, protocolsList().find(x => x.id === p.protoId)?.name, '-');
-      return `<tr style="${i%2?'background:white':'background:#FAFBFD'}"><td>${esc(p.dossier || '-')}</td><td><b>${esc(patientName(p))}</b><div class="dash-muted">${esc(val(p.age) ? p.age + ' ans' : '')}</div></td><td>${esc(p.tel || p.contact || '-')}</td><td><span class="pbadge b21">${esc(proto)}</span></td><td>${esc(p.localisation || p.diagnostic || '-')}</td><td>${esc(val(p.cure, '-'))}/${esc(val(p.totalCures, '-'))}</td><td>${esc(p.medecin || '-')}</td><td>${esc(p.statut || 'actif')}</td><td><button class="btn-secondary" onclick="showAddPatientModal('${esc(p.id)}')">Modifier</button></td></tr>`;
+      return `<tr style="${i%2?'background:white':'background:#FAFBFD'}"><td>${esc(p.dossier || '-')}</td><td><b>${esc(patientName(p))}</b><div class="dash-muted">${esc(val(p.age) ? p.age + ' ans' : '')}</div></td><td>${esc(p.tel || p.contact || '-')}</td><td><span class="pbadge b21">${esc(proto)}</span></td><td>${esc(p.localisation || p.diagnostic || '-')}</td><td>${esc(val(p.cure, '-'))}/${esc(val(p.totalCures, '-'))}</td><td>${esc(p.medecin || '-')}</td><td>${esc(p.statut || 'actif')}</td><td><button class="btn-secondary" onclick="showAddPatientModal('${esc(p.id)}')">Modifier</button><button class="btn-secondary" style="margin-left:6px;color:#C0392B;border-color:#F5AAAA;background:#fff5f5" onclick="deletePatientEverywhere('${esc(p.id)}')">Supprimer</button></td></tr>`;
     }).join('');
     document.getElementById('patients-subtitle') && (document.getElementById('patients-subtitle').textContent = `${list.length} patient(s)`);
     el.innerHTML = `<table class="dash-table"><thead><tr><th>Dossier</th><th>Patient</th><th>Contact</th><th>Protocole</th><th>Localisation</th><th>Cure</th><th>Medecin</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="9" class="dash-empty">Aucun patient.</td></tr>'}</tbody></table>`;
@@ -2027,9 +2123,14 @@
     };
   }
 
-  function savedCodeExists(code){
+  function savedCodeExists(code, currentPatient){
     if(!code) return false;
-    const same = item => String(val(item.codegratuite, item.codeGratuite, item.code, item.patient?.codegratuite, item.patient?.codeGratuite)).trim() === String(code).trim();
+    const sameIdentity = item => {
+      if(!currentPatient) return false;
+      return (currentPatient.dossier && val(item.dossier, item.patient?.dossier) === currentPatient.dossier) ||
+        norm(patientName(item)) === norm(patientName(currentPatient));
+    };
+    const same = item => String(val(item.codegratuite, item.codeGratuite, item.code, item.patient?.codegratuite, item.patient?.codeGratuite)).trim() === String(code).trim() && !sameIdentity(item);
     return [
       STORAGE.patients,
       STORAGE.rdv,
@@ -2043,12 +2144,19 @@
 
   function clearProtocolFormForNextPatient(){
     [
-      'prenom','nom','age','poids','taille','dossier','cubix','tel-patient','indication',
-      'localisation','type-histologie','stade','nationalite','ligne-traitement','total-cures','cure-num'
+      'prenom','nom','age','poids','taille','sexe','dossier','cubix','tel-patient','indication',
+      'localisation','type-histologie','stade','nationalite','ligne-traitement','atcd','creatinine','auc-custom','date-rdv','total-cures','cure-num'
     ].forEach(id => {
       const el = document.getElementById(id);
       if(el) el.value = '';
     });
+    const atcdSelect = document.getElementById('atcd-select');
+    if(atcdSelect) atcdSelect.value = 'RAS';
+    if(typeof onAtcdChange === 'function') onAtcdChange();
+    const auc = document.getElementById('auc-cible');
+    if(auc) auc.value = '5';
+    const seq = document.getElementById('num-seq');
+    if(seq) seq.value = '';
     const date = document.getElementById('date-protocole');
     if(date) date.value = todayIso();
     const code = document.getElementById('codegratuite');
@@ -2057,6 +2165,10 @@
       code.readOnly = true;
     }
     setProtocolAutoCode(true);
+    setTimeout(() => setProtocolAutoCode(true), 50);
+    if(typeof calcSC === 'function') calcSC();
+    if(typeof calcCarbo === 'function') calcCarbo();
+    if(typeof update === 'function') update();
     if(typeof updateProgress === 'function') updateProgress();
     if(typeof renderPreview === 'function') renderPreview();
     if(typeof renderPreparation === 'function') renderPreparation();
@@ -2065,13 +2177,18 @@
   }
 
   window.saveProtocol = function(){
+    const saveBtn = document.getElementById('btn-save');
+    if(saveBtn?.dataset.saving === '1') return;
+    if(saveBtn) saveBtn.dataset.saving = '1';
     setProtocolAutoCode(false);
     const patient = currentProtocolFormPatient();
-    if(!patient.prenom || !patient.nom) return alert('Veuillez renseigner au minimum prenom et nom.');
-    if(!patient.dossier) return alert('Veuillez renseigner le numero de dossier.');
+    const finish = () => { if(saveBtn) setTimeout(() => { saveBtn.dataset.saving = ''; }, 700); };
+    if(!patient.prenom || !patient.nom){ finish(); return alert('Veuillez renseigner au minimum prenom et nom.'); }
+    if(!patient.dossier){ finish(); return alert('Veuillez renseigner le numero de dossier.'); }
     if(!patient.codegratuite) patient.codegratuite = setProtocolAutoCode(true);
-    if(patient.codegratuite && savedCodeExists(patient.codegratuite)){
+    if(patient.codegratuite && savedCodeExists(patient.codegratuite, patient)){
       alert('Code de gratuite deja utilise. Enregistrement refuse pour eviter un doublon.');
+      finish();
       return;
     }
     const history = readJson(STORAGE.historique, []);
@@ -2103,7 +2220,8 @@
     reserveCodeGratuite(patient.codegratuite);
     writeJson(LAST_PROTOCOL_PATIENT_KEY, entry);
     clearProtocolFormForNextPatient();
-    openValidationEmail(patient);
+    try { openValidationEmail(patient); } catch(e){}
+    finish();
   };
 
   window.validerOkChimio = function(id){
@@ -2188,9 +2306,17 @@
           <td style="padding:10px"><span style="background:#EEF4FD;color:#0A3D7A;padding:4px 8px;border-radius:4px">${esc(val(e.protocole, e.protocolName, p.protocole, p.proto, '-'))}</span></td>
           <td style="padding:10px;text-align:center">C${esc(val(e.cure, p.cure, '-'))}</td>
           <td style="padding:10px">${esc(val(e.medecin, p.medecin, '-'))}</td>
-          <td style="padding:10px;text-align:center"><button onclick="previewProtocol('${esc(e.id)}')" style="background:#2196F3;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">Apercu</button><button onclick="refuserOkChimio('${esc(e.id)}')" style="background:#E74C3C;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">Refuser</button><button onclick="validerOkChimio('${esc(e.id)}')" style="background:#27AE60;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">Valider</button></td>
+          <td style="padding:10px;text-align:center"><button data-ok-action="preview" data-ok-id="${esc(e.id)}" style="background:#2196F3;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">Apercu</button><button data-ok-action="refuse" data-ok-id="${esc(e.id)}" style="background:#E74C3C;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">Refuser</button><button data-ok-action="validate" data-ok-id="${esc(e.id)}" style="background:#27AE60;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:4px">Valider</button></td>
         </tr>`;
       }).join('')}</tbody></table>`;
+    host.onclick = event => {
+      const btn = event.target.closest('[data-ok-action]');
+      if(!btn) return;
+      const id = btn.dataset.okId;
+      if(btn.dataset.okAction === 'preview') window.previewProtocol(id);
+      if(btn.dataset.okAction === 'refuse') window.refuserOkChimio(id);
+      if(btn.dataset.okAction === 'validate') window.validerOkChimio(id);
+    };
   };
 
   window.clearClinicalModuleData = function(module){
@@ -3257,7 +3383,7 @@
     const entries = savedProtocolEntries();
     const options = entries.map((item, index) => `<option value="${index}">${esc(patientName(item))} - Dossier ${esc(val(item.dossier, '-'))}</option>`).join('');
     const anchor = page.querySelector('[style*="justify-content:space-between"]') || page.firstElementChild;
-    anchor?.insertAdjacentHTML('afterend', `<div id="apercu-patient-loader" class="card" style="margin:12px 0"><div class="card-body" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap"><div class="field" style="flex:1;min-width:260px;margin:0"><label>Selectionner un patient sauvegarde</label><input id="apercu-patient-search" type="text" placeholder="Commencer a taper le nom..." oninput="filterApercuPatients()"><select id="apercu-patient-select"><option value="">Patient - dossier</option>${options}</select></div><button class="btn-primary" style="width:auto;padding:10px 18px" onclick="loadSavedProtocolPreview()">Rechercher</button></div></div>`);
+    anchor?.insertAdjacentHTML('afterend', `<div id="apercu-patient-loader" class="card" style="margin:12px 0"><div class="card-body" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap"><div class="field" style="flex:1;min-width:260px;margin:0"><label>Selectionner un patient sauvegarde</label><input id="apercu-patient-search" type="text" placeholder="Commencer a taper le nom..." oninput="filterApercuPatients()"><select id="apercu-patient-select"><option value="">Patient - dossier</option>${options}</select></div><button class="btn-primary" style="width:auto;padding:10px 18px" onclick="loadSavedProtocolPreview()">Rechercher</button><button class="btn-secondary" style="width:auto;padding:10px 14px" onclick="deleteSelectedApercuPatient()">Supprimer</button></div></div>`);
   }
 
   window.filterApercuPatients = function(){
@@ -3276,6 +3402,22 @@
     if(!entry) return alert('Selectionner un patient.');
     if(!loadEntryIntoForm(entry)) return alert('Impossible de restaurer ce protocole.');
     if(typeof renderApercu === 'function') renderApercu();
+  };
+
+  window.deleteSelectedApercuPatient = function(){
+    const idx = Number(document.getElementById('apercu-patient-select')?.value);
+    const entry = savedProtocolEntries()[idx];
+    if(!entry) return alert('Selectionner un patient a supprimer.');
+    askAdminCode(`supprimer ${patientName(entry) || 'ce patient'} de l apercu`, () => {
+      deleteMatchingPatientData(entry);
+      installApercuSearch();
+      window.renderPatientsList?.();
+      window.renderBiologie?.();
+      window.renderSuivi?.();
+      window.renderOkChimio?.();
+      renderPreparationTodayList();
+      showToastSafe('Patient/protocole supprime.', 'success');
+    });
   };
 
   function installPatientSearchBox(pageId, boxId, loadFnName){
