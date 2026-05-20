@@ -17,7 +17,8 @@
     sorties: 'chncak_sorties',
     historique: 'chncak_historique',
     okchimio: 'chncak_protocols',
-    transfusion: 'chncak_transfusion'
+    transfusion: 'chncak_transfusion',
+    audit: 'chncak_audit_log'
   };
 
   const readJson = (key, fallback) => {
@@ -486,6 +487,29 @@
     return readJson('chncak_currentUser', {});
   }
 
+  function actorLabel(){
+    const user = currentUser();
+    return val(user.name, user.nomComplet, user.username, user.role, 'Utilisateur local');
+  }
+
+  function logAudit(action, target, details){
+    const entry = {
+      id: `AUD-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      dateTs: new Date().toISOString(),
+      date: new Date().toLocaleString('fr-FR'),
+      actor: actorLabel(),
+      role: val(currentUser().role, ''),
+      action: val(action, 'Action'),
+      target: val(target, ''),
+      details: val(details, '')
+    };
+    const list = readJson(STORAGE.audit, []);
+    list.unshift(entry);
+    writeJson(STORAGE.audit, list.slice(0, 1000));
+    if(document.getElementById('maintenance-content')) renderAuditLogPanel();
+  }
+  window.logAudit = logAudit;
+
   function isAdminUser(){
     const user = currentUser();
     return norm(user.role) === 'admin' || norm(user.username) === 'admin';
@@ -524,6 +548,7 @@
       localStorage.setItem('chncak_code_gratuite_official_start', String(next));
       setProtocolAutoCode(true);
       setHematologieAutoCode(true);
+      logAudit('Depart code gratuite', `Prochain numero ${next}`, `Ancien prochain: ${currentNext}. Plus haut connu: ${highestExisting}.`);
       if(highestExisting >= next){
         alert(`Depart enregistre a ${next}. Attention : des donnees de test contiennent deja un numero jusqu'a ${highestExisting}. Apres initialisation officielle, le prochain code commencera bien a ${next}.`);
       } else {
@@ -652,6 +677,7 @@
       };
       const content = `(function(){\n  window.CHIMIOPRO_OFFICIAL_DATA = ${JSON.stringify(payload, null, 2)};\n})();\n`;
       downloadTextFile('site-official-data.js', content, 'text/javascript;charset=utf-8');
+      logAudit('Export GitHub', 'Donnees officielles', `${payload.medecins.length} medecins, ${payload.catalog.length} medicaments, photos: ${Object.values(photos).filter(Boolean).length}`);
       showToastSafe('Fichier officiel exporte. Envoyez-le a Codex pour le fixer dans GitHub.', 'success');
     });
   };
@@ -922,6 +948,9 @@
       warnings
     });
     writeJson(STORAGE.sorties, sorties);
+    if(updated || warnings.length){
+      logAudit('Deduction stock', patientName(patient), `Source: ${sourceLabel || 'Traitement patient'}. Protocole: ${proto.name}. Medicaments deduits: ${updated}. Alertes: ${warnings.length}`);
+    }
     return {updated, warnings, details};
   }
 
@@ -1296,6 +1325,7 @@
     const map = readJson('chncak_pharma_validations', {});
     map[pharmaValidationKey(patient, rdv)] = {status:'validated', validatedAt:new Date().toISOString(), patient:patientName(patient), dossier:val(patient.dossier, rdv.dossier), protoId:val(patient.protoId, rdv.protoId), source:'preparation', detailsData:validationDetails.detailsData, warnings:validationDetails.warnings};
     writeJson('chncak_pharma_validations', map);
+    logAudit('Validation fiche preparation', patientName(patient), `Protocole ${protocolNameFor({...patient, protoId:val(patient.protoId, rdv.protoId), proto:val(patient.proto, rdv.proto)})}. Medicaments: ${validationDetails.detailsData.length}`);
     renderPreparationTodayList();
     showToastSafe('Fiche de preparation validee.', 'success');
   };
@@ -1476,6 +1506,7 @@
     row.archivedAt = row.transfusedAt;
     row.transfusedBy = val(currentUser().username, currentUser().nom, '');
     writeJson(STORAGE.transfusion, records);
+    logAudit('Transfusion archivee', val(row.patient, row.dossier), `Hb ${val(row.hb, '-')}, date ${val(row.dateTransfusion, '-')}, culots ${val(row.culots, '1')}`);
     window.renderTransfusion?.();
     window.renderStats?.();
     showToastSafe('Transfusion archivee et ajoutee aux statistiques.', 'success');
@@ -1519,6 +1550,47 @@
       </div>`;
   };
 
+  function auditRows(){
+    const query = norm(document.getElementById('audit-search')?.value || '');
+    const list = readJson(STORAGE.audit, []);
+    return list.filter(row => {
+      if(!query) return true;
+      return [row.date, row.actor, row.role, row.action, row.target, row.details].some(value => norm(value).includes(query));
+    });
+  }
+
+  window.renderAuditLogPanel = function(){
+    const host = document.getElementById('audit-log-panel');
+    if(!host) return;
+    const rows = auditRows();
+    host.innerHTML = `
+      <div class="card">
+        <div class="card-header"><h2>Audit / Journal</h2><div class="audit-actions"><input id="audit-search" placeholder="Rechercher action, patient, utilisateur..." oninput="renderAuditLogPanel()" value="${esc(document.getElementById('audit-search')?.value || '')}"><button class="btn-secondary official-github-mini" onclick="exportAuditLog()">Exporter journal</button>${isAdminUser() ? '<button class="btn-secondary official-github-mini" onclick="clearAuditLog()">Vider journal</button>' : ''}</div></div>
+        <div class="card-body dash-table-wrap">
+          <table class="dash-table audit-table">
+            <thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Cible</th><th>Details</th></tr></thead>
+            <tbody>${rows.map(row => `<tr><td>${esc(row.date || row.dateTs || '-')}</td><td><b>${esc(row.actor || '-')}</b><div class="dash-muted">${esc(row.role || '')}</div></td><td>${esc(row.action || '-')}</td><td>${esc(row.target || '-')}</td><td>${esc(row.details || '-')}</td></tr>`).join('') || '<tr><td colspan="5" class="dash-empty">Aucune action sensible enregistree pour le moment.</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>`;
+  };
+
+  window.exportAuditLog = function(){
+    const rows = readJson(STORAGE.audit, []);
+    downloadTextFile(`Journal_Audit_ChimioPro_${todayIso()}.json`, JSON.stringify(rows, null, 2), 'application/json;charset=utf-8');
+    logAudit('Export journal audit', 'Maintenance', `${rows.length} lignes exportees`);
+    showToastSafe('Journal audit exporte.', 'success');
+  };
+
+  window.clearAuditLog = function(){
+    requireAdminAction('vider le journal audit', () => {
+      const previous = readJson(STORAGE.audit, []).length;
+      writeJson(STORAGE.audit, []);
+      logAudit('Journal audit vide', 'Maintenance', `${previous} anciennes lignes effacees`);
+      renderAuditLogPanel();
+    });
+  };
+
   window.renderMaintenance = function(){
     const host = document.getElementById('maintenance-content');
     if(!host) return;
@@ -1535,10 +1607,14 @@
               <div class="maintenance-tile"><h3>Code gratuite</h3><p>Regler le prochain numero officiel avant le demarrage ou apres une initialisation.</p>${admin ? '<button class="btn-secondary" onclick="setCodeGratuiteStart()">Depart Code Gratuite</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
               <div class="maintenance-tile"><h3>Statistiques</h3><p>Remettre a zero les compteurs herites des tests sans supprimer le catalogue.</p>${admin ? '<button class="btn-secondary" onclick="resetAllStatCounters()">Remettre compteurs a zero</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
               <div class="maintenance-tile"><h3>Controle avant usage</h3><p>Verifier impression, stock pharmacie, synchronisation Supabase, comptes utilisateurs et catalogue.</p><button class="btn-secondary" onclick="showPage('stats', document.querySelector('.tab-btn[onclick*=stats]'))">Voir statistiques</button></div>
+              <div class="maintenance-tile"><h3>Gestion comptes</h3><p>Vue reservee a la maintenance des utilisateurs, roles et droits. La gestion complete sera reliee a Supabase.</p><span class="clinical-pill warn">A securiser avec Supabase</span></div>
+              <div class="maintenance-tile"><h3>Journal audit</h3><p>Trace les actions sensibles: sauvegarde, restauration, suppression, validation, traitement, stock et modifications critiques.</p><button class="btn-secondary" onclick="renderAuditLogPanel()">Actualiser journal</button></div>
             </div>
           </div>
         </div>
+        <div id="audit-log-panel"></div>
       </div>`;
+    renderAuditLogPanel();
   };
 
   function renderStatsFinal(){
@@ -1700,6 +1776,7 @@
       const now = Date.now();
       localStorage.setItem(STAT_MED_RESET_KEY, String(now));
       [STORAGE.sorties, 'chncak_stock_sorties', 'sorties'].forEach(key => localStorage.removeItem(key));
+      logAudit('Remise a zero statistiques medicaments', 'Statistiques', `Depart officiel: ${new Date(now).toLocaleString('fr-FR')}`);
       window.renderStats?.();
       window.renderDashboard?.();
       showToastSafe('Compteurs medicaments remis a zero. Les anciennes sorties de test seront ignorees.', 'success');
@@ -1712,6 +1789,7 @@
       localStorage.setItem(STAT_BLOCK_RESET_KEY, String(now));
       localStorage.setItem(STAT_MED_RESET_KEY, String(now));
       [STORAGE.sorties, 'chncak_stock_sorties', 'sorties'].forEach(key => localStorage.removeItem(key));
+      logAudit('Remise a zero compteurs', 'Statistiques', `Depart officiel: ${new Date(now).toLocaleString('fr-FR')}`);
       window.renderStats?.();
       window.renderDashboard?.();
       showToastSafe('Compteurs statistiques remis a zero. Les anciennes donnees de test seront ignorees dans les blocs.', 'success');
@@ -1788,6 +1866,7 @@
         const list = readJson(key, []);
         if(Array.isArray(list)) writeJson(key, list.filter(item => String(val(item.id, item.dateTs)) !== String(id)));
       });
+      logAudit('Suppression suivi', id, 'Ligne de suivi patient supprimee');
       window.renderSuivi?.();
       showToastSafe('Ligne de suivi supprimee.', 'success');
     });
@@ -1987,6 +2066,7 @@
     if(!patient) return alert('Patient introuvable.');
     askAdminCode(`supprimer uniquement cette ligne patient: ${patientName(patient)}`, () => {
       deleteExactPatientRecord(patient);
+      logAudit('Suppression patient', patientName(patient), `Dossier ${val(patient.dossier, '-')}, code ${patientCode(patient) || '-'}`);
       window.renderPatientsList?.();
       window.renderBiologie?.();
       window.renderSuivi?.();
@@ -2003,6 +2083,7 @@
         const list = readJson(key, []);
         if(Array.isArray(list)) writeJson(key, list.filter(item => String(val(item.id, item.dateTs)) !== String(id)));
       });
+      logAudit('Suppression biologie', id, 'Bilan biologique supprime');
       window.renderBiologie?.();
       showToastSafe('Bilan biologique supprime.', 'success');
     });
@@ -2012,6 +2093,7 @@
     askAdminCode('supprimer ce rendez-vous de preparation', () => {
       const list = readJson(STORAGE.rdv, []);
       writeJson(STORAGE.rdv, list.filter(item => String(item.id) !== String(id)));
+      logAudit('Suppression preparation RDV', id, 'Rendez-vous retire de la liste preparation');
       renderPreparationTodayList();
       window.renderRdvList?.();
       showToastSafe('Ligne preparation supprimee.', 'success');
@@ -2085,6 +2167,7 @@
     if(saveBtn) saveBtn.dataset.editId = '';
     writeJson(STORAGE.biologie, list);
     writeJson('biologie', list);
+    logAudit(editId || existingIdx >= 0 ? 'Modification biologie' : 'Validation biologie', patientName(patient), `Hb ${val(entry.hb, '-')}, resultats ${resultDate}`);
     window.renderBiologie?.();
     if(document.getElementById('page-transfusion')?.classList.contains('active')) window.renderTransfusion?.();
     showToastSafe('Bilan biologique enregistre.', 'success');
@@ -2364,6 +2447,7 @@
     if(idx >= 0) list[idx] = {...list[idx], ...entry, id:list[idx].id || entry.id};
     else list.push(entry);
     writeJson(STORAGE.patients, list);
+    logAudit(editId ? 'Modification patient' : 'Ajout patient', `${prenom} ${nom}`.trim(), `Dossier ${val(entry.dossier, '-')}, protocole ${val(entry.protocole, '-')}`);
     if(modal) modal.style.display = 'none';
     window.renderPatientsList?.();
   };
@@ -2657,6 +2741,7 @@
     window.renderOkChimio?.();
     reserveCodeGratuite(patient.codegratuite);
     writeJson(LAST_PROTOCOL_PATIENT_KEY, entry);
+    logAudit('Protocole sauvegarde', patientName(entry), `Dossier ${val(entry.dossier, '-')}, code ${val(entry.codegratuite, '-')}, protocole ${val(entry.protocole, '-')}`);
     clearProtocolFormForNextPatient();
     clearRestoredProtocolMode();
     try { openValidationEmail(patient); } catch(e){}
@@ -2669,6 +2754,7 @@
     if(idx < 0) return alert('Protocole introuvable dans OK Chimio.');
     list[idx] = ensureOkChimioId({...list[idx], statut:'Valide', status:'Valide', dateValidation:new Date().toISOString()});
     saveOkChimioList(list);
+    logAudit('OK Chimio valide', patientName(list[idx]), `Protocole ${protocolNameFor(list[idx])}`);
     window.renderOkChimio?.();
     window.renderBiologie?.();
     showToastSafe('Protocole valide. Ouverture du mail de notification.', 'success');
@@ -2710,6 +2796,7 @@
     writeJson('chncak_okchimio_refuses', archive.slice(0, 500));
     list.splice(idx, 1);
     saveOkChimioList(list);
+    logAudit('OK Chimio refuse', patientName(refused), `Motif: ${motif}`);
     window.renderOkChimio?.();
     window.renderBiologie?.();
     showToastSafe('Protocole envoye pour verification et retire des OK chimio en attente.', 'info');
@@ -2768,25 +2855,47 @@
         window.renderSuivi?.();
         window.renderPatientsList?.();
         window.renderDashboard?.();
+        logAudit('Initialisation module', 'Suivi', 'Historique suivi et registre patients effaces');
       }
-      if(module === 'biologie'){ localStorage.removeItem(STORAGE.biologie); localStorage.removeItem('biologie'); window.renderBiologie?.(); }
+      if(module === 'biologie'){ localStorage.removeItem(STORAGE.biologie); localStorage.removeItem('biologie'); window.renderBiologie?.(); logAudit('Initialisation module', 'Biologie', 'Historique biologie efface'); }
     });
   };
 
-  const nativeImportAllData = window.importAllData;
+  let nativeImportAllData = window.importAllData;
   if(!nativeImportAllData?.requiresAccessCode){
     window.importAllData = function(file){
       if(!file) return;
       askAdminCode('restaurer une sauvegarde', () => {
+        logAudit('Restauration sauvegarde', val(file.name, 'Fichier sauvegarde'), 'Restauration demandee');
         if(typeof nativeImportAllData === 'function') nativeImportAllData(file);
       });
     };
+  }
+  nativeImportAllData = window.importAllData;
+  if(typeof nativeImportAllData === 'function' && !nativeImportAllData.auditWrapped){
+    window.importAllData = function(fileOrInput){
+      const file = fileOrInput?.files ? fileOrInput.files[0] : fileOrInput;
+      if(!file) return;
+      logAudit('Restauration sauvegarde', val(file.name, 'Fichier sauvegarde'), 'Import de sauvegarde lance');
+      return nativeImportAllData(file);
+    };
+    window.importAllData.auditWrapped = true;
+    window.importAllData.requiresAccessCode = nativeImportAllData.requiresAccessCode;
+  }
+  const nativeExportAllData = window.exportAllData;
+  if(typeof nativeExportAllData === 'function' && !nativeExportAllData.auditWrapped){
+    window.exportAllData = function(){
+      logAudit('Export sauvegarde', 'Toutes donnees locales', 'Sauvegarde JSON demandee');
+      return nativeExportAllData.apply(this, arguments);
+    };
+    window.exportAllData.auditWrapped = true;
   }
 
   window.clearHistory = function(){
     askAdminCode("effacer l'historique", () => {
       localStorage.removeItem(STORAGE.historique);
       if(typeof historique !== 'undefined') try { historique = []; } catch(e) {}
+      logAudit('Effacement historique', 'Protocoles', 'Historique protocoles efface');
       window.renderStats?.();
       if(typeof renderHistory === 'function') renderHistory();
     });
@@ -2798,6 +2907,7 @@
       localStorage.removeItem(STORAGE.sorties);
       localStorage.removeItem(STORAGE.okchimio);
       if(typeof historique !== 'undefined') try { historique = []; } catch(e) {}
+      logAudit('Effacement historique complet', 'Historique/stock/OK Chimio', 'Historique, sorties et validations OK Chimio effaces');
       window.renderStats?.();
       if(typeof renderHistory === 'function') renderHistory();
       window.renderOkChimio?.();
@@ -4463,6 +4573,7 @@
     if(idx >= 0){
       updatedList[idx] = {...updatedList[idx], status:'traite', statut:'Traite', validatedAt:new Date().toISOString(), stockValide:true, stockWarnings:stock.warnings, stockDetails:stock.details};
       writeJson(STORAGE.rdv, updatedList);
+      logAudit('Patient traite', patientName(patient), `RDV ${val(rdv.dateRdv, '-')}, protocole ${val(rdv.proto, patient.proto, patient.protocole, '-')}, stock deduit: ${stock.updated}`);
     }
     setTimeout(() => {
       window.renderRdvList?.();
@@ -4565,6 +4676,9 @@
       .maintenance-tile{border:1px solid #dbe5f2;border-radius:8px;background:#fff;padding:14px;box-shadow:0 8px 18px rgba(10,61,122,.06);display:flex;flex-direction:column;gap:8px;min-height:150px}
       .maintenance-tile h3{margin:0;color:#17324d;font-size:16px}.maintenance-tile p{margin:0;color:#607080;font-size:12px;line-height:1.45;flex:1}
       .maintenance-upload{display:inline-flex!important;align-items:center;justify-content:center;cursor:pointer}
+      .audit-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
+      .audit-actions input{min-width:260px;border:1px solid #ccd8e6;border-radius:6px;padding:7px 9px;font-size:12px;background:#fff}
+      .audit-table{min-width:980px}.audit-table td{vertical-align:top}
       @media (max-width:900px){.hematologie-grid,.hematologie-sortie-grid{grid-template-columns:1fr 1fr}.hematologie-wide{grid-column:1/-1}}
       @media (max-width:900px){.maintenance-grid{grid-template-columns:1fr 1fr}}
       @media (max-width:580px){.hematologie-grid,.hematologie-sortie-grid,.maintenance-grid{grid-template-columns:1fr}}
