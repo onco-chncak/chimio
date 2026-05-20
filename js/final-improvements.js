@@ -2243,6 +2243,51 @@
     ].some(key => readJson(key, []).some(same));
   }
 
+  function protocolIdentifierConflict(patient){
+    if(!patient) return null;
+    const identifiers = [
+      ['ID CUBIX', val(patient.cubix, patient.idCubix)],
+      ['Numero dossier', val(patient.dossier, patient.numeroDossier)],
+      ['Code gratuite', val(patient.codegratuite, patient.codeGratuite, patient.code)]
+    ].map(([label, value]) => [label, norm(value)]).filter(([, value]) => value);
+    if(!identifiers.length) return null;
+    const protocolName = norm(protocolNameFor(patient));
+    const hasProtocol = item => norm(protocolNameFor(item)) || val(item.protoId, item.patient?.protoId);
+    const sameProtocol = item => {
+      const itemProtocol = norm(protocolNameFor(item));
+      return !protocolName || !itemProtocol || itemProtocol === protocolName;
+    };
+    const valueOf = (item, field) => {
+      const p = item?.patient || {};
+      if(field === 'ID CUBIX') return norm(val(item?.cubix, item?.idCubix, p.cubix, p.idCubix));
+      if(field === 'Numero dossier') return norm(val(item?.dossier, item?.numeroDossier, p.dossier, p.numeroDossier));
+      return norm(val(item?.codegratuite, item?.codeGratuite, item?.code, p.codegratuite, p.codeGratuite, p.code));
+    };
+    const sources = [
+      ['historique', STORAGE.historique],
+      ['historique', 'historique'],
+      ['OK Chimio', STORAGE.okchimio],
+      ['OK Chimio', 'chncak_okchimio'],
+      ['RDV', STORAGE.rdv],
+      ['RDV', 'rdv'],
+      ['patients', STORAGE.patients]
+    ];
+    for(const [sourceLabel, key] of sources){
+      const rows = readJson(key, []);
+      if(!Array.isArray(rows)) continue;
+      for(const item of rows){
+        if(key === STORAGE.patients && !hasProtocol(item)) continue;
+        if(!sameProtocol(item)) continue;
+        for(const [label, value] of identifiers){
+          if(value && valueOf(item, label) === value){
+            return {label, value, source:sourceLabel, patient:patientName(item) || patientName(item?.patient)};
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   function savedProtocolExists(patient){
     if(!patient) return false;
     const same = item => patientTreatmentKey(item) === patientTreatmentKey(patient) ||
@@ -2363,6 +2408,12 @@
     if(!patient.codegratuite) patient.codegratuite = setProtocolAutoCode(true);
     if(patient.codegratuite && savedCodeExists(patient.codegratuite, patient)){
       alert('Code de gratuite deja utilise. Enregistrement refuse pour eviter un doublon.');
+      finish();
+      return;
+    }
+    const identifierConflict = protocolIdentifierConflict(patient);
+    if(identifierConflict){
+      alert(`${identifierConflict.label} deja utilise dans ${identifierConflict.source}. Enregistrement refuse pour eviter une sauvegarde accidentelle du meme patient/protocole.`);
       finish();
       return;
     }
