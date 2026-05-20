@@ -16,7 +16,8 @@
     catalog: 'chncak_catalog',
     sorties: 'chncak_sorties',
     historique: 'chncak_historique',
-    okchimio: 'chncak_protocols'
+    okchimio: 'chncak_protocols',
+    transfusion: 'chncak_transfusion'
   };
 
   const readJson = (key, fallback) => {
@@ -1337,6 +1338,209 @@
       </div>`;
   }
 
+  function transfusionKey(item){
+    return [
+      norm(val(item?.dossier, item?.patient?.dossier)),
+      norm(val(item?.code, item?.codegratuite, item?.codeGratuite, item?.patientCode, item?.patient?.codegratuite)),
+      norm(patientName(item?.patient || item)),
+      norm(val(item?.resultDate, item?.dateResultat, item?.date))
+    ].filter(Boolean).join('|') || String(val(item?.id, Date.now()));
+  }
+
+  function biologieTransfusionCandidates(){
+    const patients = readJson(STORAGE.patients, []);
+    const biologies = [...readJson(STORAGE.biologie, []), ...readJson('biologie', [])]
+      .filter(bio => Number(String(val(bio.hb, bio.hemoglobine, bio.hemoglobin)).replace(',', '.')) < 9)
+      .sort((a,b) => Date.parse(val(b.dateTs, b.resultDate, b.date, 0)) - Date.parse(val(a.dateTs, a.resultDate, a.date, 0)));
+    const byKey = new Map();
+    biologies.forEach(bio => {
+      const patient = patients.find(p =>
+        (val(bio.dossier) && val(p.dossier, p.numeroDossier) === val(bio.dossier)) ||
+        (val(bio.code, bio.patientCode) && patientCode(p) === val(bio.code, bio.patientCode)) ||
+        (patientName(p) && norm(patientName(p)) === norm(val(bio.patient, bio.patientName)))
+      ) || {};
+      const merged = {
+        ...patient,
+        ...bio,
+        patient: patientName(patient) || val(bio.patient, bio.patientName),
+        dossier: val(patient.dossier, patient.numeroDossier, bio.dossier),
+        code: val(patient.codegratuite, patient.codeGratuite, bio.code, bio.patientCode),
+        cubix: val(patient.cubix, patient.idCubix, bio.cubix),
+        protocole: val(bio.protocole, protocolNameFor(patient), patient.protocole, patient.proto),
+        hb: val(bio.hb, bio.hemoglobine, bio.hemoglobin),
+        resultDate: val(bio.resultDate, bio.dateResultat, bio.date),
+        bioId: val(bio.id)
+      };
+      const key = transfusionKey(merged);
+      if(!byKey.has(key)) byKey.set(key, merged);
+    });
+    return Array.from(byKey.values());
+  }
+
+  function ensureTransfusionRecords(){
+    const records = readJson(STORAGE.transfusion, []);
+    let changed = false;
+    biologieTransfusionCandidates().forEach(candidate => {
+      const key = transfusionKey(candidate);
+      if(records.some(record => record.key === key || (candidate.bioId && record.bioId === candidate.bioId))) return;
+      records.push({
+        id: `TRF-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        key,
+        bioId: candidate.bioId,
+        patient: candidate.patient,
+        dossier: candidate.dossier,
+        code: candidate.code,
+        cubix: candidate.cubix,
+        protocole: candidate.protocole,
+        hb: candidate.hb,
+        resultDate: candidate.resultDate,
+        dateTransfusion: '',
+        groupe: '',
+        rhesus: '',
+        culots: '1',
+        indication: `Hb ${candidate.hb} g/dL`,
+        statut: 'a_programmer',
+        createdAt: new Date().toISOString()
+      });
+      changed = true;
+    });
+    if(changed) writeJson(STORAGE.transfusion, records);
+    return records;
+  }
+
+  function transfusionRecords(){
+    ensureTransfusionRecords();
+    return readJson(STORAGE.transfusion, []);
+  }
+
+  window.updateTransfusionField = function(id, field, value){
+    const allowed = ['dateTransfusion', 'groupe', 'rhesus', 'culots', 'indication'];
+    if(!allowed.includes(field)) return;
+    const records = transfusionRecords();
+    const row = records.find(item => item.id === id);
+    if(!row) return;
+    row[field] = value;
+    row.updatedAt = new Date().toISOString();
+    row.updatedBy = val(currentUser().username, currentUser().nom, '');
+    if(row.statut !== 'transfuse') row.statut = row.dateTransfusion ? 'programme' : 'a_programmer';
+    writeJson(STORAGE.transfusion, records);
+    if(field === 'dateTransfusion') window.renderTransfusion?.();
+  };
+
+  window.printBonSang = function(id){
+    const row = transfusionRecords().find(item => item.id === id);
+    if(!row){
+      alert('Dossier transfusion introuvable.');
+      return;
+    }
+    const logo = document.querySelector('.nav-logo img')?.src || '';
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Bon de sang</title>
+      <style>
+        @page{size:A4 portrait;margin:10mm}
+        body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:12px}
+        .head{display:grid;grid-template-columns:56px 1fr 150px;gap:10px;align-items:center;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:12px}
+        .head img{width:52px;height:52px;object-fit:contain}.ministry{text-align:center;line-height:1.25;font-size:11px}.right{text-align:right;font-size:11px;line-height:1.35}
+        h1{text-align:center;font-size:18px;margin:12px 0 14px;text-transform:uppercase;letter-spacing:.06em}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px}.box{border:1px solid #111;padding:7px;min-height:24px}.wide{grid-column:1/-1}
+        .label{font-size:10px;text-transform:uppercase;color:#555;margin-bottom:3px}.value{font-size:13px;font-weight:700}.sign{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:28px}.sign div{border-top:1px solid #111;padding-top:6px;text-align:center}
+      </style></head><body>
+      <div class="head"><img src="${logo}"><div class="ministry">Republique du Senegal - Un peuple, un but, une foi<br>Ministere de la Sante et de l'Action Sociale<br><b>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba</b><br>Service d'Oncologie-Radiotherapie</div><div class="right">Date: <b>${new Date().toLocaleDateString('fr-FR')}</b><br>Dossier: <b>${esc(row.dossier || '-')}</b><br>Code: <b>${esc(row.code || '-')}</b></div></div>
+      <h1>Bon de demande de sang</h1>
+      <div class="grid">
+        <div class="box"><div class="label">Patient</div><div class="value">${esc(row.patient || '-')}</div></div>
+        <div class="box"><div class="label">ID CUBIX</div><div class="value">${esc(row.cubix || '-')}</div></div>
+        <div class="box"><div class="label">Hemoglobine</div><div class="value">${esc(row.hb || '-')} g/dL</div></div>
+        <div class="box"><div class="label">Date resultat biologie</div><div class="value">${esc(row.resultDate || '-')}</div></div>
+        <div class="box"><div class="label">Groupe sanguin</div><div class="value">${esc(row.groupe || '-')} ${esc(row.rhesus || '')}</div></div>
+        <div class="box"><div class="label">Nombre de culots demandes</div><div class="value">${esc(row.culots || '1')}</div></div>
+        <div class="box"><div class="label">Date transfusion prevue</div><div class="value">${esc(row.dateTransfusion || '-')}</div></div>
+        <div class="box"><div class="label">Protocole</div><div class="value">${esc(row.protocole || '-')}</div></div>
+        <div class="box wide"><div class="label">Indication</div><div class="value">${esc(row.indication || `Hb ${row.hb || '-'} g/dL`)}</div></div>
+      </div>
+      <div class="sign"><div>Medecin prescripteur</div><div>Banque de sang</div></div>
+      </body></html>`;
+    printHtml(html, '210mm', '297mm');
+  };
+
+  window.markTransfused = function(id){
+    const records = transfusionRecords();
+    const row = records.find(item => item.id === id);
+    if(!row) return;
+    if(row.dateTransfusion !== todayIso()){
+      alert('Le bouton Transfuse ne peut etre active que le jour de la transfusion programmee.');
+      return;
+    }
+    if(!confirm(`Confirmer la transfusion de ${row.patient || 'ce patient'} ?`)) return;
+    row.statut = 'transfuse';
+    row.transfusedAt = new Date().toISOString();
+    row.archivedAt = row.transfusedAt;
+    row.transfusedBy = val(currentUser().username, currentUser().nom, '');
+    writeJson(STORAGE.transfusion, records);
+    window.renderTransfusion?.();
+    window.renderStats?.();
+    showToastSafe('Transfusion archivee et ajoutee aux statistiques.', 'success');
+  };
+
+  window.renderTransfusion = function(){
+    const host = document.getElementById('transfusion-content');
+    if(!host) return;
+    const records = transfusionRecords().sort((a,b) => String(a.statut || '').localeCompare(String(b.statut || '')) || String(a.patient || '').localeCompare(String(b.patient || '')));
+    const active = records.filter(row => row.statut !== 'transfuse');
+    const archived = records.filter(row => row.statut === 'transfuse');
+    const today = todayIso();
+    const rowHtml = row => {
+      const canTransfuse = row.dateTransfusion === today && row.statut !== 'transfuse';
+      return `<tr>
+        <td><b>${esc(row.patient || '-')}</b><div class="dash-muted">Dossier: ${esc(row.dossier || '-')} | Code: ${esc(row.code || '-')}</div></td>
+        <td>${esc(row.hb || '-')} g/dL<div class="dash-muted">${esc(row.resultDate || '-')}</div></td>
+        <td>${esc(row.protocole || '-')}</td>
+        <td><input type="date" value="${esc(row.dateTransfusion || '')}" onchange="updateTransfusionField('${esc(row.id)}','dateTransfusion',this.value)"></td>
+        <td><select onchange="updateTransfusionField('${esc(row.id)}','groupe',this.value)"><option></option>${['A','B','AB','O'].map(g => `<option${row.groupe === g ? ' selected' : ''}>${g}</option>`).join('')}</select></td>
+        <td><select onchange="updateTransfusionField('${esc(row.id)}','rhesus',this.value)"><option></option><option${row.rhesus === '+' ? ' selected' : ''}>+</option><option${row.rhesus === '-' ? ' selected' : ''}>-</option></select></td>
+        <td><input type="number" min="1" value="${esc(row.culots || '1')}" onchange="updateTransfusionField('${esc(row.id)}','culots',this.value)"></td>
+        <td><input value="${esc(row.indication || '')}" onchange="updateTransfusionField('${esc(row.id)}','indication',this.value)"></td>
+        <td class="transfusion-actions"><button class="btn-sm" onclick="printBonSang('${esc(row.id)}')">Bon de sang</button><button class="btn-sm primary" ${canTransfuse ? '' : 'disabled'} onclick="markTransfused('${esc(row.id)}')">Transfuse</button></td>
+      </tr>`;
+    };
+    const archivedRows = archived.map(row => `<tr><td>${esc(row.patient || '-')}</td><td>${esc(row.dossier || '-')}</td><td>${esc(row.hb || '-')}</td><td>${esc(row.dateTransfusion || '-')}</td><td>${esc(row.transfusedAt ? new Date(row.transfusedAt).toLocaleString('fr-FR') : '-')}</td></tr>`).join('');
+    host.innerHTML = `
+      <div class="clinical-shell transfusion-shell">
+        <div class="card">
+          <div class="card-header"><div class="card-num" style="background:#8B1A1A">T</div><h2>Transfusion sanguine</h2></div>
+          <div class="card-body">
+            <div class="stats-final-note">Les patients apparaissent automatiquement ici quand la biologie enregistree contient Hb &lt; 9 g/dL. Le bon officiel pourra etre ajuste quand vous m'enverrez le modele.</div>
+            <div class="dash-table-wrap"><table class="dash-table transfusion-table"><thead><tr><th>Patient</th><th>Hb</th><th>Protocole</th><th>Date transfusion</th><th>Groupe</th><th>Rh</th><th>Culots</th><th>Indication</th><th>Actions</th></tr></thead><tbody>${active.map(rowHtml).join('') || '<tr><td colspan="9" class="dash-empty">Aucun patient avec Hb inferieure a 9 g/dL.</td></tr>'}</tbody></table></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h2>Archives transfusion</h2></div>
+          <div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Patient</th><th>Dossier</th><th>Hb</th><th>Date prevue</th><th>Archive le</th></tr></thead><tbody>${archivedRows || '<tr><td colspan="5" class="dash-empty">Aucune transfusion archivee.</td></tr>'}</tbody></table></div>
+        </div>
+      </div>`;
+  };
+
+  window.renderMaintenance = function(){
+    const host = document.getElementById('maintenance-content');
+    if(!host) return;
+    const admin = isAdminUser();
+    host.innerHTML = `
+      <div class="clinical-shell maintenance-shell">
+        <div class="card">
+          <div class="card-header"><div class="card-num" style="background:#12395b">M</div><h2>Maintenance</h2></div>
+          <div class="card-body">
+            <div class="maintenance-grid">
+              <div class="maintenance-tile"><h3>Sauvegarde</h3><p>Exporter regulierement les donnees avant nettoyage, restauration ou publication.</p><button class="btn-secondary" onclick="window.exportAllData ? exportAllData() : alert('Export indisponible sur cette version')">Exporter sauvegarde</button></div>
+              <div class="maintenance-tile"><h3>Restauration</h3><p>Importer une sauvegarde demande deja le code d'acces et une confirmation.</p><label class="btn-secondary maintenance-upload">Restaurer<input type="file" accept=".json" onchange="window.importAllData ? importAllData(this) : alert('Import indisponible')" hidden></label></div>
+              <div class="maintenance-tile"><h3>GitHub officiel</h3><p>Fixe les medecins, photos et catalogue dans les fichiers publics du site.</p>${admin ? '<button class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
+              <div class="maintenance-tile"><h3>Code gratuite</h3><p>Regler le prochain numero officiel avant le demarrage ou apres une initialisation.</p>${admin ? '<button class="btn-secondary" onclick="setCodeGratuiteStart()">Depart Code Gratuite</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
+              <div class="maintenance-tile"><h3>Statistiques</h3><p>Remettre a zero les compteurs herites des tests sans supprimer le catalogue.</p>${admin ? '<button class="btn-secondary" onclick="resetAllStatCounters()">Remettre compteurs a zero</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
+              <div class="maintenance-tile"><h3>Controle avant usage</h3><p>Verifier impression, stock pharmacie, synchronisation Supabase, comptes utilisateurs et catalogue.</p><button class="btn-secondary" onclick="showPage('stats', document.querySelector('.tab-btn[onclick*=stats]'))">Voir statistiques</button></div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  };
+
   function renderStatsFinal(){
     const host = document.getElementById('stats-content') || document.getElementById('page-stats');
     if(!host) return;
@@ -1422,6 +1626,7 @@
       acc[key].quantite += Number(row.quantite || 0);
       return acc;
     }, {});
+    const transfusions = readJson(STORAGE.transfusion, []).filter(row => row.statut === 'transfuse').filter(afterStatsReset);
     const hemaRows = Object.entries(hemaByMed).sort((a,b) => b[1].quantite - a[1].quantite).map(([name, data]) => `
       <tr><td>${esc(name)}</td><td>${data.sorties}</td><td>${data.quantite}</td></tr>
     `).join('');
@@ -1474,6 +1679,7 @@
           <div class="stats-box"><h3>Dose totale jetee</h3><p>${Math.round(totalWaste).toLocaleString('fr-FR')}</p><small>mg</small></div>
           <div class="stats-box"><h3>Flacons utilises</h3><p>${totalFlacons}</p></div>
           <div class="stats-box"><h3>Sorties hematologie</h3><p>${hemaSorties.length}</p></div>
+          <div class="stats-box"><h3>Transfusions</h3><p>${transfusions.length}</p></div>
         </div>
         <div class="stats-final-note">Patients: registre patients. Preparations: nombre de medicaments prepares/valides. Seances: RDV traites, sinon sorties de stock. Protocoles sauvegardes: historique des protocoles sauvegardes.${statsResetAt ? ` Depart activite: ${esc(new Date(statsResetAt).toLocaleString('fr-FR'))}.` : ''}${medicationResetAt ? ` Depart medicaments: ${esc(new Date(medicationResetAt).toLocaleString('fr-FR'))}.` : ''}</div>
         <div class="card stats-section-card"><div class="card-header"><h2>Graphique medicaments</h2>${isAdminUser() ? '<button class="btn-secondary official-github-mini" onclick="resetMedicationStats()">Remettre a zero</button>' : ''}</div><div class="card-body">${chartRows || '<div class="dash-empty">Aucune donnee medicament.</div>'}</div></div>
@@ -1880,6 +2086,7 @@
     writeJson(STORAGE.biologie, list);
     writeJson('biologie', list);
     window.renderBiologie?.();
+    if(document.getElementById('page-transfusion')?.classList.contains('active')) window.renderTransfusion?.();
     showToastSafe('Bilan biologique enregistre.', 'success');
   };
 
@@ -4168,6 +4375,8 @@
     if(id === 'suivi') setTimeout(() => { renderSuiviFinal(); cleanupLoginAndButtons(); }, 80);
     if(id === 'biologie') setTimeout(() => { window.renderBiologie?.(); normalizeBiologiePatientOptions(); cleanupLoginAndButtons(); }, 80);
     if(id === 'hematologie') setTimeout(() => { window.renderHematologie?.(); cleanupLoginAndButtons(); }, 50);
+    if(id === 'transfusion') setTimeout(() => { window.renderTransfusion?.(); cleanupLoginAndButtons(); }, 50);
+    if(id === 'maintenance') setTimeout(() => { window.renderMaintenance?.(); cleanupLoginAndButtons(); }, 50);
     if(id === 'protocole') setTimeout(bindRestoredProtocolUnlock, 20);
     if(id === 'programme') setTimeout(cleanupLoginAndButtons, 20);
     if(id === 'preparation') setTimeout(ensurePreparationPrintReady, 80);
@@ -4347,8 +4556,18 @@
       .hematologie-validate{width:auto!important;margin-top:14px;padding:11px 18px!important;background:#0B5E3C!important}
       .hematologie-table{min-width:980px}
       .prep-rdv-table{min-width:780px}
+      .transfusion-shell,.maintenance-shell{max-width:1460px;margin:0 auto}
+      .transfusion-table{min-width:1120px}
+      .transfusion-table input,.transfusion-table select{width:100%;min-width:70px;box-sizing:border-box;border:1px solid #ccd8e6;border-radius:6px;padding:6px 7px;font-size:12px;background:#fff}
+      .transfusion-actions{display:flex;gap:6px;align-items:center;white-space:nowrap}
+      .transfusion-actions button:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.2)}
+      .maintenance-grid{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:12px}
+      .maintenance-tile{border:1px solid #dbe5f2;border-radius:8px;background:#fff;padding:14px;box-shadow:0 8px 18px rgba(10,61,122,.06);display:flex;flex-direction:column;gap:8px;min-height:150px}
+      .maintenance-tile h3{margin:0;color:#17324d;font-size:16px}.maintenance-tile p{margin:0;color:#607080;font-size:12px;line-height:1.45;flex:1}
+      .maintenance-upload{display:inline-flex!important;align-items:center;justify-content:center;cursor:pointer}
       @media (max-width:900px){.hematologie-grid,.hematologie-sortie-grid{grid-template-columns:1fr 1fr}.hematologie-wide{grid-column:1/-1}}
-      @media (max-width:580px){.hematologie-grid,.hematologie-sortie-grid{grid-template-columns:1fr}}
+      @media (max-width:900px){.maintenance-grid{grid-template-columns:1fr 1fr}}
+      @media (max-width:580px){.hematologie-grid,.hematologie-sortie-grid,.maintenance-grid{grid-template-columns:1fr}}
       .dash-card{border-left:3px solid var(--blue);box-shadow:0 8px 20px rgba(10,61,122,.08)}
       .dash-final{display:flex;flex-direction:column;gap:14px}
       .dash-final-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.8fr);gap:16px;align-items:stretch;background:#fff;border:1px solid #dbe5f2;border-radius:8px;padding:18px;box-shadow:0 10px 24px rgba(10,61,122,.08)}
