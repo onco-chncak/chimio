@@ -1029,7 +1029,12 @@
   }
 
   function compactPrintableProtocol(html){
-    return enhancePrintableProtocolPatientLine(String(html || ''));
+    const group = esc(formOrLastPatientValue('groupe-sanguin', ['groupeSanguin', 'groupe']));
+    let out = enhancePrintableProtocolPatientLine(String(html || ''));
+    if(group && !/Groupe sanguin\s*:/i.test(out)){
+      out = out.replace(/(<div style="font-size:10px">Antécédents médicaux\s*:\s*<b>[\s\S]*?<\/b><\/div>)/, `$1<div style="font-size:10px;margin-top:2px">Groupe sanguin : <b>${group}</b></div>`);
+    }
+    return out;
   }
 
   function formOrLastPatientValue(id, keys){
@@ -1399,6 +1404,7 @@
         protocole: val(bio.protocole, protocolNameFor(patient), patient.protocole, patient.proto),
         hb: val(bio.hb, bio.hemoglobine, bio.hemoglobin),
         resultDate: val(bio.resultDate, bio.dateResultat, bio.date),
+        groupeSanguin: val(patient.groupeSanguin, patient.groupe, bio.groupeSanguin, bio.groupe),
         bioId: val(bio.id)
       };
       const key = transfusionKey(merged);
@@ -1425,8 +1431,8 @@
         hb: candidate.hb,
         resultDate: candidate.resultDate,
         dateTransfusion: '',
-        groupe: '',
-        rhesus: '',
+        groupe: String(candidate.groupeSanguin || '').replace(/[+-]/g, ''),
+        rhesus: String(candidate.groupeSanguin || '').includes('-') ? '-' : (String(candidate.groupeSanguin || '').includes('+') ? '+' : ''),
         culots: '1',
         indication: `Hb ${candidate.hb} g/dL`,
         statut: 'a_programmer',
@@ -1537,7 +1543,7 @@
     host.innerHTML = `
       <div class="clinical-shell transfusion-shell">
         <div class="card">
-          <div class="card-header"><div class="card-num" style="background:#8B1A1A">T</div><h2>Transfusion sanguine</h2></div>
+          <div class="card-header"><div class="card-num" style="background:#8B1A1A">T</div><h2>Transfusion sanguine</h2><button class="btn-secondary official-github-mini" onclick="addManualTransfusionPatient()">Ajouter patient</button></div>
           <div class="card-body">
             <div class="stats-final-note">Les patients apparaissent automatiquement ici quand la biologie enregistree contient Hb &lt; 9 g/dL. Le bon officiel pourra etre ajuste quand vous m'enverrez le modele.</div>
             <div class="dash-table-wrap"><table class="dash-table transfusion-table"><thead><tr><th>Patient</th><th>Hb</th><th>Protocole</th><th>Date transfusion</th><th>Groupe</th><th>Rh</th><th>Culots</th><th>Indication</th><th>Actions</th></tr></thead><tbody>${active.map(rowHtml).join('') || '<tr><td colspan="9" class="dash-empty">Aucun patient avec Hb inferieure a 9 g/dL.</td></tr>'}</tbody></table></div>
@@ -1548,6 +1554,40 @@
           <div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Patient</th><th>Dossier</th><th>Hb</th><th>Date prevue</th><th>Archive le</th></tr></thead><tbody>${archivedRows || '<tr><td colspan="5" class="dash-empty">Aucune transfusion archivee.</td></tr>'}</tbody></table></div>
         </div>
       </div>`;
+  };
+
+  window.addManualTransfusionPatient = function(){
+    const patients = readJson(STORAGE.patients, []);
+    const q = prompt('Entrer le numero dossier, code gratuite ou nom du patient a ajouter :', '');
+    if(q === null) return;
+    const found = patients.find(p => norm(val(p.dossier, p.numeroDossier, p.codegratuite, p.codeGratuite, patientName(p))).includes(norm(q)) || norm(patientName(p)).includes(norm(q)));
+    const name = found ? patientName(found) : q.trim();
+    if(!name) return alert('Patient non renseigne.');
+    const hb = prompt('Hemoglobine (g/dL) :', '8') || '';
+    const group = val(found?.groupeSanguin, found?.groupe, prompt('Groupe sanguin (A+, A-, B+, B-, AB+, AB-, O+, O-) :', '') || '');
+    const records = transfusionRecords();
+    records.unshift({
+      id: `TRF-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      key: `manual|${Date.now()}`,
+      patient: name,
+      dossier: val(found?.dossier, found?.numeroDossier),
+      code: patientCode(found || {}),
+      cubix: val(found?.cubix, found?.idCubix),
+      protocole: protocolNameFor(found || {}),
+      hb,
+      resultDate: todayIso(),
+      dateTransfusion: '',
+      groupe: String(group).replace(/[+-]/g, ''),
+      rhesus: String(group).includes('-') ? '-' : (String(group).includes('+') ? '+' : ''),
+      culots: '1',
+      indication: hb ? `Hb ${hb} g/dL` : 'Transfusion a programmer',
+      statut: 'a_programmer',
+      source: 'ajout manuel',
+      createdAt: new Date().toISOString()
+    });
+    writeJson(STORAGE.transfusion, records);
+    logAudit('Ajout manuel transfusion', name, `Hb ${hb || '-'}, groupe ${group || '-'}`);
+    window.renderTransfusion?.();
   };
 
   function auditRows(){
@@ -1591,6 +1631,166 @@
     });
   };
 
+  function signupAllowedTabs(role){
+    if(role === 'admin') return ['dashboard','protocole','okchimio','medecins','stats','pharmacie','apercu','preparation','support','suivi','biologie','hematologie','transfusion','maintenance','programme','patients','rdv'];
+    if(role === 'pharmacien') return ['dashboard','pharmacie','stats','preparation','rdv'];
+    return ['dashboard','protocole','okchimio','medecins','apercu','preparation','support','suivi','biologie','hematologie','transfusion','stats','programme','patients','rdv'];
+  }
+
+  function readRegistrations(){
+    return readJson('chncak_user_registrations', []);
+  }
+
+  function writeRegistrations(list){
+    writeJson('chncak_user_registrations', list);
+  }
+
+  function readApprovedUsers(){
+    return readJson('chncak_approved_users', []);
+  }
+
+  function writeApprovedUsers(list){
+    writeJson('chncak_approved_users', list);
+    try { window.refreshDynamicUsers?.(); } catch(e) {}
+  }
+
+  window.openSignupModal = function(){
+    document.getElementById('signup-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'signup-modal';
+    modal.className = 'secure-code-modal signup-modal';
+    modal.innerHTML = `
+      <div class="secure-code-backdrop" onclick="closeSignupModal()"></div>
+      <div class="secure-code-card signup-card">
+        <h3>Inscription utilisateur</h3>
+        <p>Renseigner les informations du collegue. Le code admin active le compte immediatement, sinon la demande reste en attente.</p>
+        <div class="signup-grid">
+          <label>Nom<input id="signup-nom"></label>
+          <label>Prenom<input id="signup-prenom"></label>
+          <label>Contact<input id="signup-contact"></label>
+          <label>Adresse mail<input id="signup-email" type="email"></label>
+          <label>Specialite<input id="signup-specialite"></label>
+          <label>Type de compte<select id="signup-role"><option value="medecin">Medecin</option><option value="pharmacien">Pharmacien</option><option value="admin">Admin</option></select></label>
+          <label>Nom utilisateur<input id="signup-username" placeholder="ex: dr.ndiaye"></label>
+          <label>Mot de passe<input id="signup-password" type="password"></label>
+          <label class="signup-wide">Autorisation admin<select id="signup-auth-mode"><option value="pending">Demande a valider par admin</option><option value="code">J'ai le code admin</option></select></label>
+          <label class="signup-wide" id="signup-code-row" style="display:none">Code admin<input id="signup-admin-code" type="password" inputmode="numeric" maxlength="4"></label>
+        </div>
+        <div class="secure-code-error" id="signup-error"></div>
+        <div class="secure-code-actions"><button onclick="closeSignupModal()">Annuler</button><button onclick="submitSignupRequest()">Envoyer</button></div>
+      </div>`;
+    document.body.appendChild(modal);
+    const mode = document.getElementById('signup-auth-mode');
+    mode.onchange = () => { document.getElementById('signup-code-row').style.display = mode.value === 'code' ? '' : 'none'; };
+  };
+
+  window.closeSignupModal = function(){
+    document.getElementById('signup-modal')?.remove();
+  };
+
+  window.submitSignupRequest = function(){
+    const get = id => document.getElementById(id)?.value?.trim() || '';
+    const nom = get('signup-nom');
+    const prenom = get('signup-prenom');
+    const username = get('signup-username');
+    const password = get('signup-password');
+    const role = get('signup-role') || 'medecin';
+    const error = document.getElementById('signup-error');
+    if(!nom || !prenom || !username || !password){
+      if(error) error.textContent = 'Nom, prenom, nom utilisateur et mot de passe sont obligatoires.';
+      return;
+    }
+    const approved = readApprovedUsers();
+    const registrations = readRegistrations();
+    const exists = approved.some(u => norm(u.username) === norm(username)) || registrations.some(u => norm(u.username) === norm(username) && u.status !== 'rejected') || ['admin','medecin','pharmacien','TEST','maymouna'].some(u => norm(u) === norm(username));
+    if(exists){
+      if(error) error.textContent = 'Ce nom utilisateur existe deja ou est deja en attente.';
+      return;
+    }
+    const request = {
+      id: `USR-${Date.now()}`,
+      nom, prenom, username, password, role,
+      contact: get('signup-contact'),
+      email: get('signup-email'),
+      specialite: get('signup-specialite'),
+      status: 'pending',
+      requestedAt: new Date().toISOString()
+    };
+    const hasAdminCode = get('signup-auth-mode') === 'code' && get('signup-admin-code') === CODE_ADMIN;
+    if(get('signup-auth-mode') === 'code' && !hasAdminCode){
+      if(error) error.textContent = 'Code admin incorrect. Choisissez demande a valider ou contactez admin.';
+      return;
+    }
+    if(hasAdminCode){
+      request.status = 'approved';
+      request.approvedAt = new Date().toISOString();
+      request.approvedBy = 'code admin';
+      approved.push({...request, allowedTabs: signupAllowedTabs(role)});
+      writeApprovedUsers(approved);
+      logAudit('Compte utilisateur cree', username, `${prenom} ${nom} - role ${role}`);
+      showToastSafe('Compte cree. Le collegue peut se connecter avec son identifiant.', 'success');
+    } else {
+      registrations.unshift(request);
+      writeRegistrations(registrations);
+      logAudit('Demande inscription', username, `${prenom} ${nom} - role ${role}`);
+      alert('Demande envoyee. Un administrateur doit la valider dans Maintenance.');
+    }
+    closeSignupModal();
+    renderRegistrationsPanel();
+  };
+
+  window.approveRegistration = function(id){
+    requireAdminAction('valider cette inscription', () => {
+      const regs = readRegistrations();
+      const idx = regs.findIndex(r => r.id === id);
+      if(idx < 0) return;
+      regs[idx].status = 'approved';
+      regs[idx].approvedAt = new Date().toISOString();
+      regs[idx].approvedBy = actorLabel();
+      writeRegistrations(regs);
+      const approved = readApprovedUsers();
+      if(!approved.some(u => norm(u.username) === norm(regs[idx].username))){
+        approved.push({...regs[idx], allowedTabs: signupAllowedTabs(regs[idx].role)});
+        writeApprovedUsers(approved);
+      }
+      logAudit('Inscription validee', regs[idx].username, `${regs[idx].prenom} ${regs[idx].nom} - role ${regs[idx].role}`);
+      renderRegistrationsPanel();
+    });
+  };
+
+  window.rejectRegistration = function(id){
+    requireAdminAction('refuser cette inscription', () => {
+      const regs = readRegistrations();
+      const idx = regs.findIndex(r => r.id === id);
+      if(idx < 0) return;
+      regs[idx].status = 'rejected';
+      regs[idx].rejectedAt = new Date().toISOString();
+      regs[idx].rejectedBy = actorLabel();
+      writeRegistrations(regs);
+      logAudit('Inscription refusee', regs[idx].username, `${regs[idx].prenom} ${regs[idx].nom}`);
+      renderRegistrationsPanel();
+    });
+  };
+
+  window.renderRegistrationsPanel = function(){
+    const host = document.getElementById('registrations-panel');
+    if(!host) return;
+    const regs = readRegistrations();
+    const approved = readApprovedUsers();
+    const rows = regs.map(r => `<tr><td><b>${esc(r.prenom)} ${esc(r.nom)}</b><div class="dash-muted">${esc(r.username)}</div></td><td>${esc(r.contact || '-')}<div class="dash-muted">${esc(r.email || '')}</div></td><td>${esc(r.specialite || '-')}</td><td>${esc(r.role || '-')}</td><td>${esc(r.status || 'pending')}</td><td>${r.status === 'pending' ? `<button class="btn-secondary official-github-mini" onclick="approveRegistration('${esc(r.id)}')">Valider</button><button class="btn-secondary official-github-mini" onclick="rejectRegistration('${esc(r.id)}')">Refuser</button>` : '-'}</td></tr>`).join('');
+    const approvedRows = approved.map(u => `<tr><td><b>${esc(u.prenom)} ${esc(u.nom)}</b><div class="dash-muted">${esc(u.username)}</div></td><td>${esc(u.role || '-')}</td><td>${esc(u.contact || '-')}</td><td>${esc(u.email || '-')}</td></tr>`).join('');
+    host.innerHTML = `
+      <div class="card">
+        <div class="card-header"><h2>Inscriptions et comptes</h2></div>
+        <div class="card-body dash-table-wrap">
+          <h3 style="margin:0 0 8px;color:#17324d;font-size:14px">Demandes d'inscription</h3>
+          <table class="dash-table"><thead><tr><th>Utilisateur</th><th>Contact</th><th>Specialite</th><th>Type</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="dash-empty">Aucune demande.</td></tr>'}</tbody></table>
+          <h3 style="margin:18px 0 8px;color:#17324d;font-size:14px">Comptes approuves</h3>
+          <table class="dash-table"><thead><tr><th>Utilisateur</th><th>Role</th><th>Contact</th><th>Email</th></tr></thead><tbody>${approvedRows || '<tr><td colspan="4" class="dash-empty">Aucun compte ajoute.</td></tr>'}</tbody></table>
+        </div>
+      </div>`;
+  };
+
   window.renderMaintenance = function(){
     const host = document.getElementById('maintenance-content');
     if(!host) return;
@@ -1601,19 +1801,21 @@
           <div class="card-header"><div class="card-num" style="background:#12395b">M</div><h2>Maintenance</h2></div>
           <div class="card-body">
             <div class="maintenance-grid">
-              <div class="maintenance-tile"><h3>Sauvegarde</h3><p>Exporter regulierement les donnees avant nettoyage, restauration ou publication.</p><button class="btn-secondary" onclick="window.exportAllData ? exportAllData() : alert('Export indisponible sur cette version')">Exporter sauvegarde</button></div>
-              <div class="maintenance-tile"><h3>Restauration</h3><p>Importer une sauvegarde demande deja le code d'acces et une confirmation.</p><label class="btn-secondary maintenance-upload">Restaurer<input type="file" accept=".json" onchange="window.importAllData ? importAllData(this) : alert('Import indisponible')" hidden></label></div>
+              <div class="maintenance-tile"><h3>Sauvegarde</h3><p>Exporter regulierement les donnees avant nettoyage, restauration ou publication.</p>${admin ? '<button class="btn-secondary" onclick="window.exportAllData ? exportAllData() : alert(&quot;Export indisponible sur cette version&quot;)">Exporter sauvegarde</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
+              <div class="maintenance-tile"><h3>Restauration</h3><p>Importer une sauvegarde demande deja le code d'acces et une confirmation.</p>${admin ? '<label class="btn-secondary maintenance-upload">Restaurer<input type="file" accept=".json" onchange="window.importAllData ? importAllData(this) : alert(&quot;Import indisponible&quot;)" hidden></label>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
               <div class="maintenance-tile"><h3>GitHub officiel</h3><p>Fixe les medecins, photos et catalogue dans les fichiers publics du site.</p>${admin ? '<button class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
               <div class="maintenance-tile"><h3>Code gratuite</h3><p>Regler le prochain numero officiel avant le demarrage ou apres une initialisation.</p>${admin ? '<button class="btn-secondary" onclick="setCodeGratuiteStart()">Depart Code Gratuite</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
               <div class="maintenance-tile"><h3>Statistiques</h3><p>Remettre a zero les compteurs herites des tests sans supprimer le catalogue.</p>${admin ? '<button class="btn-secondary" onclick="resetAllStatCounters()">Remettre compteurs a zero</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
               <div class="maintenance-tile"><h3>Controle avant usage</h3><p>Verifier impression, stock pharmacie, synchronisation Supabase, comptes utilisateurs et catalogue.</p><button class="btn-secondary" onclick="showPage('stats', document.querySelector('.tab-btn[onclick*=stats]'))">Voir statistiques</button></div>
-              <div class="maintenance-tile"><h3>Gestion comptes</h3><p>Vue reservee a la maintenance des utilisateurs, roles et droits. La gestion complete sera reliee a Supabase.</p><span class="clinical-pill warn">A securiser avec Supabase</span></div>
+              <div class="maintenance-tile"><h3>Gestion comptes</h3><p>Voir les inscriptions, valider les demandes et controler les comptes crees localement.</p><button class="btn-secondary" onclick="renderRegistrationsPanel()">Voir inscriptions</button></div>
               <div class="maintenance-tile"><h3>Journal audit</h3><p>Trace les actions sensibles: sauvegarde, restauration, suppression, validation, traitement, stock et modifications critiques.</p><button class="btn-secondary" onclick="renderAuditLogPanel()">Actualiser journal</button></div>
             </div>
           </div>
         </div>
+        <div id="registrations-panel"></div>
         <div id="audit-log-panel"></div>
       </div>`;
+    renderRegistrationsPanel();
     renderAuditLogPanel();
   };
 
@@ -2471,7 +2673,7 @@
     const formIds = [
       'prenom','nom','age','poids','taille','sexe','dossier','cubix','codegratuite','tel-patient',
       'date-protocole','indication','medecin-select','localisation','type-histologie','stade','nationalite','ligne-traitement',
-      'atcd-select','atcd','creatinine','auc-cible','auc-custom','date-rdv','total-cures','cure-num'
+      'atcd-select','atcd','groupe-sanguin','creatinine','auc-cible','auc-custom','date-rdv','total-cures','cure-num'
     ];
     const formSnapshot = formIds.reduce((acc, id) => {
       const el = document.getElementById(id);
@@ -2498,6 +2700,8 @@
       indication: document.getElementById('indication')?.value || '',
       atcd: typeof getAtcd === 'function' ? getAtcd() : val(document.getElementById('atcd')?.value, document.getElementById('atcd-select')?.value),
       antecedents: typeof getAtcd === 'function' ? getAtcd() : val(document.getElementById('atcd')?.value, document.getElementById('atcd-select')?.value),
+      groupeSanguin: document.getElementById('groupe-sanguin')?.value || '',
+      groupe: document.getElementById('groupe-sanguin')?.value || '',
       histologie: document.getElementById('type-histologie')?.value || '',
       stade: document.getElementById('stade')?.value || '',
       phaseDiagnostic: document.getElementById('stade')?.value || '',
@@ -2646,7 +2850,7 @@
   function clearProtocolFormForNextPatient(message){
     [
       'prenom','nom','age','poids','taille','sexe','dossier','cubix','tel-patient','indication',
-      'localisation','type-histologie','stade','nationalite','ligne-traitement','atcd','creatinine','auc-custom','date-rdv','total-cures','cure-num'
+      'localisation','type-histologie','stade','nationalite','ligne-traitement','atcd','groupe-sanguin','creatinine','auc-custom','date-rdv','total-cures','cure-num'
     ].forEach(id => {
       const el = document.getElementById(id);
       if(el) el.value = '';
@@ -4024,6 +4228,7 @@
     set('nationalite', val(entry.nationalite, entry.formSnapshot?.nationalite));
     set('ligne-traitement', val(entry.ligne, entry.ligneTraitement, entry.line, entry.formSnapshot?.['ligne-traitement']));
     set('dossier', entry.dossier); set('cubix', entry.cubix); set('codegratuite', patientCode(entry));
+    set('groupe-sanguin', val(entry.groupeSanguin, entry.groupe, entry.formSnapshot?.['groupe-sanguin']));
     set('tel-patient', val(entry.tel, entry.contact, entry.telephone));
     set('date-protocole', val(entry.dateProto, entry.dateProtocole, entry.formSnapshot?.['date-protocole']));
     set('date-rdv', val(entry.dateRdv, entry.prochainRdv, entry.rdv, entry.formSnapshot?.['date-rdv']));
@@ -4655,6 +4860,15 @@
     style.textContent = `
       .dashboard-photo-btn{display:none!important}
       .page{max-width:1580px}
+      body:not(.admin-session) .tab-btn[onclick*="maintenance"],
+      body:not(.admin-session) #page-maintenance,
+      body:not(.admin-session) .data-tools-btn,
+      body:not(.admin-session) button[onclick*="resetAllStatCounters"],
+      body:not(.admin-session) button[onclick*="resetMedicationStats"],
+      body:not(.admin-session) button[onclick*="clearAllHistory"],
+      body:not(.admin-session) button[onclick*="clearClinicalModuleData"],
+      body:not(.admin-session) button[onclick*="setCodeGratuiteStart"],
+      body:not(.admin-session) button[onclick*="exportOfficialGitHubData"]{display:none!important}
       #page-apercu > div,#page-preparation > div,#page-support > div,#page-stats > div,#page-programme > div[style*="max-width"],#page-patients > div,#patients-rdv-list,#page-rdv > div{max-width:1460px!important}
       body:not(.pharmacien-session) #page-pharmacie button[onclick*="saveCatalog"],
       body:not(.pharmacien-session) #page-pharmacie button[onclick*="scrollToCatalog"],
@@ -4679,9 +4893,15 @@
       .audit-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
       .audit-actions input{min-width:260px;border:1px solid #ccd8e6;border-radius:6px;padding:7px 9px;font-size:12px;background:#fff}
       .audit-table{min-width:980px}.audit-table td{vertical-align:top}
+      .signup-modal{position:fixed;inset:0;z-index:100001;display:flex;align-items:center;justify-content:center;font-family:var(--font,Arial,sans-serif)}
+      .signup-card{width:min(760px,calc(100vw - 28px));max-height:92vh;overflow:auto}
+      .signup-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+      .signup-grid label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#17324d}
+      .signup-grid input,.signup-grid select{border:1px solid #b8c7d9;border-radius:7px;padding:9px 10px;font-size:13px;letter-spacing:0;text-align:left}
+      .signup-wide{grid-column:1/-1}
       @media (max-width:900px){.hematologie-grid,.hematologie-sortie-grid{grid-template-columns:1fr 1fr}.hematologie-wide{grid-column:1/-1}}
       @media (max-width:900px){.maintenance-grid{grid-template-columns:1fr 1fr}}
-      @media (max-width:580px){.hematologie-grid,.hematologie-sortie-grid,.maintenance-grid{grid-template-columns:1fr}}
+      @media (max-width:580px){.hematologie-grid,.hematologie-sortie-grid,.maintenance-grid,.signup-grid{grid-template-columns:1fr}}
       .dash-card{border-left:3px solid var(--blue);box-shadow:0 8px 20px rgba(10,61,122,.08)}
       .dash-final{display:flex;flex-direction:column;gap:14px}
       .dash-final-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.8fr);gap:16px;align-items:stretch;background:#fff;border:1px solid #dbe5f2;border-radius:8px;padding:18px;box-shadow:0 10px 24px rgba(10,61,122,.08)}

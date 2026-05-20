@@ -65,6 +65,9 @@
               style="width:100%;background:#0B5E3C;color:white;padding:14px;border:none;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;transition:background 0.3s;">
         Se connecter
       </button>
+      <button type="button" onclick="openSignupModal()" style="width:100%;margin-top:10px;background:white;color:#0B5E3C;padding:12px;border:1px solid #0B5E3C;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;">
+        S'inscrire
+      </button>
     
         
         <button type="button" onclick="clearSession()" 
@@ -233,6 +236,16 @@
           </select>
           <input id="atcd" type="text" placeholder="Précisez les antécédents..." oninput="update()"
             style="display:none;margin-top:6px;width:100%;padding:9px 11px;font-size:14px;font-family:var(--font);border:1.5px solid var(--gray-border);border-radius:var(--radius);background:white;color:var(--gray);outline:none">
+        </div>
+        <div class="field">
+          <label>Groupe sanguin</label>
+          <select id="groupe-sanguin" onchange="update()" style="width:100%;padding:9px 11px;font-size:14px;font-family:var(--font);border:1.5px solid var(--gray-border);border-radius:var(--radius);background:white;color:var(--gray);outline:none">
+            <option value="">Non renseigne</option>
+            <option>A+</option><option>A-</option>
+            <option>B+</option><option>B-</option>
+            <option>AB+</option><option>AB-</option>
+            <option>O+</option><option>O-</option>
+          </select>
         </div>
       </div>
       <div class="sc-banner">
@@ -1153,23 +1166,23 @@ Rinçage 250 cc SSI 0.9% | support | fix | 250"
     </div>
   </div>
 </div>
-<script src="js/auth.js"></script>
-<script src="js/main.js?v=20260520c"></script>
+<script src="js/auth.js?v=20260520d"></script>
+<script src="js/main.js?v=20260520d"></script>
 <script src="js/dashboard.js"></script>
-<script src="js/rdv.js?v=20260520c"></script>
+<script src="js/rdv.js?v=20260520d"></script>
 <script src="js/enhancements.js"></script>
 <script src="js/clinical-modules.js"></script>
 <script src="js/data-tools.js?v=20260514i"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/supabase-sync.js?v=20260520c"></script>
+<script src="js/supabase-sync.js?v=20260520d"></script>
 <script src="js/protocol-editor.js"></script>
 <script src="js/app-polish.js"></script>
 <script src="js/requested-improvements.js"></script>
-<script src="js/site-official-data.js?v=20260520c"></script>
-<script src="js/final-improvements.js?v=20260520c"></script>
+<script src="js/site-official-data.js?v=20260520d"></script>
+<script src="js/final-improvements.js?v=20260520d"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const CHIMIOPRO_PUBLIC_VERSION = '20260520c';
+    const CHIMIOPRO_PUBLIC_VERSION = '20260520d';
     let chimioproReloadingForUpdate = false;
     const showChimioProUpdateNotice = () => {
       if (document.getElementById('chimiopro-update-notice')) return;

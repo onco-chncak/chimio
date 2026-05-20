@@ -2,24 +2,24 @@
 // SYSTÈME D'AUTHENTIFICATION
 // ════════════════════════════════════════════════════════════
 
-const USERS = {
+let USERS = {
   medecin: {
     password: 'medecin123',
     role: 'medecin',
     name: 'Dr Médecin',
-    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'stats', 'programme', 'patients', 'rdv']
+    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'transfusion', 'stats', 'programme', 'patients', 'rdv']
   },
   TEST: {
     password: 'test123',
     role: 'medecin',
     name: 'Dr TEST',
-    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'stats', 'programme', 'patients', 'rdv']
+    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'transfusion', 'stats', 'programme', 'patients', 'rdv']
   },
   maymouna: {
     password: 'm123@',
     role: 'medecin',
     name: 'Dr Maymouna',
-    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'stats', 'programme', 'patients', 'rdv']
+    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'transfusion', 'stats', 'programme', 'patients', 'rdv']
   },
   pharmacien: {
     password: 'pharma123',
@@ -31,13 +31,39 @@ const USERS = {
     password: 'admin123',
     role: 'admin',
     name: 'Administrateur',
-    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'stats', 'pharmacie', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'stats', 'programme', 'patients', 'rdv']
+    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'stats', 'pharmacie', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'transfusion', 'maintenance', 'stats', 'programme', 'patients', 'rdv']
   }
 };
 
 let currentUser = null;
 
+function allowedTabsForRole(role) {
+  if (role === 'admin') return USERS.admin.allowedTabs;
+  if (role === 'pharmacien') return USERS.pharmacien.allowedTabs;
+  return USERS.medecin.allowedTabs;
+}
+
+function refreshDynamicUsers() {
+  let approved = [];
+  try { approved = JSON.parse(localStorage.getItem('chncak_approved_users') || '[]'); } catch(e) { approved = []; }
+  approved.forEach(u => {
+    if (!u || !u.username || !u.password) return;
+    USERS[u.username] = {
+      password: u.password,
+      role: u.role || 'medecin',
+      name: (String(u.prenom || '') + ' ' + String(u.nom || '')).trim() || u.username,
+      allowedTabs: allowedTabsForRole(u.role || 'medecin'),
+      contact: u.contact || '',
+      email: u.email || '',
+      specialite: u.specialite || ''
+    };
+  });
+}
+
+window.refreshDynamicUsers = refreshDynamicUsers;
+
 function checkAuth() {
+  refreshDynamicUsers();
   const savedUser = localStorage.getItem('chncak_currentUser');
   
   if (savedUser) {
@@ -72,6 +98,7 @@ function checkAuth() {
 }
 
 function handleLogin(event) {
+  refreshDynamicUsers();
   event.preventDefault();
   
   const username = document.getElementById('login-username').value.trim();

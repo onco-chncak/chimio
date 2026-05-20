@@ -968,6 +968,7 @@ function saveToHistory(){
     typeHistologie:document.getElementById('type-histologie')?.value || '',
     stade:document.getElementById('stade')?.value || '',
     atcd:getAtcd(),
+    groupeSanguin:document.getElementById('groupe-sanguin')?.value||'',
     medecin:document.getElementById('medecin-select').value,
     dossier:document.getElementById('dossier').value,
     cubix:document.getElementById('cubix').value,
@@ -1443,6 +1444,7 @@ function buildDocumentHTML(){
   const ind          = document.getElementById('indication').value;
   const loc          = document.getElementById('localisation').value||'—';
   const atcd         = getAtcd()||'RAS';
+  const groupeSanguin = document.getElementById('groupe-sanguin')?.value || '';
   const med          = document.getElementById('medecin-select').value||'';
   const dossier      = document.getElementById('dossier').value||'';
   const cubix        = document.getElementById('cubix').value||'';
@@ -1544,6 +1546,7 @@ function buildDocumentHTML(){
       <div style="font-size:10px;margin-bottom:2px">Age : <b>${age} ans</b>&nbsp;&nbsp;&nbsp;Poids : <b>${pdsVal} kg</b>&nbsp;&nbsp;&nbsp;taille : <b>${tailleVal} cm</b>&nbsp;&nbsp;&nbsp;SC : <b>${sc.toFixed(2)} m²</b></div>
       <div style="font-size:10px;margin-bottom:2px">Localisation : <b>${loc}</b></div>
       <div style="font-size:10px">Antécédents médicaux : <b>${atcd}</b></div>
+      ${groupeSanguin?'<div style="font-size:10px;margin-top:2px">Groupe sanguin : <b>'+groupeSanguin+'</b></div>':''}
     </div>
 
     ${carboBox}
@@ -4350,6 +4353,7 @@ function printDoc(double){
   const ind         = document.getElementById('indication').value;
   const loc         = document.getElementById('localisation').value||'—';
   const atcd        = getAtcd()||'RAS';
+  const groupeSanguin = document.getElementById('groupe-sanguin')?.value || '';
   const med         = document.getElementById('medecin-select').value||'';
   const dossier     = document.getElementById('dossier').value||'';
   const cubix       = document.getElementById('cubix').value||'';
@@ -4512,6 +4516,7 @@ function printDoc(double){
     </div>
     <div style="font-size:10px;margin-bottom:2px">Localisation : <b>${loc}</b></div>
     <div style="font-size:10px">Antécédents médicaux : <b>${atcd}</b></div>
+      ${groupeSanguin?'<div style="font-size:10px;margin-top:2px">Groupe sanguin : <b>'+groupeSanguin+'</b></div>':''}
   </div>
 
   ${carboBox}
