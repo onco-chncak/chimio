@@ -459,6 +459,20 @@
     }
   };
 
+  window.chimioproCloudRefreshSession = async function(){
+    const current = await session();
+    if(current){
+      window.chimioproCloudReady = true;
+      patchLocalStorage();
+      updateCloudUi(current.user.email || '');
+      await setupRealtime();
+      return current;
+    }
+    window.chimioproCloudReady = false;
+    updateCloudUi('');
+    return null;
+  };
+
   window.chimioproCloudLogout = async function(){
     await signOut();
     window.chimioproCloudReady = false;
@@ -505,12 +519,7 @@
     installCloudUi();
     patchLocalStorage();
     try{
-      const current = await session();
-      if(current){
-        window.chimioproCloudReady = true;
-        updateCloudUi(current.user.email || '');
-        await setupRealtime();
-      }
+      await window.chimioproCloudRefreshSession();
     } catch(e){
       console.warn('Cloud non initialise:', e.message);
     }

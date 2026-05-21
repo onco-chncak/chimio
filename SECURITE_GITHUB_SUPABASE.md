@@ -53,6 +53,10 @@ Procedure recommandee :
    - `secretaire`
 4. L'utilisateur se connecte dans ChimioPro avec son email Supabase et son mot de passe.
 
+Depuis la version `20260521j`, la connexion principale Supabase connecte aussi automatiquement le module Cloud. L'utilisateur ne doit plus ressaisir son email et son mot de passe dans le panneau Cloud apres connexion.
+
+Le bouton `S'inscrire` de ChimioPro sert a deposer une demande interne. Il ne cree pas tout seul le compte Supabase : l'administrateur doit ensuite creer l'utilisateur dans Supabase Authentication et lui attribuer le role correspondant.
+
 Compte administrateur de demarrage :
 
 - `onco.chn.cak@gmail.com` est reconnu comme admin de demarrage dans le code public.

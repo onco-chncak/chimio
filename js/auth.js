@@ -192,9 +192,9 @@ async function handleLogin(event) {
 
   if (currentUser.authProvider === 'supabase') {
     setTimeout(() => {
-      if (typeof window.chimioproCloudSync === 'function') {
-        window.chimioproCloudSync().catch(err => console.warn('Synchronisation initiale impossible', err));
-      }
+      Promise.resolve(window.chimioproCloudRefreshSession?.())
+        .then(() => window.chimioproCloudSync?.())
+        .catch(err => console.warn('Synchronisation initiale impossible', err));
     }, 300);
   }
 

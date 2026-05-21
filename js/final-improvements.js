@@ -2114,7 +2114,7 @@
       <div class="secure-code-backdrop" onclick="closeSignupModal()"></div>
       <div class="secure-code-card signup-card">
         <h3>Inscription utilisateur</h3>
-        <p>Renseigner les informations du collegue. Le code admin active le compte immediatement, sinon la demande reste en attente.</p>
+        <p>Le collegue remplit la demande. L'administrateur valide dans Maintenance puis cree le meme email dans Supabase Authentication avec le role correspondant.</p>
         <div class="signup-grid">
           <label>Nom<input id="signup-nom" placeholder="ex: NDIAYE"></label>
           <label>Prenom<input id="signup-prenom" placeholder="ex: Awa"></label>
@@ -2122,8 +2122,8 @@
           <label>Adresse mail<input id="signup-email" type="email" placeholder="ex: awa.ndiaye@chncak.sn"></label>
           <label>Specialite<input id="signup-specialite" placeholder="ex: Soins infirmiers"></label>
           <label>Type de compte<select id="signup-role">${roleOptions}</select></label>
-          <label>Nom utilisateur<input id="signup-username" placeholder="ex: dr.ndiaye"></label>
-          <label>Mot de passe<input id="signup-password" type="password" placeholder="ex: mot de passe personnel"></label>
+          <label>Identifiant<input id="signup-username" placeholder="ex: awa.ndiaye"></label>
+          <label>Mot de passe souhaite<input id="signup-password" type="password" placeholder="Temporaire Supabase"></label>
           <label class="signup-wide">Autorisation admin<select id="signup-auth-mode"><option value="pending">Demande a valider par admin</option><option value="code">J'ai le code admin</option></select></label>
           <label class="signup-wide" id="signup-code-row" style="display:none">Code admin<input id="signup-admin-code" type="password" inputmode="numeric" maxlength="4" placeholder="****"></label>
         </div>
@@ -2145,28 +2145,34 @@
     const prenom = get('signup-prenom');
     const username = get('signup-username');
     const password = get('signup-password');
+    const email = get('signup-email');
     const role = get('signup-role') || 'medecin';
     const error = document.getElementById('signup-error');
     if(role === 'admin' && !adminSignupAllowed()){
       if(error) error.textContent = 'Inscription Admin non autorisee pour le moment. Activez-la dans Maintenance si necessaire.';
       return;
     }
-    if(!nom || !prenom || !username || !password){
-      if(error) error.textContent = 'Nom, prenom, nom utilisateur et mot de passe sont obligatoires.';
+    if(!nom || !prenom || !email || !password){
+      if(error) error.textContent = 'Nom, prenom, email Supabase et mot de passe temporaire sont obligatoires.';
       return;
     }
+    if(!email.includes('@')){
+      if(error) error.textContent = 'Adresse mail invalide. Utiliser un email Supabase.';
+      return;
+    }
+    const loginName = username || email;
     const approved = readApprovedUsers();
     const registrations = readRegistrations();
-    const exists = approved.some(u => norm(u.username) === norm(username)) || registrations.some(u => norm(u.username) === norm(username) && u.status !== 'rejected') || ['admin','medecin','pharmacien','TEST','maymouna'].some(u => norm(u) === norm(username));
+    const exists = approved.some(u => norm(u.username) === norm(loginName) || norm(u.email) === norm(email)) || registrations.some(u => (norm(u.username) === norm(loginName) || norm(u.email) === norm(email)) && u.status !== 'rejected');
     if(exists){
       if(error) error.textContent = 'Ce nom utilisateur existe deja ou est deja en attente.';
       return;
     }
     const request = {
       id: `USR-${Date.now()}`,
-      nom, prenom, username, password, role,
+      nom, prenom, username: loginName, password, role,
       contact: get('signup-contact'),
-      email: get('signup-email'),
+      email,
       specialite: get('signup-specialite'),
       status: 'pending',
       requestedAt: new Date().toISOString()
@@ -2182,12 +2188,12 @@
       request.approvedBy = 'code admin';
       approved.push({...request, allowedTabs: signupAllowedTabs(role)});
       writeApprovedUsers(approved);
-      logAudit('Compte utilisateur cree', username, `${prenom} ${nom} - role ${role}`);
-      showToastSafe('Compte cree. Le collegue peut se connecter avec son identifiant.', 'success');
+      logAudit('Compte utilisateur cree', loginName, `${prenom} ${nom} - role ${role}`);
+      showToastSafe('Demande approuvee. Creer aussi ce compte dans Supabase Auth.', 'success');
     } else {
       registrations.unshift(request);
       writeRegistrations(registrations);
-      logAudit('Demande inscription', username, `${prenom} ${nom} - role ${role}`);
+      logAudit('Demande inscription', loginName, `${prenom} ${nom} - role ${role}`);
       alert('Demande envoyee. Un administrateur doit la valider dans Maintenance.');
     }
     closeSignupModal();
@@ -5431,10 +5437,11 @@
       .audit-actions input{min-width:260px;border:1px solid #ccd8e6;border-radius:6px;padding:7px 9px;font-size:12px;background:#fff}
       .audit-table{min-width:980px}.audit-table td{vertical-align:top}
       .signup-modal{position:fixed;inset:0;z-index:100001;display:flex;align-items:center;justify-content:center;font-family:var(--font,Arial,sans-serif)}
-      .signup-card{width:min(760px,calc(100vw - 28px));max-height:92vh;overflow:auto}
-      .signup-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-      .signup-grid label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#17324d}
-      .signup-grid input,.signup-grid select{border:1px solid #b8c7d9;border-radius:7px;padding:9px 10px;font-size:13px;letter-spacing:0;text-align:left}
+      .signup-card{width:min(860px,calc(100vw - 28px));max-height:88vh;overflow:auto;padding:18px 20px!important}
+      .signup-card h3{font-size:18px!important;margin-bottom:5px!important}.signup-card p{font-size:12px!important;line-height:1.35!important;margin-bottom:10px!important}
+      .signup-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+      .signup-grid label{display:flex;flex-direction:column;gap:4px;font-size:10.5px;font-weight:800;color:#17324d;line-height:1.15}
+      .signup-grid input,.signup-grid select{border:1px solid #b8c7d9;border-radius:6px;padding:7px 8px;font-size:12px!important;line-height:1.2;letter-spacing:0!important;text-align:left!important;min-height:34px;box-sizing:border-box}
       .signup-wide{grid-column:1/-1}
       @media (max-width:900px){.hematologie-grid,.hematologie-sortie-grid{grid-template-columns:1fr 1fr}.hematologie-wide{grid-column:1/-1}}
       @media (max-width:900px){.maintenance-grid{grid-template-columns:1fr 1fr}}
