@@ -2114,7 +2114,7 @@
       <div class="secure-code-backdrop" onclick="closeSignupModal()"></div>
       <div class="secure-code-card signup-card">
         <h3>Inscription utilisateur</h3>
-        <p>Le collegue remplit la demande. L'administrateur valide dans Maintenance puis cree le meme email dans Supabase Authentication avec le role correspondant.</p>
+        <p>Le collegue depose une demande interne. La validation Maintenance ne cree pas le compte Supabase : l'administrateur doit ensuite creer le meme email dans Supabase Authentication avec le role correspondant.</p>
         <div class="signup-grid">
           <label>Nom<input id="signup-nom" placeholder="ex: NDIAYE"></label>
           <label>Prenom<input id="signup-prenom" placeholder="ex: Awa"></label>
@@ -2188,8 +2188,8 @@
       request.approvedBy = 'code admin';
       approved.push({...request, allowedTabs: signupAllowedTabs(role)});
       writeApprovedUsers(approved);
-      logAudit('Compte utilisateur cree', loginName, `${prenom} ${nom} - role ${role}`);
-      showToastSafe('Demande approuvee. Creer aussi ce compte dans Supabase Auth.', 'success');
+      logAudit('Demande inscription approuvee localement', loginName, `${prenom} ${nom} - role ${role}`);
+      alert(`Demande validee localement.\n\nEtape obligatoire: creer maintenant l'utilisateur dans Supabase Authentication avec l'email ${email}, puis mettre raw_user_meta_data: {"role":"${role}"}.\n\nLe collegue ne pourra pas se connecter avant cette creation Supabase.`);
     } else {
       registrations.unshift(request);
       writeRegistrations(registrations);
@@ -2216,6 +2216,7 @@
       }
       logAudit('Inscription validee', regs[idx].username, `${regs[idx].prenom} ${regs[idx].nom} - role ${regs[idx].role}`);
       renderRegistrationsPanel();
+      alert(`Demande validee localement.\n\nEtape obligatoire: creer maintenant l'utilisateur dans Supabase Authentication avec l'email ${regs[idx].email || regs[idx].username}, puis mettre raw_user_meta_data: {"role":"${regs[idx].role || 'medecin'}"}.\n\nLe collegue ne pourra pas se connecter avant cette creation Supabase.`);
     });
   };
 
@@ -2233,13 +2234,26 @@
     });
   };
 
+  function registrationStatusLabel(status){
+    const value = norm(status || 'pending');
+    if(value === 'approved') return 'Validee localement - compte Supabase a creer';
+    if(value === 'rejected') return 'Refusee';
+    return 'En attente admin';
+  }
+
+  function supabaseAccountHint(user){
+    const email = val(user?.email, user?.username, '-');
+    const role = val(user?.role, 'medecin');
+    return `A creer/verifier dans Supabase Auth: ${email} | raw_user_meta_data {"role":"${role}"}`;
+  }
+
   window.renderRegistrationsPanel = function(){
     const host = document.getElementById('registrations-panel');
     if(!host) return;
     const regs = readRegistrations();
     const approved = readApprovedUsers();
-    const rows = regs.map(r => `<tr><td><b>${esc(r.prenom)} ${esc(r.nom)}</b><div class="dash-muted">${esc(r.username)}</div></td><td>${esc(r.contact || '-')}<div class="dash-muted">${esc(r.email || '')}</div></td><td>${esc(r.specialite || '-')}</td><td>${esc(r.role || '-')}</td><td>${esc(r.status || 'pending')}</td><td>${r.status === 'pending' ? `<button class="btn-secondary official-github-mini" onclick="approveRegistration('${esc(r.id)}')">Valider</button><button class="btn-secondary official-github-mini" onclick="rejectRegistration('${esc(r.id)}')">Refuser</button>` : '-'}</td></tr>`).join('');
-    const approvedRows = approved.map(u => `<tr><td><b>${esc(u.prenom)} ${esc(u.nom)}</b><div class="dash-muted">${esc(u.username)}</div></td><td>${esc(u.role || '-')}</td><td>${esc(u.contact || '-')}</td><td>${esc(u.email || '-')}</td><td><button class="btn-secondary official-github-mini" onclick="deleteApprovedUser('${esc(u.username)}')">Supprimer</button></td></tr>`).join('');
+    const rows = regs.map(r => `<tr><td><b>${esc(r.prenom)} ${esc(r.nom)}</b><div class="dash-muted">${esc(r.username)}</div></td><td>${esc(r.contact || '-')}<div class="dash-muted">${esc(r.email || '')}</div></td><td>${esc(r.specialite || '-')}</td><td>${esc(r.role || '-')}</td><td>${esc(registrationStatusLabel(r.status))}</td><td>${r.status === 'pending' ? `<button class="btn-secondary official-github-mini" onclick="approveRegistration('${esc(r.id)}')">Valider</button><button class="btn-secondary official-github-mini" onclick="rejectRegistration('${esc(r.id)}')">Refuser</button>` : '-'}</td></tr>`).join('');
+    const approvedRows = approved.map(u => `<tr><td><b>${esc(u.prenom)} ${esc(u.nom)}</b><div class="dash-muted">${esc(u.username)}</div></td><td>${esc(u.role || '-')}</td><td>${esc(u.contact || '-')}</td><td>${esc(u.email || '-')}</td><td><span class="dash-muted">${esc(supabaseAccountHint(u))}</span></td><td><button class="btn-secondary official-github-mini" onclick="deleteApprovedUser('${esc(u.username)}')">Supprimer</button></td></tr>`).join('');
     host.innerHTML = `
       <div class="card">
         <div class="card-header"><h2>Inscriptions et comptes</h2></div>
@@ -2254,10 +2268,14 @@
             <strong>${adminSignupAllowed() ? 'AUTORISE' : 'BLOQUE'}</strong>
             <button class="btn-secondary official-github-mini" onclick="toggleAdminSignup()">${adminSignupAllowed() ? 'Desactiver Admin' : 'Autoriser Admin'}</button>
           </div>
+          <div class="maintenance-code-box">
+            <div><b>Important Supabase</b><span>Valider une demande ici ne suffit pas. Le compte devient utilisable seulement apres creation du meme email dans Supabase Authentication avec le bon role.</span></div>
+            <strong>2 ETAPES</strong>
+          </div>
           <h3 style="margin:0 0 8px;color:#17324d;font-size:14px">Demandes d'inscription</h3>
           <table class="dash-table"><thead><tr><th>Utilisateur</th><th>Contact</th><th>Specialite</th><th>Type</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="dash-empty">Aucune demande.</td></tr>'}</tbody></table>
           <h3 style="margin:18px 0 8px;color:#17324d;font-size:14px">Comptes approuves</h3>
-          <table class="dash-table"><thead><tr><th>Utilisateur</th><th>Role</th><th>Contact</th><th>Email</th><th>Actions</th></tr></thead><tbody>${approvedRows || '<tr><td colspan="5" class="dash-empty">Aucun compte ajoute.</td></tr>'}</tbody></table>
+          <table class="dash-table"><thead><tr><th>Utilisateur</th><th>Role</th><th>Contact</th><th>Email</th><th>Supabase</th><th>Actions</th></tr></thead><tbody>${approvedRows || '<tr><td colspan="6" class="dash-empty">Aucun compte ajoute.</td></tr>'}</tbody></table>
         </div>
       </div>`;
   };

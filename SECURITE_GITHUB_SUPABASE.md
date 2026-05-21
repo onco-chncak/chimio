@@ -57,6 +57,14 @@ Depuis la version `20260521j`, la connexion principale Supabase connecte aussi a
 
 Le bouton `S'inscrire` de ChimioPro sert a deposer une demande interne. Il ne cree pas tout seul le compte Supabase : l'administrateur doit ensuite creer l'utilisateur dans Supabase Authentication et lui attribuer le role correspondant.
 
+Important : dans Maintenance, le bouton `Valider` approuve seulement la demande dans ChimioPro. Cette validation locale ne donne pas encore acces a l'application. Le collegue pourra se connecter uniquement quand le meme email existe aussi dans Supabase Authentication avec le bon `raw_user_meta_data`, par exemple :
+
+```json
+{
+  "role": "medecin"
+}
+```
+
 Compte administrateur de demarrage :
 
 - `onco.chn.cak@gmail.com` est reconnu comme admin de demarrage dans le code public.
