@@ -2,7 +2,7 @@
   "name": "ChimioPro — CHNCAK Touba",
   "short_name": "ChimioPro",
   "description": "Gestion des protocoles de chimiothérapie",
-  "start_url": "./index.html",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#0B5E3C",
   "theme_color": "#0A3D7A",

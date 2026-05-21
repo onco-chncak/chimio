@@ -1022,6 +1022,16 @@
     return [];
   }
 
+  function requireBiologieBeforePharma(patient, rdv){
+    const problems = bioDateWarnings(patient, rdv);
+    if(!problems.length) return true;
+    alert('Validation biologique obligatoire avant validation pharmacien :\n- ' + problems.join('\n- '));
+    if(typeof showPage === 'function'){
+      showPage('biologie', document.querySelector(".tab-btn[onclick*=\"biologie\"]"));
+    }
+    return false;
+  }
+
   function printHtml(html, width, height){
     const frame = document.getElementById('print-frame');
     if(!frame){
@@ -1280,6 +1290,7 @@
   window.validatePharmacistPreparation = function(){
     const patient = currentProtocolFormPatient();
     if(!patient.prenom || !patient.nom) return alert('Chargez ou renseignez le patient avant validation.');
+    if(!requireBiologieBeforePharma(patient)) return;
     requirePharmacienAction('validation pharmacien', () => {
       const validationDetails = collectPharmaValidationDetails(patient);
       if(validationDetails.warnings.length && !confirm(`Avertissements:\n${validationDetails.warnings.join('\n')}\n\nContinuer la validation ?`)) return;
@@ -1335,6 +1346,7 @@
     if(!rdv) return alert('Rendez-vous introuvable.');
     const patient = rdvPatientForPreparation(rdv);
     if(!isPharmacienUser() && !isAdminUser()) return alert('Action reservee au compte pharmacien.');
+    if(!requireBiologieBeforePharma(patient, rdv)) return;
     const validationDetails = collectPharmaValidationDetails({...patient, protoId:val(patient.protoId, rdv.protoId), proto:val(patient.proto, rdv.proto)}, rdv);
     if(validationDetails.warnings.length && !confirm(`Avertissements:\n${validationDetails.warnings.join('\n')}\n\nContinuer la validation ?`)) return;
     const map = readJson('chncak_pharma_validations', {});
@@ -1480,21 +1492,22 @@
       return;
     }
     const logo = document.querySelector('.nav-logo img')?.src || '';
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Bon de sang</title>
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Demande produits sanguins labiles</title>
       <style>
         @page{size:A4 portrait;margin:9mm}
         *{box-sizing:border-box}
-        body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:11px}
-        .top{display:grid;grid-template-columns:58px 1fr 155px;gap:8px;align-items:start;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:8px}
-        .top img{width:52px;height:52px;object-fit:contain}.ministry{text-align:center;line-height:1.12;font-size:9px}.right{text-align:right;font-size:9px;line-height:1.25}
-        h1{text-align:center;font-size:17px;margin:8px 0 10px;text-transform:uppercase;letter-spacing:.03em;border:1px solid #111;padding:6px}
-        .section-title{background:#e9eef5;border:1px solid #111;border-bottom:none;padding:4px 6px;font-weight:800;text-transform:uppercase}
-        .grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #111;border-left:1px solid #111;margin-bottom:8px}
-        .cell{border-right:1px solid #111;border-bottom:1px solid #111;padding:5px;min-height:29px}
-        .wide{grid-column:1/-1}.thirds{display:grid;grid-template-columns:1fr 1fr 1fr}.label{font-size:9px;color:#444;text-transform:uppercase;margin-bottom:2px}.value{font-size:12px;font-weight:700}
-        table{width:100%;border-collapse:collapse;margin-bottom:8px}th,td{border:1px solid #111;padding:5px;text-align:left}th{background:#eef4fd}
-        .check{display:inline-block;border:1px solid #111;width:12px;height:12px;margin:0 4px -2px 10px}.sign{display:grid;grid-template-columns:1fr 1fr;gap:12px}.sign>div{border:1px solid #111;min-height:54px;padding:6px}
-        .nb{font-size:9px;line-height:1.25;border:1px solid #111;padding:6px;margin-top:8px}
+        body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:11.5px;line-height:1.28}
+        .top{display:grid;grid-template-columns:62px 1fr 165px;gap:10px;align-items:start;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:10px}
+        .top img{width:56px;height:56px;object-fit:contain}.ministry{text-align:center;line-height:1.32;font-size:9.6px}.right{text-align:right;font-size:9.5px;line-height:1.4}
+        h1{text-align:center;font-size:17px;margin:9px 0 11px;text-transform:uppercase;letter-spacing:.03em;border:1px solid #111;padding:7px}
+        .section-title{background:#e9eef5;border:1px solid #111;border-bottom:none;padding:5px 7px;font-weight:800;text-transform:uppercase}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #111;border-left:1px solid #111;margin-bottom:9px}
+        .cell{border-right:1px solid #111;border-bottom:1px solid #111;padding:6px;min-height:33px}
+        .wide{grid-column:1/-1}.thirds{display:grid;grid-template-columns:1fr 1fr 1fr}.label{font-size:9px;color:#444;text-transform:uppercase;margin-bottom:3px}.value{font-size:12.5px;font-weight:700}
+        table{width:100%;border-collapse:collapse;margin-bottom:9px}th,td{border:1px solid #111;padding:6px;text-align:left}th{background:#eef4fd}
+        .check{display:inline-block;border:1px solid #111;width:12px;height:12px;margin:0 4px -2px 10px}.sign{display:grid;grid-template-columns:1fr 1fr;gap:14px}.sign>div{border:1px solid #111;min-height:105px;padding:8px;line-height:1.45}
+        .stamp-space{height:58px;margin-top:8px;border-top:1px dashed #aaa}
+        .nb{font-size:9.5px;line-height:1.35;border:1px solid #111;padding:7px;margin-top:9px}
       </style></head><body>
       <div class="top"><img src="${logo}"><div class="ministry">Republique du Senegal - Un peuple, un but, une foi<br>Ministere de la Sante et de l'Action Sociale<br><b>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba</b><br>Service d'Oncologie-Radiotherapie - Secteur chimiotherapie</div><div class="right">Date demande: <b>${new Date().toLocaleDateString('fr-FR')}</b><br>Dossier: <b>${esc(row.dossier || '-')}</b><br>Code: <b>${esc(row.code || '-')}</b></div></div>
       <h1>Demande de produits sanguins labiles</h1>
@@ -1524,7 +1537,7 @@
       </div>
       <table><thead><tr><th>Groupe sanguin</th><th>Produit sanguin demande</th><th>Nombre d'unites</th></tr></thead><tbody><tr><td><b>${esc(row.groupe || '-')} ${esc(row.rhesus || '')}</b></td><td>${esc(row.produit || 'Concentres de globules rouges')}</td><td>${esc(row.culots || '1')}</td></tr></tbody></table>
       <table><thead><tr><th>Transfusions anterieures</th><th>Incidents transfusionnels</th><th>Precision</th></tr></thead><tbody><tr><td>${esc(row.antecedentTransfusion || 'Non renseigne')}</td><td>${esc(row.incidentTransfusion || 'Non renseigne')}</td><td>${esc(row.incidentPrecision || '-')}</td></tr></tbody></table>
-      <div class="sign"><div><b>Nom, signature et cachet du prescripteur</b><br><br>Date de la demande :</div><div><b>Distribution produits sanguins</b><br>Date/heure :<br>N poches :<br>Agent distributeur :</div></div>
+      <div class="sign"><div><b>Nom, signature et cachet du prescripteur</b><br>Date de la demande :<div class="stamp-space"></div></div><div><b>Distribution produits sanguins</b><br>Date/heure :<br>N poches :<br>Agent distributeur :<br>Signature et cachet :<div class="stamp-space"></div></div></div>
       <div class="nb"><b>NB :</b> Produits a utiliser immediatement apres reception ou a retourner obligatoirement a la banque de sang. Tout accident transfusionnel doit etre signale au coordinateur du comite hospitalier de securite transfusionnelle.</div>
       </body></html>`;
     printHtml(html, '210mm', '297mm');
