@@ -1666,7 +1666,7 @@
             <div class="stats-final-note">Circuit reserve aux consultations : ces rendez-vous sont separes du programme de chimiotherapie.</div>
             <div class="consult-filter-bar">
               <label>Date <input type="date" id="consult-filter-date" value="${today}" oninput="renderRdvConsultationList()"></label>
-              <label>Medecin traitant <input id="consult-filter-medecin" placeholder="Filtrer par medecin" oninput="renderRdvConsultationList()"></label>
+              <label>Medecin traitant <select id="consult-filter-medecin" onchange="renderRdvConsultationList()">${consultationDoctorOptions('')}</select></label>
             </div>
             <div id="consult-rdv-table"></div>
           </div>
@@ -1794,7 +1794,7 @@
         <div class="card-body">
           <div class="consult-filter-bar">
             <label>Date <input type="date" id="consult-programme-date" value="${esc(date)}" oninput="renderConsultationProgrammePanel()"></label>
-            <label>Medecin traitant <input id="consult-programme-medecin" value="${esc(document.getElementById('consult-programme-medecin')?.value || '')}" placeholder="Filtrer par medecin" oninput="renderConsultationProgrammePanel()"></label>
+            <label>Medecin traitant <select id="consult-programme-medecin" onchange="renderConsultationProgrammePanel()">${consultationDoctorOptions(document.getElementById('consult-programme-medecin')?.value || '')}</select></label>
           </div>
           <div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Adresse</th><th>Medecin traitant</th></tr></thead><tbody>${consultationRows(rows, false) || '<tr><td colspan="4" class="dash-empty">Aucune consultation programmee.</td></tr>'}</tbody></table></div>
         </div>
@@ -5439,7 +5439,7 @@
       .transfusion-form-grid .signup-wide{grid-column:span 2}
       .consult-filter-bar{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:10px;margin-bottom:12px;align-items:end}
       .consult-filter-bar label{font-size:11px;color:#44556b;font-weight:800}
-      .consult-filter-bar input{width:100%;box-sizing:border-box;border:1px solid #b8c7d9;border-radius:7px;padding:8px 9px;font-size:12px;margin-top:4px}
+      .consult-filter-bar input,.consult-filter-bar select{width:100%;box-sizing:border-box;border:1px solid #b8c7d9;border-radius:7px;padding:8px 9px;font-size:12px;margin-top:4px;background:white}
       .consult-form-grid select{width:100%;box-sizing:border-box;border:1px solid #b8c7d9;border-radius:7px;padding:8px 9px;font-size:12px;margin-top:4px;background:white}
       .field-hint{font-weight:700;color:#7a8796;font-size:10px;margin-left:5px;text-transform:none}
       .consult-card{width:min(760px,calc(100vw - 28px));max-height:88vh;overflow:auto}
