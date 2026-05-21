@@ -540,6 +540,11 @@
     return norm(user.role) === 'biologiste' || norm(user.username) === 'biologiste';
   }
 
+  function isSecretaireUser(){
+    const user = currentUser();
+    return norm(user.role) === 'secretaire' || norm(user.username) === 'secretaire';
+  }
+
   function requireAdminAction(actionLabel, onOk){
     if(!isAdminUser()){
       alert('Action reservee au compte administrateur.');
@@ -1616,6 +1621,164 @@
     openTransfusionPatientModal();
   };
 
+  function consultRdvList(){
+    return readJson('chncak_consultation_rdv', []);
+  }
+
+  function writeConsultRdv(list){
+    writeJson('chncak_consultation_rdv', list);
+  }
+
+  function consultationDateLabel(dateIso){
+    if(!dateIso) return '-';
+    const d = new Date(`${dateIso}T00:00:00`);
+    return isNaN(d) ? dateIso : d.toLocaleDateString('fr-FR', {weekday:'long', day:'2-digit', month:'long', year:'numeric'});
+  }
+
+  function consultationRows(list, withPrint){
+    return list.sort((a,b) => String(a.dateRdv || '').localeCompare(String(b.dateRdv || '')) || String(a.medecin || '').localeCompare(String(b.medecin || '')) || String(a.nom || '').localeCompare(String(b.nom || ''))).map(row => `
+      <tr>
+        <td>${esc(consultationDateLabel(row.dateRdv))}</td>
+        <td><b>${esc(val(row.prenom))} ${esc(val(row.nom))}</b><div class="dash-muted">${esc(val(row.contact, '-'))}</div></td>
+        <td>${esc(val(row.adresse, '-'))}</td>
+        <td>${esc(val(row.medecin, '-'))}</td>
+        ${withPrint ? `<td><button class="btn-sm" onclick="printConsultationRdv('${esc(row.id)}')">Imprimer bon RDV</button><button class="btn-sm" style="margin-left:5px" onclick="deleteConsultationRdv('${esc(row.id)}')">Supprimer</button></td>` : ''}
+      </tr>`).join('');
+  }
+
+  window.renderRdvConsultation = function(){
+    const host = document.getElementById('rdv-consultation-content');
+    if(!host) return;
+    const today = todayIso();
+    const list = consultRdvList();
+    host.innerHTML = `
+      <div class="clinical-shell consultation-shell">
+        <div class="card">
+          <div class="card-header"><div class="card-num" style="background:#12395b">C</div><h2>RDV Consultations</h2><button class="btn-secondary" onclick="openConsultationRdvModal()">Ajouter patient</button></div>
+          <div class="card-body">
+            <div class="stats-final-note">Circuit reserve aux consultations : ces rendez-vous sont separes du programme de chimiotherapie.</div>
+            <div class="consult-filter-bar">
+              <label>Date <input type="date" id="consult-filter-date" value="${today}" oninput="renderRdvConsultationList()"></label>
+              <label>Medecin traitant <input id="consult-filter-medecin" placeholder="Filtrer par medecin" oninput="renderRdvConsultationList()"></label>
+            </div>
+            <div id="consult-rdv-table"></div>
+          </div>
+        </div>
+      </div>`;
+    renderRdvConsultationList();
+  };
+
+  window.renderRdvConsultationList = function(){
+    const host = document.getElementById('consult-rdv-table');
+    if(!host) return;
+    const date = document.getElementById('consult-filter-date')?.value || '';
+    const med = norm(document.getElementById('consult-filter-medecin')?.value || '');
+    const list = consultRdvList().filter(row => (!date || row.dateRdv === date) && (!med || norm(row.medecin).includes(med)));
+    host.innerHTML = `<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Adresse</th><th>Medecin traitant</th><th>Actions</th></tr></thead><tbody>${consultationRows(list, true) || '<tr><td colspan="5" class="dash-empty">Aucun rendez-vous de consultation.</td></tr>'}</tbody></table></div>`;
+  };
+
+  window.openConsultationRdvModal = function(){
+    document.getElementById('consult-rdv-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'consult-rdv-modal';
+    modal.className = 'secure-code-modal consult-modal';
+    modal.innerHTML = `
+      <div class="secure-code-backdrop" onclick="closeConsultationRdvModal()"></div>
+      <div class="secure-code-card consult-card">
+        <h3>Ajouter rendez-vous de consultation</h3>
+        <p>Renseigner le patient et le medecin traitant pour le bon de rendez-vous.</p>
+        <div class="transfusion-form-grid consult-form-grid">
+          <label>Nom<input id="consult-nom" placeholder="ex: NDIAYE"></label>
+          <label>Prenom<input id="consult-prenom" placeholder="ex: Awa"></label>
+          <label>Contact<input id="consult-contact" placeholder="ex: 77 000 00 00"></label>
+          <label>Adresse<input id="consult-adresse" placeholder="ex: Touba"></label>
+          <label class="signup-wide">Medecin traitant<input id="consult-medecin" placeholder="ex: Dr ..."></label>
+          <label>Date rendez-vous<input id="consult-date" type="date" value="${todayIso()}"></label>
+        </div>
+        <div class="secure-code-actions"><button onclick="closeConsultationRdvModal()">Annuler</button><button onclick="saveConsultationRdv()">Enregistrer</button></div>
+      </div>`;
+    document.body.appendChild(modal);
+  };
+
+  window.closeConsultationRdvModal = function(){
+    document.getElementById('consult-rdv-modal')?.remove();
+  };
+
+  window.saveConsultationRdv = function(){
+    const get = id => document.getElementById(id)?.value?.trim() || '';
+    const item = {
+      id: `CONS-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      nom: get('consult-nom'),
+      prenom: get('consult-prenom'),
+      contact: get('consult-contact'),
+      adresse: get('consult-adresse'),
+      medecin: get('consult-medecin'),
+      dateRdv: get('consult-date'),
+      createdAt: new Date().toISOString(),
+      createdBy: val(currentUser().username, currentUser().name, '')
+    };
+    if(!item.nom || !item.prenom || !item.contact || !item.medecin || !item.dateRdv){
+      alert('Nom, prenom, contact, medecin traitant et date de rendez-vous sont obligatoires.');
+      return;
+    }
+    const list = consultRdvList();
+    list.unshift(item);
+    writeConsultRdv(list);
+    logAudit('RDV consultation ajoute', `${item.prenom} ${item.nom}`, `${item.dateRdv} - ${item.medecin}`);
+    closeConsultationRdvModal();
+    renderRdvConsultation();
+    renderConsultationProgrammePanel();
+    window.renderDashboard?.();
+    showToastSafe('Rendez-vous de consultation enregistre.', 'success');
+  };
+
+  window.deleteConsultationRdv = function(id){
+    const item = consultRdvList().find(row => row.id === id);
+    if(!item) return;
+    if(!confirm(`Supprimer le rendez-vous de ${item.prenom} ${item.nom} ?`)) return;
+    writeConsultRdv(consultRdvList().filter(row => row.id !== id));
+    logAudit('RDV consultation supprime', `${item.prenom} ${item.nom}`, val(item.dateRdv));
+    renderRdvConsultation();
+    renderConsultationProgrammePanel();
+    window.renderDashboard?.();
+  };
+
+  window.printConsultationRdv = function(id){
+    const row = consultRdvList().find(item => item.id === id);
+    if(!row) return alert('Rendez-vous introuvable.');
+    const logo = document.querySelector('.nav-logo img')?.src || '';
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Bon rendez-vous consultation</title>
+      <style>@page{size:A5 landscape;margin:10mm}body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:13px}.head{display:grid;grid-template-columns:58px 1fr;gap:10px;align-items:center;border-bottom:2px solid #0A3D7A;padding-bottom:8px;margin-bottom:14px}.head img{width:54px;height:54px;object-fit:contain}.head div{text-align:center;line-height:1.25}h1{text-align:center;color:#0A3D7A;font-size:20px;margin:10px 0 16px;text-transform:uppercase}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.box{border:1px solid #9db6d3;border-radius:6px;padding:9px;min-height:46px}.label{font-size:10px;color:#607080;text-transform:uppercase;font-weight:800}.value{font-size:16px;font-weight:800;margin-top:5px}.note{margin-top:14px;border:1px solid #F0C060;background:#FFF8E8;padding:9px;font-size:12px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
+      </head><body><div class="head"><img src="${logo}"><div>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba<br><b>Service d'Oncologie-Radiotherapie</b></div></div><h1>Bon de rendez-vous consultation</h1><div class="grid"><div class="box"><div class="label">Patient</div><div class="value">${esc(row.prenom)} ${esc(row.nom)}</div></div><div class="box"><div class="label">Contact</div><div class="value">${esc(row.contact)}</div></div><div class="box"><div class="label">Adresse</div><div class="value">${esc(row.adresse || '-')}</div></div><div class="box"><div class="label">Medecin traitant</div><div class="value">${esc(row.medecin)}</div></div><div class="box" style="grid-column:1/-1"><div class="label">Date rendez-vous</div><div class="value">${esc(consultationDateLabel(row.dateRdv))}</div></div></div><div class="note">Merci de venir avec vos documents medicaux et d'arriver avant l'heure de consultation.</div></body></html>`;
+    printHtml(html, '210mm', '148mm');
+  };
+
+  window.renderConsultationProgrammePanel = function(){
+    const page = document.getElementById('page-programme');
+    if(!page) return;
+    let host = document.getElementById('consult-programme-panel');
+    if(!host){
+      host = document.createElement('div');
+      host.id = 'consult-programme-panel';
+      const container = page.querySelector('div[style*="max-width"]') || page;
+      container.prepend(host);
+    }
+    const date = document.getElementById('consult-programme-date')?.value || '';
+    const med = norm(document.getElementById('consult-programme-medecin')?.value || '');
+    const rows = consultRdvList().filter(row => (!date || row.dateRdv === date) && (!med || norm(row.medecin).includes(med)));
+    host.innerHTML = `
+      <div class="card consultation-program-card" style="margin-bottom:12px">
+        <div class="card-header"><h2>Programme des consultations</h2></div>
+        <div class="card-body">
+          <div class="consult-filter-bar">
+            <label>Date <input type="date" id="consult-programme-date" value="${esc(date)}" oninput="renderConsultationProgrammePanel()"></label>
+            <label>Medecin traitant <input id="consult-programme-medecin" value="${esc(document.getElementById('consult-programme-medecin')?.value || '')}" placeholder="Filtrer par medecin" oninput="renderConsultationProgrammePanel()"></label>
+          </div>
+          <div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Adresse</th><th>Medecin traitant</th></tr></thead><tbody>${consultationRows(rows, false) || '<tr><td colspan="4" class="dash-empty">Aucune consultation programmee.</td></tr>'}</tbody></table></div>
+        </div>
+      </div>`;
+  };
+
   function openTransfusionPatientModal(){
     const patients = readJson(STORAGE.patients, []);
     document.getElementById('transfusion-patient-modal')?.remove();
@@ -1784,10 +1947,11 @@
   };
 
   function signupAllowedTabs(role){
-    if(role === 'admin') return ['dashboard','protocole','okchimio','medecins','stats','pharmacie','apercu','preparation','support','suivi','biologie','hematologie','transfusion','maintenance','programme','patients','rdv'];
+    if(role === 'admin') return ['dashboard','protocole','okchimio','medecins','stats','pharmacie','apercu','preparation','support','suivi','biologie','hematologie','transfusion','maintenance','programme','rdvconsultation','patients','rdv'];
     if(role === 'pharmacien') return ['dashboard','pharmacie','stats','preparation','rdv'];
     if(role === 'infirmier') return ['dashboard','transfusion','rdv','apercu','support','suivi','stats','programme','patients'];
     if(role === 'biologiste') return ['dashboard','transfusion','stats','programme'];
+    if(role === 'secretaire') return ['dashboard','rdvconsultation','programme'];
     return ['dashboard','protocole','okchimio','medecins','apercu','preparation','support','suivi','biologie','hematologie','transfusion','stats','programme','patients','rdv'];
   }
 
@@ -1865,6 +2029,7 @@
       '<option value="pharmacien">Pharmacien</option>',
       '<option value="infirmier">Infirmier</option>',
       '<option value="biologiste">Biologiste</option>',
+      '<option value="secretaire">Secretaire</option>',
       adminSignupAllowed() ? '<option value="admin">Admin</option>' : ''
     ].join('');
     modal.innerHTML = `
@@ -2654,6 +2819,17 @@
         <td>${esc(val(r.medecin, '-'))}</td>
         <td><span class="dash-status ${normStatus(val(r.status, r.statut)).includes('traite') ? 'ok' : ''}">${esc(val(r.status, r.statut, 'planifie'))}</span></td>
       </tr>`).join('');
+    const consultToday = consultRdvList().filter(row => row.dateRdv === todayIso());
+    const consultByDoctor = Object.entries(consultToday.reduce((acc, row) => {
+      const med = val(row.medecin, 'Medecin non renseigne');
+      acc[med] = acc[med] || [];
+      acc[med].push(row);
+      return acc;
+    }, {})).map(([med, rows]) => `
+      <div class="consult-dash-doctor">
+        <h3>${esc(med)} <span>${rows.length}</span></h3>
+        ${rows.map(row => `<div class="dash-line"><span>${esc(row.prenom)} ${esc(row.nom)}<small>${esc(row.contact || '')}</small></span><strong>${esc(row.adresse || '-')}</strong></div>`).join('')}
+      </div>`).join('');
     el.innerHTML = `
       <div class="dashboard-shell dash-final">
         <div class="dash-final-hero">
@@ -2693,7 +2869,8 @@
             <div class="card"><div class="card-header"><h2>Diagnostics</h2></div><div class="card-body">${miniRows(countBy(patients, p => val(p.localisation, p.diagnostic, p.localisations)))}</div></div>
           </div>
         </div>
-        <div class="dash-final-resp">Salle chimio : <b>${esc(val(responsables.chimio, '-'))}</b> · Preparation : <b>${esc(val(responsables.preparation, '-'))}</b> · Pharmacie : <b>${esc(val(responsables.pharmacie, '-'))}</b></div>
+        <div class="card consultation-dashboard-card"><div class="card-header"><h2>Consultations du jour</h2><button class="btn-secondary" onclick="showPage('rdvconsultation', document.querySelector('.tab-btn[onclick*=rdvconsultation]'))">Voir RDV consultations</button></div><div class="card-body">${consultByDoctor || '<div class="dash-empty">Aucune consultation programmee aujourd hui.</div>'}</div></div>
+        <div class="dash-final-resp">Salle chimio : <b>${esc(val(responsables.chimio, '-'))}</b> - Preparation : <b>${esc(val(responsables.preparation, '-'))}</b> - Pharmacie : <b>${esc(val(responsables.pharmacie, '-'))}</b></div>
       </div>`;
   };
 
@@ -4944,9 +5121,10 @@
     if(id === 'biologie') setTimeout(() => { window.renderBiologie?.(); normalizeBiologiePatientOptions(); cleanupLoginAndButtons(); }, 80);
     if(id === 'hematologie') setTimeout(() => { window.renderHematologie?.(); cleanupLoginAndButtons(); }, 50);
     if(id === 'transfusion') setTimeout(() => { window.renderTransfusion?.(); cleanupLoginAndButtons(); }, 50);
+    if(id === 'rdvconsultation') setTimeout(() => { window.renderRdvConsultation?.(); cleanupLoginAndButtons(); }, 50);
     if(id === 'maintenance') setTimeout(() => { window.renderMaintenance?.(); cleanupLoginAndButtons(); }, 50);
     if(id === 'protocole') setTimeout(bindRestoredProtocolUnlock, 20);
-    if(id === 'programme') setTimeout(cleanupLoginAndButtons, 20);
+    if(id === 'programme') setTimeout(() => { renderConsultationProgrammePanel(); cleanupLoginAndButtons(); }, 20);
     if(id === 'preparation') setTimeout(ensurePreparationPrintReady, 80);
     if(id === 'pharmacie') setTimeout(lockPharmacyStockControls, 80);
     if(id === 'dashboard') setTimeout(() => { window.renderDashboard?.(); cleanupLoginAndButtons(); }, 20);
@@ -5237,6 +5415,15 @@
       .transfusion-form-grid label{font-size:11px;color:#44556b;font-weight:800}
       .transfusion-form-grid input,.transfusion-form-grid select{width:100%;box-sizing:border-box;border:1px solid #b8c7d9;border-radius:7px;padding:8px 9px;font-size:12px;margin-top:4px;letter-spacing:0;text-align:left}
       .transfusion-form-grid .signup-wide{grid-column:span 2}
+      .consult-filter-bar{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:10px;margin-bottom:12px;align-items:end}
+      .consult-filter-bar label{font-size:11px;color:#44556b;font-weight:800}
+      .consult-filter-bar input{width:100%;box-sizing:border-box;border:1px solid #b8c7d9;border-radius:7px;padding:8px 9px;font-size:12px;margin-top:4px}
+      .consult-card{width:min(760px,calc(100vw - 28px));max-height:88vh;overflow:auto}
+      .consult-dash-doctor{border:1px solid #dbe5f2;border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#f8fbff}
+      .consult-dash-doctor h3{display:flex;justify-content:space-between;gap:8px;align-items:center;margin:0 0 8px;color:#17324d;font-size:14px}
+      .consult-dash-doctor h3 span{background:#0A3D7A;color:#fff;border-radius:999px;padding:2px 8px;font-size:11px}
+      .consult-dash-doctor small{display:block;color:#607080;font-size:10px;margin-top:2px}
+      .consultation-dashboard-card{margin-top:12px}
       body.infirmier-session .maintenance-shell,body.infirmier-session #page-maintenance,body.infirmier-session .official-github-mini[onclick*="exportOfficialGitHubData"],body.infirmier-session button[onclick*="setCodeGratuiteStart"]{display:none!important}
       .tab-btn,.btn-primary,.btn-secondary,.btn-med-add,.prog-day-btn,#patients-add-final,#programme-template-btn{border:1.6px solid #12395b!important;box-shadow:0 2px 0 rgba(8,31,55,.22),0 8px 16px rgba(8,31,55,.08);transition:transform .18s ease,box-shadow .18s ease,filter .18s ease}
       .tab-btn:hover,.btn-primary:hover,.btn-secondary:hover,.btn-med-add:hover,.prog-day-btn:hover,#patients-add-final:hover,#programme-template-btn:hover{transform:translateY(-1px);box-shadow:0 3px 0 rgba(8,31,55,.28),0 12px 22px rgba(8,31,55,.13);filter:saturate(1.08)}
@@ -5278,7 +5465,7 @@
       .suivi-import-label{cursor:pointer}
       .login-clock-card{position:absolute;top:24px;right:24px;min-width:230px;background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.38);border-radius:10px;padding:16px 18px;box-shadow:0 16px 38px rgba(0,0,0,.18);backdrop-filter:blur(8px);text-align:left}
       .login-clock-card strong{font-size:38px}
-      @media (max-width:900px){.dash-final-hero,.dash-final-main,.proto-editor-grid{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}.proto-drug-line{grid-template-columns:1fr 1fr}.proto-remove{grid-column:1/-1}.transfusion-form-grid,.maintenance-code-box{grid-template-columns:1fr}.transfusion-form-grid .signup-wide{grid-column:auto}}
+      @media (max-width:900px){.dash-final-hero,.dash-final-main,.proto-editor-grid{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}.proto-drug-line{grid-template-columns:1fr 1fr}.proto-remove{grid-column:1/-1}.transfusion-form-grid,.maintenance-code-box,.consult-filter-bar{grid-template-columns:1fr}.transfusion-form-grid .signup-wide{grid-column:auto}}
       @media (max-width:900px){.dash-clock-lead,.dash-leadership,.suivi-actions-final{grid-template-columns:1fr}.dash-leadership .lead-director{grid-row:auto}.login-clock-card{position:static;margin:0 0 12px;background:rgba(255,255,255,.18)}}
       @media print{.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:6.8px!important;line-height:1.05!important;margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important}.protocol-print-fit table:first-child img{max-height:38px!important}}
     `;

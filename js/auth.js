@@ -39,11 +39,17 @@ let USERS = {
     name: 'Biologiste',
     allowedTabs: ['dashboard', 'transfusion', 'stats', 'programme']
   },
+  secretaire: {
+    password: 'sec123',
+    role: 'secretaire',
+    name: 'Secretaire',
+    allowedTabs: ['dashboard', 'rdvconsultation', 'programme']
+  },
   admin: {
     password: 'admin123',
     role: 'admin',
     name: 'Administrateur',
-    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'stats', 'pharmacie', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'transfusion', 'maintenance', 'stats', 'programme', 'patients', 'rdv']
+    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'stats', 'pharmacie', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'transfusion', 'maintenance', 'stats', 'programme', 'rdvconsultation', 'patients', 'rdv']
   }
 };
 
@@ -54,6 +60,7 @@ function allowedTabsForRole(role) {
   if (role === 'pharmacien') return USERS.pharmacien.allowedTabs;
   if (role === 'infirmier') return USERS.infirmier.allowedTabs;
   if (role === 'biologiste') return USERS.biologiste.allowedTabs;
+  if (role === 'secretaire') return USERS.secretaire.allowedTabs;
   return USERS.medecin.allowedTabs;
 }
 

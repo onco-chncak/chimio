@@ -118,6 +118,7 @@
     <button class="tab-btn" onclick="showPage('maintenance',this)">&#128736; Maintenance</button>
     <button class="tab-btn" onclick="showPage('stats',this)">&#128200; Stats</button>
     <button class="tab-btn" onclick="showPage('programme',this)">&#128197; Programme</button>
+    <button class="tab-btn" onclick="showPage('rdvconsultation',this)">&#128198; RDV Consultations</button>
     <button class="tab-btn" onclick="showPage('patients',this)">&#128101; Patients</button>
     <button class="tab-btn" onclick="showPage('rdv',this)">&#128198; RDV</button>
   </div>
@@ -1009,6 +1010,11 @@
   <div id="transfusion-content"></div>
 </div>
 
+<!-- ===== PAGE : RDV CONSULTATIONS ===== -->
+<div id="page-rdvconsultation" class="page">
+  <div id="rdv-consultation-content"></div>
+</div>
+
 <!-- ===== PAGE : MAINTENANCE ===== -->
 <div id="page-maintenance" class="page">
   <div id="maintenance-content"></div>
@@ -1166,23 +1172,23 @@ Rinçage 250 cc SSI 0.9% | support | fix | 250"
     </div>
   </div>
 </div>
-<script src="js/auth.js?v=20260521b"></script>
-<script src="js/main.js?v=20260521b"></script>
+<script src="js/auth.js?v=20260521c"></script>
+<script src="js/main.js?v=20260521c"></script>
 <script src="js/dashboard.js"></script>
-<script src="js/rdv.js?v=20260521b"></script>
+<script src="js/rdv.js?v=20260521c"></script>
 <script src="js/enhancements.js"></script>
 <script src="js/clinical-modules.js"></script>
 <script src="js/data-tools.js?v=20260514i"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/supabase-sync.js?v=20260521b"></script>
+<script src="js/supabase-sync.js?v=20260521c"></script>
 <script src="js/protocol-editor.js"></script>
 <script src="js/app-polish.js"></script>
 <script src="js/requested-improvements.js"></script>
-<script src="js/site-official-data.js?v=20260521b"></script>
-<script src="js/final-improvements.js?v=20260521b"></script>
+<script src="js/site-official-data.js?v=20260521c"></script>
+<script src="js/final-improvements.js?v=20260521c"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const CHIMIOPRO_PUBLIC_VERSION = '20260521b';
+    const CHIMIOPRO_PUBLIC_VERSION = '20260521c';
     let chimioproReloadingForUpdate = false;
     const showChimioProUpdateNotice = () => {
       if (document.getElementById('chimiopro-update-notice')) return;
