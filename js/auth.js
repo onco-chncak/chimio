@@ -2,66 +2,25 @@
 // SYSTÈME D'AUTHENTIFICATION
 // ════════════════════════════════════════════════════════════
 
-let USERS = {
-  medecin: {
-    password: 'medecin123',
-    role: 'medecin',
-    name: 'Dr Médecin',
-    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'transfusion', 'stats', 'programme', 'patients', 'rdv']
-  },
-  TEST: {
-    password: 'test123',
-    role: 'medecin',
-    name: 'Dr TEST',
-    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'transfusion', 'stats', 'programme', 'patients', 'rdv']
-  },
-  maymouna: {
-    password: 'm123@',
-    role: 'medecin',
-    name: 'Dr Maymouna',
-    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'transfusion', 'stats', 'programme', 'patients', 'rdv']
-  },
-  pharmacien: {
-    password: 'pharma123',
-    role: 'pharmacien',
-    name: 'Pharmacien',
-    allowedTabs: ['dashboard', 'pharmacie', 'stats', 'preparation', 'rdv']
-  },
-  infirmier: {
-    password: 'inf123',
-    role: 'infirmier',
-    name: 'Infirmier',
-    allowedTabs: ['dashboard', 'transfusion', 'rdv', 'apercu', 'support', 'suivi', 'stats', 'programme', 'patients']
-  },
-  biologiste: {
-    password: 'bio123',
-    role: 'biologiste',
-    name: 'Biologiste',
-    allowedTabs: ['dashboard', 'transfusion', 'stats', 'programme']
-  },
-  secretaire: {
-    password: 'sec123',
-    role: 'secretaire',
-    name: 'Secretaire',
-    allowedTabs: ['dashboard', 'rdvconsultation', 'programme']
-  },
-  admin: {
-    password: 'admin123',
-    role: 'admin',
-    name: 'Administrateur',
-    allowedTabs: ['dashboard', 'protocole', 'okchimio', 'medecins', 'stats', 'pharmacie', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'transfusion', 'maintenance', 'stats', 'programme', 'rdvconsultation', 'patients', 'rdv']
-  }
+const SUPABASE_URL = 'https://frfungcoqagpcyaaglox.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_LWC2vokbGnSWFA1Vg6DAsA_JFaCNbei';
+const CLOUD_ADMIN_EMAILS = ['onco.chn.cak@gmail.com'];
+
+const ROLE_TABS = {
+  medecin: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'transfusion', 'stats', 'programme', 'patients', 'rdv'],
+  pharmacien: ['dashboard', 'pharmacie', 'stats', 'preparation', 'rdv'],
+  infirmier: ['dashboard', 'transfusion', 'rdv', 'apercu', 'support', 'suivi', 'stats', 'programme', 'patients'],
+  biologiste: ['dashboard', 'transfusion', 'stats', 'programme'],
+  secretaire: ['dashboard', 'rdvconsultation', 'programme'],
+  admin: ['dashboard', 'protocole', 'okchimio', 'medecins', 'stats', 'pharmacie', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'transfusion', 'maintenance', 'stats', 'programme', 'rdvconsultation', 'patients', 'rdv']
 };
+
+let USERS = {};
 
 let currentUser = null;
 
 function allowedTabsForRole(role) {
-  if (role === 'admin') return USERS.admin.allowedTabs;
-  if (role === 'pharmacien') return USERS.pharmacien.allowedTabs;
-  if (role === 'infirmier') return USERS.infirmier.allowedTabs;
-  if (role === 'biologiste') return USERS.biologiste.allowedTabs;
-  if (role === 'secretaire') return USERS.secretaire.allowedTabs;
-  return USERS.medecin.allowedTabs;
+  return ROLE_TABS[role] || ROLE_TABS.medecin;
 }
 
 function refreshDynamicUsers() {
@@ -83,12 +42,69 @@ function refreshDynamicUsers() {
 
 window.refreshDynamicUsers = refreshDynamicUsers;
 
+function supabaseAuthClient() {
+  if (!window.supabase?.createClient) return null;
+  if (!window.chimioproSupabaseClient) {
+    window.chimioproSupabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true }
+    });
+  }
+  return window.chimioproSupabaseClient;
+}
+
+function approvedUserFor(identifier, email) {
+  let approved = [];
+  try { approved = JSON.parse(localStorage.getItem('chncak_approved_users') || '[]'); } catch(e) { approved = []; }
+  const ni = String(identifier || '').toLowerCase().trim();
+  const ne = String(email || '').toLowerCase().trim();
+  return approved.find(u =>
+    String(u.username || '').toLowerCase().trim() === ni ||
+    String(u.email || '').toLowerCase().trim() === ne
+  ) || null;
+}
+
+function profileFromSupabaseUser(user, identifier) {
+  const email = String(user?.email || identifier || '').toLowerCase().trim();
+  const metadata = user?.user_metadata || {};
+  const appMetadata = user?.app_metadata || {};
+  const approved = approvedUserFor(identifier, email);
+  const role = appMetadata.role || metadata.role || approved?.role || (CLOUD_ADMIN_EMAILS.includes(email) ? 'admin' : 'medecin');
+  const name = approved
+    ? `${approved.prenom || ''} ${approved.nom || ''}`.trim()
+    : (metadata.full_name || metadata.name || email || identifier || 'Utilisateur Supabase');
+  return {
+    username: email || identifier,
+    email,
+    name,
+    role,
+    authProvider: 'supabase',
+    allowedTabs: allowedTabsForRole(role)
+  };
+}
+
+async function loginWithSupabase(identifier, password) {
+  const sb = supabaseAuthClient();
+  if (!sb) throw new Error('Supabase non charge. Verifiez la connexion internet.');
+  const email = String(identifier || '').trim();
+  if (!email.includes('@')) throw new Error('Utilisez votre email Supabase pour la connexion securisee.');
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  return profileFromSupabaseUser(data.session?.user || data.user, email);
+}
+
+
 function checkAuth() {
   refreshDynamicUsers();
   const savedUser = localStorage.getItem('chncak_currentUser');
   
   if (savedUser) {
     currentUser = JSON.parse(savedUser);
+    if (currentUser.authProvider !== 'supabase' && !USERS[currentUser.username]?.password) {
+      localStorage.removeItem('chncak_currentUser');
+      currentUser = null;
+      document.getElementById('login-screen').style.display = 'flex';
+      return;
+    }
     if (USERS[currentUser.username]) {
       currentUser.allowedTabs = USERS[currentUser.username].allowedTabs;
       currentUser.role = USERS[currentUser.username].role;
@@ -118,55 +134,70 @@ function checkAuth() {
   }
 }
 
-function handleLogin(event) {
+async function handleLogin(event) {
   refreshDynamicUsers();
   event.preventDefault();
-  
+
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value;
-  
-  const user = USERS[username];
-  
-  if (!user || user.password !== password) {
+
+  let user = null;
+  let cloudError = null;
+  try {
+    user = await loginWithSupabase(username, password);
+    window.chimioproCloudReady = true;
+  } catch (err) {
+    cloudError = err;
+  }
+
+  if (!user && USERS[username]?.password && USERS[username].password === password) {
+    user = {
+      username,
+      name: USERS[username].name,
+      role: USERS[username].role,
+      allowedTabs: USERS[username].allowedTabs,
+      authProvider: 'local'
+    };
+  }
+
+  if (!user) {
     const errorDiv = document.getElementById('login-error');
-    errorDiv.textContent = '❌ Nom d\'utilisateur ou mot de passe incorrect';
+    errorDiv.textContent = 'Connexion impossible : ' + (cloudError?.message || 'identifiant ou mot de passe incorrect');
     errorDiv.style.display = 'block';
     document.getElementById('login-password').value = '';
     return false;
   }
-  
-  // Connexion réussie
+
   currentUser = {
-    username: username,
+    username: user.username || username,
+    email: user.email || '',
     name: user.name,
     role: user.role,
-    allowedTabs: user.allowedTabs
+    allowedTabs: user.allowedTabs,
+    authProvider: user.authProvider || 'supabase'
   };
-  
-  console.log('Connexion réussie:', currentUser);
-  
+
+  console.log('Connexion reussie:', currentUser);
   localStorage.setItem('chncak_currentUser', JSON.stringify(currentUser));
-  
-  // Cacher écran login
   document.getElementById('login-screen').style.display = 'none';
-  
-  // Afficher bouton déconnexion
+
   logoutBtn = document.getElementById('logout-button');
   if (logoutBtn) {
     logoutBtn.style.display = 'block';
-    console.log('✓ Bouton déconnexion affiché');
     createLogoutButton();
-  } else {
-    console.error('✗ Bouton logout-button non trouvé !');
   }
-  
-  // Appliquer les permissions
-  console.log('Appel applyUserPermissions...');
+
   applyUserPermissions();
-  
-  // Mode lecture seule si pharmacien
   applyReadOnlyMode();
-  
+
+  if (currentUser.authProvider === 'supabase') {
+    setTimeout(() => {
+      if (typeof window.chimioproCloudSync === 'function') {
+        window.chimioproCloudSync().catch(err => console.warn('Synchronisation initiale impossible', err));
+      }
+    }, 300);
+  }
+
   return false;
 }
 
@@ -305,8 +336,9 @@ function applyReadOnlyMode() {
 }
 
 
-function logout() {
-  if (confirm('Voulez-vous vraiment vous déconnecter ?')) {
+async function logout() {
+  if (confirm('Voulez-vous vraiment vous deconnecter ?')) {
+    try { await supabaseAuthClient()?.auth.signOut(); } catch(e) {}
     localStorage.removeItem('chncak_currentUser');
     currentUser = null;
     location.reload();

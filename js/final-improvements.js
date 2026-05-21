@@ -5069,7 +5069,7 @@
     if(login){
       Array.from(login.querySelectorAll('div')).forEach(div => {
         const text = div.textContent || '';
-        const isCredentialLine = (text.includes('pharmacien / pharma123') || text.includes('admin / admin123')) && div.children.length <= 1;
+        const isCredentialLine = /identifiant|mot de passe|compte de test/i.test(text) && text.includes('/');
         if(isCredentialLine) div.remove();
       });
       if(!document.getElementById('login-copyright')){
@@ -5242,10 +5242,13 @@
   const nativeLogin = window.handleLogin;
   window.handleLogin = function(event){
     const out = typeof nativeLogin === 'function' ? nativeLogin.apply(this, arguments) : false;
-    setTimeout(() => {
-      const btn = document.querySelector(".tab-btn[onclick*=\"dashboard\"]");
-      if(typeof showPage === 'function') showPage('dashboard', btn);
-    }, 80);
+    Promise.resolve(out).then(() => {
+      setTimeout(() => {
+        if(!localStorage.getItem('chncak_currentUser')) return;
+        const btn = document.querySelector(".tab-btn[onclick*=\"dashboard\"]");
+        if(typeof showPage === 'function') showPage('dashboard', btn);
+      }, 80);
+    });
     return out;
   };
 

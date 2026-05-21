@@ -36,6 +36,30 @@ La securite des donnees repose sur :
 - policies qui refusent l'acces au role `anon` ;
 - aucune cle `service_role` dans le code public.
 
+Depuis la version `20260521i`, l'ecran principal de connexion utilise Supabase Auth comme authentification securisee. Les anciens mots de passe publics de demonstration ont ete retires du code.
+
+## Creation des comptes utilisateurs
+
+Procedure recommandee :
+
+1. Creer l'utilisateur dans Supabase Authentication avec son email professionnel.
+2. Donner un mot de passe temporaire, puis demander a l'utilisateur de le changer selon la procedure interne.
+3. Renseigner le role de l'utilisateur dans Supabase `user_metadata`, champ `role`, avec une valeur parmi :
+   - `admin`
+   - `medecin`
+   - `pharmacien`
+   - `infirmier`
+   - `biologiste`
+   - `secretaire`
+4. L'utilisateur se connecte dans ChimioPro avec son email Supabase et son mot de passe.
+
+Compte administrateur de demarrage :
+
+- `onco.chn.cak@gmail.com` est reconnu comme admin de demarrage dans le code public.
+- Cette information n'est pas un mot de passe ; elle sert seulement a donner le role admin a ce compte apres authentification Supabase reussie.
+
+Important : ne pas partager un compte unique entre plusieurs collegues. Chaque utilisateur doit avoir son propre compte Supabase.
+
 ## SQL de controle RLS recommande
 
 A executer dans Supabase SQL Editor pour la table `app_settings`.
