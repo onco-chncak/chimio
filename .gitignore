@@ -1,0 +1,29 @@
+# ChimioPro - protections contre les exports sensibles
+
+# Sauvegardes patient/localStorage generees par l'application
+Sauvegarde_ChimioPro*.json
+*Sauvegarde*ChimioPro*.json
+*sauvegarde*chimiopro*.json
+*backup*chimiopro*.json
+*export*patients*.json
+*patients*export*.json
+*chncak_patients*.json
+*cloud_snapshot*.json
+
+# Fichiers de configuration et cles qui ne doivent jamais partir sur GitHub
+.env
+.env.*
+*.env
+*.key
+*.pem
+*.p12
+*.pfx
+*service_role*
+*secret*
+
+# Fichiers temporaires locaux
+~$*
+*.tmp
+*.bak
+*.log
+doc_render_check/
