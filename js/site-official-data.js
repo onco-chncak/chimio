@@ -1,6 +1,6 @@
 (function(){
   window.CHIMIOPRO_OFFICIAL_DATA = {
-  "version": "20260521e",
+  "version": "20260521f",
   "medecins": [
     {
       "id": "med_1778956586042",

@@ -1643,13 +1643,15 @@
 
   function consultationRows(list, withPrint){
     const canEdit = isSecretaireUser();
+    const today = todayIso();
+    const isDone = row => norm(val(row.statut, row.status)).includes('consulte') || !!row.consultedAt;
     return list.sort((a,b) => String(a.dateRdv || '').localeCompare(String(b.dateRdv || '')) || String(a.medecin || '').localeCompare(String(b.medecin || '')) || String(a.nom || '').localeCompare(String(b.nom || ''))).map(row => `
       <tr>
         <td>${esc(consultationDateLabel(row.dateRdv))}</td>
-        <td><b>${esc(val(row.prenom))} ${esc(val(row.nom))}</b><div class="dash-muted">${esc(val(row.contact, '-'))}${row.localisation ? ` | Localisation: ${esc(row.localisation)}` : ''}</div></td>
+        <td><b>${esc(val(row.prenom))} ${esc(val(row.nom))}</b><div class="dash-muted">${esc(row.typePatient === 'ancien' ? 'Ancien patient' : 'Nouveau patient')} | ${esc(val(row.contact, '-'))}${row.localisation ? ` | Localisation: ${esc(row.localisation)}` : ''}${isDone(row) ? ' | Consulte' : ''}</div></td>
         <td>${esc(val(row.adresse, '-'))}</td>
         <td>${esc(val(row.medecin, '-'))}</td>
-        ${withPrint ? `<td><button class="btn-sm" onclick="printConsultationRdv('${esc(row.id)}')">Imprimer bon RDV</button>${canEdit ? `<button class="btn-sm" style="margin-left:5px" onclick="openConsultationRdvModal('${esc(row.id)}')">Modifier</button><button class="btn-sm" style="margin-left:5px" onclick="deleteConsultationRdv('${esc(row.id)}')">Supprimer</button>` : ''}</td>` : ''}
+        ${withPrint ? `<td><button class="btn-sm" onclick="printConsultationRdv('${esc(row.id)}')">Imprimer bon RDV</button>${canEdit ? `<button class="btn-sm" style="margin-left:5px" onclick="openConsultationRdvModal('${esc(row.id)}')">Modifier</button><button class="btn-sm" style="margin-left:5px" onclick="deleteConsultationRdv('${esc(row.id)}')">Supprimer</button><button class="btn-sm" style="margin-left:5px" ${row.dateRdv === today && !isDone(row) ? '' : 'disabled'} onclick="markConsultationDone('${esc(row.id)}')">Consulte</button>` : ''}</td>` : ''}
       </tr>`).join('');
   }
 
@@ -1681,7 +1683,13 @@
     const date = document.getElementById('consult-filter-date')?.value || '';
     const med = norm(document.getElementById('consult-filter-medecin')?.value || '');
     const list = consultRdvList().filter(row => (!date || row.dateRdv === date) && (!med || norm(row.medecin).includes(med)));
-    host.innerHTML = `<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Adresse</th><th>Medecin traitant</th><th>Actions</th></tr></thead><tbody>${consultationRows(list, true) || '<tr><td colspan="5" class="dash-empty">Aucun rendez-vous de consultation.</td></tr>'}</tbody></table></div>`;
+    const isDone = row => norm(val(row.statut, row.status)).includes('consulte') || !!row.consultedAt;
+    const actifs = list.filter(row => !isDone(row));
+    const archives = list.filter(isDone);
+    host.innerHTML = `
+      <div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Adresse</th><th>Medecin traitant</th><th>Actions</th></tr></thead><tbody>${consultationRows(actifs, true) || '<tr><td colspan="5" class="dash-empty">Aucun rendez-vous de consultation en attente.</td></tr>'}</tbody></table></div>
+      <h3 style="margin:18px 0 8px">Archives consultations</h3>
+      <div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Adresse</th><th>Medecin traitant</th><th>Actions</th></tr></thead><tbody>${consultationRows(archives, true) || '<tr><td colspan="5" class="dash-empty">Aucune consultation archivee.</td></tr>'}</tbody></table></div>`;
   };
 
   window.openConsultationRdvModal = function(id){
@@ -1701,6 +1709,7 @@
           <label>Prenom<input id="consult-prenom" placeholder="ex: Awa" value="${esc(existing?.prenom || '')}"></label>
           <label>Contact<input id="consult-contact" placeholder="ex: 77 000 00 00" value="${esc(existing?.contact || '')}"></label>
           <label>Adresse<input id="consult-adresse" placeholder="ex: Touba" value="${esc(existing?.adresse || '')}"></label>
+          <label>Nouveau / Ancien<select id="consult-type"><option value="nouveau" ${existing?.typePatient !== 'ancien' ? 'selected' : ''}>Nouveau patient</option><option value="ancien" ${existing?.typePatient === 'ancien' ? 'selected' : ''}>Ancien patient</option></select></label>
           <label class="signup-wide">Medecin traitant<select id="consult-medecin">${consultationDoctorOptions(existing?.medecin || '')}</select></label>
           <label>Date rendez-vous<input id="consult-date" type="date" value="${esc(existing?.dateRdv || todayIso())}"></label>
           <label class="signup-wide">Localisation / diagnostic <span class="field-hint">facultatif</span><input id="consult-localisation" placeholder="Facultatif : localisation ou diagnostic si connu" value="${esc(existing?.localisation || '')}"></label>
@@ -1717,23 +1726,28 @@
   window.saveConsultationRdv = function(){
     const get = id => document.getElementById(id)?.value?.trim() || '';
     const editId = document.getElementById('consult-rdv-modal')?.dataset.editId || '';
+    const list = consultRdvList();
+    const previous = editId ? list.find(row => row.id === editId) : null;
     const item = {
       id: editId || `CONS-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       nom: get('consult-nom'),
       prenom: get('consult-prenom'),
       contact: get('consult-contact'),
       adresse: get('consult-adresse'),
+      typePatient: get('consult-type') || 'nouveau',
       medecin: get('consult-medecin'),
       dateRdv: get('consult-date'),
       localisation: get('consult-localisation'),
-      createdAt: new Date().toISOString(),
-      createdBy: val(currentUser().username, currentUser().name, '')
+      statut: previous?.statut || previous?.status || 'programme',
+      consultedAt: previous?.consultedAt || '',
+      consultedBy: previous?.consultedBy || '',
+      createdAt: previous?.createdAt || new Date().toISOString(),
+      createdBy: previous?.createdBy || val(currentUser().username, currentUser().name, '')
     };
     if(!item.nom || !item.prenom || !item.contact || !item.medecin || !item.dateRdv){
       alert('Nom, prenom, contact, medecin traitant et date de rendez-vous sont obligatoires.');
       return;
     }
-    const list = consultRdvList();
     if(editId){
       const idx = list.findIndex(row => row.id === editId);
       if(idx >= 0) list[idx] = {...list[idx], ...item, updatedAt:new Date().toISOString(), updatedBy:val(currentUser().username, currentUser().name, '')};
@@ -1765,13 +1779,54 @@
     window.renderDashboard?.();
   };
 
+  window.markConsultationDone = function(id){
+    if(!isSecretaireUser()){
+      alert('Action reservee au compte secretaire.');
+      return;
+    }
+    const list = consultRdvList();
+    const idx = list.findIndex(row => row.id === id);
+    if(idx < 0) return alert('Rendez-vous introuvable.');
+    const row = list[idx];
+    if(row.dateRdv !== todayIso()){
+      alert('Le bouton Consulte ne peut etre active que le jour de la consultation.');
+      return;
+    }
+    if(norm(val(row.statut, row.status)).includes('consulte') || row.consultedAt){
+      alert('Cette consultation est deja archivee.');
+      return;
+    }
+    let localisation = val(row.localisation);
+    if(!localisation){
+      localisation = prompt('Localisation / diagnostic obligatoire avant de valider la consultation :', '');
+      if(!String(localisation || '').trim()){
+        alert('La localisation ou le diagnostic doit etre renseigne avant de valider.');
+        return;
+      }
+    }
+    list[idx] = {
+      ...row,
+      localisation: String(localisation).trim(),
+      statut: 'consulte',
+      consultedAt: new Date().toISOString(),
+      consultedBy: val(currentUser().username, currentUser().name, 'secretaire')
+    };
+    writeConsultRdv(list);
+    logAudit('Consultation archivee', `${val(row.prenom)} ${val(row.nom)}`, val(row.dateRdv));
+    renderRdvConsultationList();
+    renderConsultationProgrammePanel();
+    window.renderDashboard?.();
+    window.renderStats?.();
+    showToastSafe('Patient marque consulte et archive.', 'success');
+  };
+
   window.printConsultationRdv = function(id){
     const row = consultRdvList().find(item => item.id === id);
     if(!row) return alert('Rendez-vous introuvable.');
     const logo = document.querySelector('.nav-logo img')?.src || '';
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Bon rendez-vous consultation</title>
       <style>@page{size:A5 landscape;margin:10mm}body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:13px}.head{display:grid;grid-template-columns:58px 1fr;gap:10px;align-items:center;border-bottom:2px solid #0A3D7A;padding-bottom:8px;margin-bottom:14px}.head img{width:54px;height:54px;object-fit:contain}.head div{text-align:center;line-height:1.25}h1{text-align:center;color:#0A3D7A;font-size:20px;margin:10px 0 16px;text-transform:uppercase}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.box{border:1px solid #9db6d3;border-radius:6px;padding:9px;min-height:46px}.label{font-size:10px;color:#607080;text-transform:uppercase;font-weight:800}.value{font-size:16px;font-weight:800;margin-top:5px}.note{margin-top:14px;border:1px solid #F0C060;background:#FFF8E8;padding:9px;font-size:12px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
-      </head><body><div class="head"><img src="${logo}"><div>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba<br><b>Service d'Oncologie-Radiotherapie</b></div></div><h1>Bon de rendez-vous consultation</h1><div class="grid"><div class="box"><div class="label">Patient</div><div class="value">${esc(row.prenom)} ${esc(row.nom)}</div></div><div class="box"><div class="label">Contact</div><div class="value">${esc(row.contact)}</div></div><div class="box"><div class="label">Adresse</div><div class="value">${esc(row.adresse || '-')}</div></div><div class="box"><div class="label">Medecin traitant</div><div class="value">${esc(row.medecin)}</div></div><div class="box"><div class="label">Localisation / diagnostic</div><div class="value">${esc(row.localisation || '-')}</div></div><div class="box"><div class="label">Date rendez-vous</div><div class="value">${esc(consultationDateLabel(row.dateRdv))}</div></div></div><div class="note">Merci de venir avec vos documents medicaux et d'arriver avant l'heure de consultation.</div></body></html>`;
+      </head><body><div class="head"><img src="${logo}"><div>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba<br><b>Service d'Oncologie-Radiotherapie</b></div></div><h1>Bon de rendez-vous consultation</h1><div class="grid"><div class="box"><div class="label">Patient</div><div class="value">${esc(row.prenom)} ${esc(row.nom)}</div></div><div class="box"><div class="label">Type</div><div class="value">${esc(row.typePatient === 'ancien' ? 'Ancien patient' : 'Nouveau patient')}</div></div><div class="box"><div class="label">Contact</div><div class="value">${esc(row.contact)}</div></div><div class="box"><div class="label">Adresse</div><div class="value">${esc(row.adresse || '-')}</div></div><div class="box"><div class="label">Medecin traitant</div><div class="value">${esc(row.medecin)}</div></div><div class="box"><div class="label">Localisation / diagnostic</div><div class="value">${esc(row.localisation || '-')}</div></div><div class="box"><div class="label">Date rendez-vous</div><div class="value">${esc(consultationDateLabel(row.dateRdv))}</div></div></div><div class="note">Merci de venir avec vos documents medicaux et d'arriver avant l'heure de consultation.</div></body></html>`;
     printHtml(html, '210mm', '148mm');
   };
 
@@ -2234,7 +2289,7 @@
     const statsResetAt = Number(localStorage.getItem(STAT_BLOCK_RESET_KEY) || 0);
     const medicationResetAt = Number(localStorage.getItem(STAT_MED_RESET_KEY) || 0);
     const itemTime = item => {
-      const raw = val(item.dateTs, item.createdAt, item.updatedAt, item.dateCreation, item.dateValidation, item.validatedAt, item.treatedAt, item.dateTraitement, item.id);
+      const raw = val(item.dateTs, item.consultedAt, item.createdAt, item.updatedAt, item.dateCreation, item.dateValidation, item.validatedAt, item.treatedAt, item.dateTraitement, item.id);
       if(!raw) return 0;
       if(typeof raw === 'number') return raw;
       if(/^\d{11,}$/.test(String(raw))) return Number(raw);
@@ -2314,6 +2369,8 @@
       return acc;
     }, {});
     const transfusions = readJson(STORAGE.transfusion, []).filter(row => row.statut === 'transfuse').filter(afterStatsReset);
+    const consultationsDone = consultRdvList().filter(row => norm(val(row.statut, row.status)).includes('consulte') || row.consultedAt).filter(afterStatsReset);
+    const consultantsNew = consultationsDone.filter(row => row.typePatient !== 'ancien').length;
     const hemaRows = Object.entries(hemaByMed).sort((a,b) => b[1].quantite - a[1].quantite).map(([name, data]) => `
       <tr><td>${esc(name)}</td><td>${data.sorties}</td><td>${data.quantite}</td></tr>
     `).join('');
@@ -2373,8 +2430,10 @@
           <div class="stats-box"><h3>Flacons utilises</h3><p>${totalFlacons}</p></div>
           <div class="stats-box"><h3>Sorties hematologie</h3><p>${hemaSorties.length}</p></div>
           <div class="stats-box"><h3>Transfusions</h3><p>${transfusions.length}</p></div>
+          <div class="stats-box"><h3>Consultants</h3><p>${consultantsNew}</p><small>Nouveaux patients vus</small></div>
+          <div class="stats-box"><h3>Consultations</h3><p>${consultationsDone.length}</p><small>Ensemble des patients vus</small></div>
         </div>
-        <div class="stats-final-note">Patients: registre patients. Preparations: nombre de medicaments prepares/valides. Seances: RDV traites, sinon sorties de stock. Protocoles sauvegardes: historique des protocoles sauvegardes.${statsResetAt ? ` Depart activite: ${esc(new Date(statsResetAt).toLocaleString('fr-FR'))}.` : ''}${medicationResetAt ? ` Depart medicaments: ${esc(new Date(medicationResetAt).toLocaleString('fr-FR'))}.` : ''}</div>
+        <div class="stats-final-note">Patients: registre patients. Preparations: nombre de medicaments prepares/valides. Seances: RDV traites, sinon sorties de stock. Protocoles sauvegardes: historique des protocoles sauvegardes. Consultants: nouveaux patients marques consultes. Consultations: tous les RDV consultations marques consultes.${statsResetAt ? ` Depart activite: ${esc(new Date(statsResetAt).toLocaleString('fr-FR'))}.` : ''}${medicationResetAt ? ` Depart medicaments: ${esc(new Date(medicationResetAt).toLocaleString('fr-FR'))}.` : ''}</div>
         <div class="card stats-section-card"><div class="card-header"><h2>Graphique medicaments</h2>${isAdminUser() ? '<button class="btn-secondary official-github-mini" onclick="resetMedicationStats()">Remettre a zero</button>' : ''}</div><div class="card-body">${chartRows || '<div class="dash-empty">Aucune donnee medicament.</div>'}</div></div>
         <div class="card stats-section-card"><div class="card-header"><h2>Medicaments utilises</h2>${isAdminUser() ? '<button class="btn-secondary official-github-mini" onclick="resetMedicationStats()">Remettre a zero</button>' : ''}</div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Preparations</th><th>Seances</th><th>Dose totale utilisee</th><th>Dose totale jetee</th><th>Reliquat flacons</th><th>Flacons utilises</th></tr></thead><tbody>${medRows || '<tr><td colspan="7" class="dash-empty">Aucune sortie de stock validee.</td></tr>'}</tbody></table></div></div>
         <div class="card stats-section-card"><div class="card-header"><h2>Hematologie - sorties medicaments</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Medicament</th><th>Nombre de sorties</th><th>Quantite totale</th></tr></thead><tbody>${hemaRows || '<tr><td colspan="3" class="dash-empty">Aucune sortie hematologie.</td></tr>'}</tbody></table></div></div>
@@ -2841,7 +2900,7 @@
         <td>${esc(val(r.medecin, '-'))}</td>
         <td><span class="dash-status ${normStatus(val(r.status, r.statut)).includes('traite') ? 'ok' : ''}">${esc(val(r.status, r.statut, 'planifie'))}</span></td>
       </tr>`).join('');
-    const consultToday = consultRdvList().filter(row => row.dateRdv === todayIso());
+    const consultToday = consultRdvList().filter(row => row.dateRdv === todayIso() && !(norm(val(row.statut, row.status)).includes('consulte') || row.consultedAt));
     const consultByDoctor = Object.entries(consultToday.reduce((acc, row) => {
       const med = val(row.medecin, 'Medecin non renseigne');
       acc[med] = acc[med] || [];
