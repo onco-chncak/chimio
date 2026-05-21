@@ -27,6 +27,12 @@ let USERS = {
     name: 'Pharmacien',
     allowedTabs: ['dashboard', 'pharmacie', 'stats', 'preparation', 'rdv']
   },
+  infirmier: {
+    password: 'inf123',
+    role: 'infirmier',
+    name: 'Infirmier',
+    allowedTabs: ['dashboard', 'transfusion', 'rdv', 'apercu', 'support', 'suivi', 'stats', 'programme', 'patients']
+  },
   admin: {
     password: 'admin123',
     role: 'admin',
@@ -40,6 +46,7 @@ let currentUser = null;
 function allowedTabsForRole(role) {
   if (role === 'admin') return USERS.admin.allowedTabs;
   if (role === 'pharmacien') return USERS.pharmacien.allowedTabs;
+  if (role === 'infirmier') return USERS.infirmier.allowedTabs;
   return USERS.medecin.allowedTabs;
 }
 
@@ -191,8 +198,55 @@ function applyUserPermissions() {
 
 
 // Appliquer mode lecture seule pour pharmacien
+function isAllowedReadonlyAction(btn) {
+  const text = (btn.textContent || '').toLowerCase();
+  const onclick = (btn.getAttribute('onclick') || '').toLowerCase();
+  return onclick.includes('print') ||
+         onclick.includes('imprimer') ||
+         onclick.includes('marktransfused') ||
+         onclick.includes('validatestockfromrdv') ||
+         text.includes('imprimer') ||
+         text.includes('apercu') ||
+         text.includes('aperçu') ||
+         text.includes('bon de sang') ||
+         text.includes('transfuse') ||
+         text.includes('traiter');
+}
+
+function lockElementForReadonly(el) {
+  el.disabled = true;
+  el.style.opacity = '0.55';
+  el.style.cursor = 'not-allowed';
+  el.title = 'Acces en lecture seule';
+}
+
 function applyReadOnlyMode() {
-  if (!currentUser || currentUser.role !== 'pharmacien') return;
+  if (!currentUser || !['pharmacien', 'infirmier'].includes(currentUser.role)) return;
+
+  if (currentUser.role === 'infirmier') {
+    document.body.classList.add('infirmier-session');
+    document.querySelectorAll('.page').forEach(page => {
+      if (!page) return;
+      page.querySelectorAll('button').forEach(btn => {
+        const onclick = btn.getAttribute('onclick') || '';
+        if (onclick.includes('showPage')) return;
+        if (!isAllowedReadonlyAction(btn)) lockElementForReadonly(btn);
+      });
+      page.querySelectorAll('label').forEach(label => {
+        const text = (label.textContent || '').toLowerCase();
+        if (text.includes('importer') || text.includes('restaurer') || text.includes('export')) {
+          label.style.display = 'none';
+        }
+      });
+      page.querySelectorAll('input, select, textarea').forEach(input => {
+        const type = (input.getAttribute('type') || '').toLowerCase();
+        const haystack = `${input.id || ''} ${input.placeholder || ''} ${input.className || ''}`.toLowerCase();
+        if (type === 'search' || /search|recherch|filter|filtre/.test(haystack)) return;
+        lockElementForReadonly(input);
+      });
+    });
+    return;
+  }
   
   // Désactiver tous les boutons dans Stats et Programme SAUF impression
   const statsPage = document.getElementById('page-stats');

@@ -3,7 +3,8 @@
    Charge en dernier pour stabiliser les vues critiques.
 ============================================================ */
 (function(){
-  const CODE_ADMIN = '2026';
+  const DEFAULT_CODE_ADMIN = '2026';
+  const ADMIN_CODE_KEY = 'chncak_admin_code';
   const VALIDATION_EMAIL = 'onco.chn.cak@gmail.com';
   const STAT_MED_RESET_KEY = 'chncak_stats_medicaments_reset_after';
   const STAT_BLOCK_RESET_KEY = 'chncak_stats_blocs_reset_after';
@@ -20,6 +21,10 @@
     transfusion: 'chncak_transfusion',
     audit: 'chncak_audit_log'
   };
+
+  function getAdminCode(){
+    return localStorage.getItem(ADMIN_CODE_KEY) || DEFAULT_CODE_ADMIN;
+  }
 
   const readJson = (key, fallback) => {
     try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
@@ -462,7 +467,7 @@
     const cancelBtn = document.getElementById('secure-code-cancel');
     const error = document.getElementById('secure-code-error');
     const submit = () => {
-      if(input.value !== CODE_ADMIN){
+      if(input.value !== getAdminCode()){
         error.textContent = 'Code incorrect. Action annulee.';
         input.value = '';
         input.focus();
@@ -518,6 +523,11 @@
   function isPharmacienUser(){
     const user = currentUser();
     return norm(user.role) === 'pharmacien' || norm(user.username) === 'pharmacien';
+  }
+
+  function isInfirmierUser(){
+    const user = currentUser();
+    return norm(user.role) === 'infirmier' || norm(user.username) === 'infirmier';
   }
 
   function requireAdminAction(actionLabel, onOk){
@@ -1450,7 +1460,7 @@
   }
 
   window.updateTransfusionField = function(id, field, value){
-    const allowed = ['dateTransfusion', 'groupe', 'rhesus', 'culots', 'indication'];
+    const allowed = ['dateTransfusion', 'groupe', 'rhesus', 'culots', 'indication', 'gb', 'plaquettes', 'produit', 'urgence', 'sexe', 'age', 'diagnostic', 'antecedentTransfusion', 'incidentTransfusion', 'incidentPrecision', 'lit'];
     if(!allowed.includes(field)) return;
     const records = transfusionRecords();
     const row = records.find(item => item.id === id);
@@ -1472,28 +1482,50 @@
     const logo = document.querySelector('.nav-logo img')?.src || '';
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Bon de sang</title>
       <style>
-        @page{size:A4 portrait;margin:10mm}
-        body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:12px}
-        .head{display:grid;grid-template-columns:56px 1fr 150px;gap:10px;align-items:center;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:12px}
-        .head img{width:52px;height:52px;object-fit:contain}.ministry{text-align:center;line-height:1.25;font-size:11px}.right{text-align:right;font-size:11px;line-height:1.35}
-        h1{text-align:center;font-size:18px;margin:12px 0 14px;text-transform:uppercase;letter-spacing:.06em}
-        .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px}.box{border:1px solid #111;padding:7px;min-height:24px}.wide{grid-column:1/-1}
-        .label{font-size:10px;text-transform:uppercase;color:#555;margin-bottom:3px}.value{font-size:13px;font-weight:700}.sign{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:28px}.sign div{border-top:1px solid #111;padding-top:6px;text-align:center}
+        @page{size:A4 portrait;margin:9mm}
+        *{box-sizing:border-box}
+        body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:11px}
+        .top{display:grid;grid-template-columns:58px 1fr 155px;gap:8px;align-items:start;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:8px}
+        .top img{width:52px;height:52px;object-fit:contain}.ministry{text-align:center;line-height:1.12;font-size:9px}.right{text-align:right;font-size:9px;line-height:1.25}
+        h1{text-align:center;font-size:17px;margin:8px 0 10px;text-transform:uppercase;letter-spacing:.03em;border:1px solid #111;padding:6px}
+        .section-title{background:#e9eef5;border:1px solid #111;border-bottom:none;padding:4px 6px;font-weight:800;text-transform:uppercase}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #111;border-left:1px solid #111;margin-bottom:8px}
+        .cell{border-right:1px solid #111;border-bottom:1px solid #111;padding:5px;min-height:29px}
+        .wide{grid-column:1/-1}.thirds{display:grid;grid-template-columns:1fr 1fr 1fr}.label{font-size:9px;color:#444;text-transform:uppercase;margin-bottom:2px}.value{font-size:12px;font-weight:700}
+        table{width:100%;border-collapse:collapse;margin-bottom:8px}th,td{border:1px solid #111;padding:5px;text-align:left}th{background:#eef4fd}
+        .check{display:inline-block;border:1px solid #111;width:12px;height:12px;margin:0 4px -2px 10px}.sign{display:grid;grid-template-columns:1fr 1fr;gap:12px}.sign>div{border:1px solid #111;min-height:54px;padding:6px}
+        .nb{font-size:9px;line-height:1.25;border:1px solid #111;padding:6px;margin-top:8px}
       </style></head><body>
-      <div class="head"><img src="${logo}"><div class="ministry">Republique du Senegal - Un peuple, un but, une foi<br>Ministere de la Sante et de l'Action Sociale<br><b>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba</b><br>Service d'Oncologie-Radiotherapie</div><div class="right">Date: <b>${new Date().toLocaleDateString('fr-FR')}</b><br>Dossier: <b>${esc(row.dossier || '-')}</b><br>Code: <b>${esc(row.code || '-')}</b></div></div>
-      <h1>Bon de demande de sang</h1>
+      <div class="top"><img src="${logo}"><div class="ministry">Republique du Senegal - Un peuple, un but, une foi<br>Ministere de la Sante et de l'Action Sociale<br><b>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba</b><br>Service d'Oncologie-Radiotherapie - Secteur chimiotherapie</div><div class="right">Date demande: <b>${new Date().toLocaleDateString('fr-FR')}</b><br>Dossier: <b>${esc(row.dossier || '-')}</b><br>Code: <b>${esc(row.code || '-')}</b></div></div>
+      <h1>Demande de produits sanguins labiles</h1>
+      <div class="section-title">Etablissement de soin</div>
       <div class="grid">
-        <div class="box"><div class="label">Patient</div><div class="value">${esc(row.patient || '-')}</div></div>
-        <div class="box"><div class="label">ID CUBIX</div><div class="value">${esc(row.cubix || '-')}</div></div>
-        <div class="box"><div class="label">Hemoglobine</div><div class="value">${esc(row.hb || '-')} g/dL</div></div>
-        <div class="box"><div class="label">Date resultat biologie</div><div class="value">${esc(row.resultDate || '-')}</div></div>
-        <div class="box"><div class="label">Groupe sanguin</div><div class="value">${esc(row.groupe || '-')} ${esc(row.rhesus || '')}</div></div>
-        <div class="box"><div class="label">Nombre de culots demandes</div><div class="value">${esc(row.culots || '1')}</div></div>
-        <div class="box"><div class="label">Date transfusion prevue</div><div class="value">${esc(row.dateTransfusion || '-')}</div></div>
-        <div class="box"><div class="label">Protocole</div><div class="value">${esc(row.protocole || '-')}</div></div>
-        <div class="box wide"><div class="label">Indication</div><div class="value">${esc(row.indication || `Hb ${row.hb || '-'} g/dL`)}</div></div>
+        <div class="cell"><div class="label">Etablissement</div><div class="value">CHNCAK Touba</div></div>
+        <div class="cell"><div class="label">Service / secteur / salle</div><div class="value">Oncologie-Radiotherapie / Chimiotherapie / Chimio</div></div>
+        <div class="cell"><div class="label">Lit</div><div class="value">${esc(row.lit || '-')}</div></div>
+        <div class="cell"><div class="label">Date transfusion programmee</div><div class="value">${esc(row.dateTransfusion || '-')}</div></div>
       </div>
-      <div class="sign"><div>Medecin prescripteur</div><div>Banque de sang</div></div>
+      <div class="section-title">Patient</div>
+      <div class="grid">
+        <div class="cell"><div class="label">Prenom et nom</div><div class="value">${esc(row.patient || '-')}</div></div>
+        <div class="cell"><div class="label">Sexe / age</div><div class="value">${esc(row.sexe || '-')} / ${esc(row.age || '-')}</div></div>
+        <div class="cell"><div class="label">Numero dossier</div><div class="value">${esc(row.dossier || '-')}</div></div>
+        <div class="cell"><div class="label">ID Cubix</div><div class="value">${esc(row.cubix || '-')}</div></div>
+        <div class="cell wide"><div class="label">Diagnostic</div><div class="value">${esc(row.diagnostic || row.protocole || '-')}</div></div>
+        <div class="cell wide"><div class="label">Indication de la transfusion</div><div class="value">${esc(row.indication || `Hb ${row.hb || '-'} g/dL`)}</div></div>
+      </div>
+      <div class="section-title">Resultats derniere NFS et urgence</div>
+      <div class="grid">
+        <div class="cell"><div class="label">GB</div><div class="value">${esc(row.gb || '-')}</div></div>
+        <div class="cell"><div class="label">Hemoglobine</div><div class="value">${esc(row.hb || '-')} g/dL</div></div>
+        <div class="cell"><div class="label">Plaquettes</div><div class="value">${esc(row.plaquettes || '-')}</div></div>
+        <div class="cell"><div class="label">Date resultat</div><div class="value">${esc(row.resultDate || '-')}</div></div>
+        <div class="cell wide"><div class="label">Degre d'urgence</div><div class="value">${esc(row.urgence || 'Programmee')}</div></div>
+      </div>
+      <table><thead><tr><th>Groupe sanguin</th><th>Produit sanguin demande</th><th>Nombre d'unites</th></tr></thead><tbody><tr><td><b>${esc(row.groupe || '-')} ${esc(row.rhesus || '')}</b></td><td>${esc(row.produit || 'Concentres de globules rouges')}</td><td>${esc(row.culots || '1')}</td></tr></tbody></table>
+      <table><thead><tr><th>Transfusions anterieures</th><th>Incidents transfusionnels</th><th>Precision</th></tr></thead><tbody><tr><td>${esc(row.antecedentTransfusion || 'Non renseigne')}</td><td>${esc(row.incidentTransfusion || 'Non renseigne')}</td><td>${esc(row.incidentPrecision || '-')}</td></tr></tbody></table>
+      <div class="sign"><div><b>Nom, signature et cachet du prescripteur</b><br><br>Date de la demande :</div><div><b>Distribution produits sanguins</b><br>Date/heure :<br>N poches :<br>Agent distributeur :</div></div>
+      <div class="nb"><b>NB :</b> Produits a utiliser immediatement apres reception ou a retourner obligatoirement a la banque de sang. Tout accident transfusionnel doit etre signale au coordinateur du comite hospitalier de securite transfusionnelle.</div>
       </body></html>`;
     printHtml(html, '210mm', '297mm');
   };
@@ -1534,6 +1566,7 @@
         <td><input type="date" value="${esc(row.dateTransfusion || '')}" onchange="updateTransfusionField('${esc(row.id)}','dateTransfusion',this.value)"></td>
         <td><select onchange="updateTransfusionField('${esc(row.id)}','groupe',this.value)"><option></option>${['A','B','AB','O'].map(g => `<option${row.groupe === g ? ' selected' : ''}>${g}</option>`).join('')}</select></td>
         <td><select onchange="updateTransfusionField('${esc(row.id)}','rhesus',this.value)"><option></option><option${row.rhesus === '+' ? ' selected' : ''}>+</option><option${row.rhesus === '-' ? ' selected' : ''}>-</option></select></td>
+        <td><select onchange="updateTransfusionField('${esc(row.id)}','produit',this.value)">${['Concentres de globules rouges','Sang total','Plasma frais congele','Concentre de plaquettes standard'].map(p => `<option${(row.produit || 'Concentres de globules rouges') === p ? ' selected' : ''}>${p}</option>`).join('')}</select></td>
         <td><input type="number" min="1" value="${esc(row.culots || '1')}" onchange="updateTransfusionField('${esc(row.id)}','culots',this.value)"></td>
         <td><input value="${esc(row.indication || '')}" onchange="updateTransfusionField('${esc(row.id)}','indication',this.value)"></td>
         <td class="transfusion-actions"><button class="btn-sm" onclick="printBonSang('${esc(row.id)}')">Bon de sang</button><button class="btn-sm primary" ${canTransfuse ? '' : 'disabled'} onclick="markTransfused('${esc(row.id)}')">Transfuse</button></td>
@@ -1543,10 +1576,10 @@
     host.innerHTML = `
       <div class="clinical-shell transfusion-shell">
         <div class="card">
-          <div class="card-header"><div class="card-num" style="background:#8B1A1A">T</div><h2>Transfusion sanguine</h2><button class="btn-secondary official-github-mini" onclick="addManualTransfusionPatient()">Ajouter patient</button></div>
+          <div class="card-header"><div class="card-num" style="background:#8B1A1A">T</div><h2>Transfusion sanguine</h2>${isInfirmierUser() ? '' : '<button class="btn-secondary official-github-mini" onclick="addManualTransfusionPatient()">Ajouter patient</button>'}</div>
           <div class="card-body">
-            <div class="stats-final-note">Les patients apparaissent automatiquement ici quand la biologie enregistree contient Hb &lt; 9 g/dL. Le bon officiel pourra etre ajuste quand vous m'enverrez le modele.</div>
-            <div class="dash-table-wrap"><table class="dash-table transfusion-table"><thead><tr><th>Patient</th><th>Hb</th><th>Protocole</th><th>Date transfusion</th><th>Groupe</th><th>Rh</th><th>Culots</th><th>Indication</th><th>Actions</th></tr></thead><tbody>${active.map(rowHtml).join('') || '<tr><td colspan="9" class="dash-empty">Aucun patient avec Hb inferieure a 9 g/dL.</td></tr>'}</tbody></table></div>
+            <div class="stats-final-note">Les patients apparaissent automatiquement ici quand la biologie enregistree contient Hb &lt; 9 g/dL. L'ajout manuel ouvre un formulaire complet inspire du bon de demande de produits sanguins labiles.</div>
+            <div class="dash-table-wrap"><table class="dash-table transfusion-table"><thead><tr><th>Patient</th><th>Hb</th><th>Protocole</th><th>Date transfusion</th><th>Groupe</th><th>Rh</th><th>Produit</th><th>Unites</th><th>Indication</th><th>Actions</th></tr></thead><tbody>${active.map(rowHtml).join('') || '<tr><td colspan="10" class="dash-empty">Aucun patient avec Hb inferieure a 9 g/dL.</td></tr>'}</tbody></table></div>
           </div>
         </div>
         <div class="card">
@@ -1557,36 +1590,132 @@
   };
 
   window.addManualTransfusionPatient = function(){
+    openTransfusionPatientModal();
+  };
+
+  function openTransfusionPatientModal(){
     const patients = readJson(STORAGE.patients, []);
-    const q = prompt('Entrer le numero dossier, code gratuite ou nom du patient a ajouter :', '');
-    if(q === null) return;
-    const found = patients.find(p => norm(val(p.dossier, p.numeroDossier, p.codegratuite, p.codeGratuite, patientName(p))).includes(norm(q)) || norm(patientName(p)).includes(norm(q)));
-    const name = found ? patientName(found) : q.trim();
-    if(!name) return alert('Patient non renseigne.');
-    const hb = prompt('Hemoglobine (g/dL) :', '8') || '';
-    const group = val(found?.groupeSanguin, found?.groupe, prompt('Groupe sanguin (A+, A-, B+, B-, AB+, AB-, O+, O-) :', '') || '');
+    document.getElementById('transfusion-patient-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'transfusion-patient-modal';
+    modal.className = 'secure-code-modal transfusion-modal';
+    const rows = patients.slice(0, 80).map((p, index) => `
+      <tr onclick="selectTransfusionPatient(${index})">
+        <td><b>${esc(patientName(p) || '-')}</b><div class="dash-muted">${esc(val(p.dossier, p.numeroDossier, '-'))}</div></td>
+        <td>${esc(patientCode(p) || '-')}</td>
+        <td>${esc(val(p.cubix, p.idCubix, '-'))}</td>
+        <td>${esc(protocolNameFor(p) || '-')}</td>
+        <td>${esc(val(p.groupeSanguin, p.groupe, '-'))}</td>
+      </tr>`).join('');
+    modal.innerHTML = `
+      <div class="secure-code-backdrop" onclick="closeTransfusionPatientModal()"></div>
+      <div class="secure-code-card transfusion-card">
+        <h3>Ajouter patient transfusion</h3>
+        <p>Selectionner un patient existant ou renseigner directement les champs du bon de sang.</p>
+        <input id="transfusion-patient-search" class="transfusion-search" placeholder="Rechercher nom, dossier, code gratuite..." oninput="filterTransfusionPatientRows()">
+        <div class="dash-table-wrap transfusion-patient-list">
+          <table class="dash-table"><thead><tr><th>Patient</th><th>Code</th><th>ID Cubix</th><th>Protocole</th><th>Groupe</th></tr></thead><tbody id="transfusion-patient-rows">${rows || '<tr><td colspan="5" class="dash-empty">Aucun patient enregistre.</td></tr>'}</tbody></table>
+        </div>
+        <div class="transfusion-form-grid">
+          <label>Patient<input id="trf-patient" placeholder="ex: Awa NDIAYE"></label>
+          <label>Dossier<input id="trf-dossier" placeholder="ex: D-2026-001"></label>
+          <label>ID Cubix<input id="trf-cubix" placeholder="ex: CUB-0001"></label>
+          <label>Code gratuite<input id="trf-code" placeholder="ex: GR-0001"></label>
+          <label>Sexe<select id="trf-sexe"><option></option><option>F</option><option>M</option></select></label>
+          <label>Age<input id="trf-age" placeholder="ex: 45 ans"></label>
+          <label>Groupe<select id="trf-groupe"><option></option><option>A</option><option>B</option><option>AB</option><option>O</option></select></label>
+          <label>Rh<select id="trf-rhesus"><option></option><option>+</option><option>-</option></select></label>
+          <label>Hb<input id="trf-hb" placeholder="ex: 8.2"></label>
+          <label>GB<input id="trf-gb" placeholder="ex: 4500"></label>
+          <label>Plaquettes<input id="trf-plaquettes" placeholder="ex: 180000"></label>
+          <label>Date resultat<input id="trf-result-date" type="date" value="${todayIso()}"></label>
+          <label>Urgence<select id="trf-urgence"><option>Programmee</option><option>Urgent &lt; 1h</option><option>Urgent 2 a 8h</option></select></label>
+          <label>Date transfusion<input id="trf-date" type="date"></label>
+          <label>Produit<select id="trf-produit"><option>Concentres de globules rouges</option><option>Sang total</option><option>Plasma frais congele</option><option>Concentre de plaquettes standard</option></select></label>
+          <label>Nombre unites<input id="trf-culots" type="number" min="1" value="1"></label>
+          <label class="signup-wide">Diagnostic<input id="trf-diagnostic" placeholder="ex: Cancer du sein sous chimiotherapie"></label>
+          <label class="signup-wide">Indication<input id="trf-indication" placeholder="ex: Anemie symptomatique Hb 8 g/dL"></label>
+          <label>Transfusion anterieure<select id="trf-antecedent"><option>Non renseigne</option><option>Oui</option><option>Non</option></select></label>
+          <label>Incident transfusionnel<select id="trf-incident"><option>Non renseigne</option><option>Oui</option><option>Non</option></select></label>
+          <label class="signup-wide">Precision incident<input id="trf-incident-precision" placeholder="ex: frissons, fievre..."></label>
+          <label>Lit<input id="trf-lit" placeholder="ex: Lit 3"></label>
+        </div>
+        <div class="secure-code-actions"><button onclick="closeTransfusionPatientModal()">Annuler</button><button onclick="saveTransfusionPatientFromModal()">Ajouter</button></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal._patients = patients;
+  }
+
+  window.closeTransfusionPatientModal = function(){
+    document.getElementById('transfusion-patient-modal')?.remove();
+  };
+
+  window.filterTransfusionPatientRows = function(){
+    const modal = document.getElementById('transfusion-patient-modal');
+    const q = norm(document.getElementById('transfusion-patient-search')?.value || '');
+    const rows = Array.from(modal?.querySelectorAll('#transfusion-patient-rows tr') || []);
+    rows.forEach(row => { row.style.display = !q || norm(row.textContent).includes(q) ? '' : 'none'; });
+  };
+
+  window.selectTransfusionPatient = function(index){
+    const patients = document.getElementById('transfusion-patient-modal')?._patients || [];
+    const p = patients[index];
+    if(!p) return;
+    const group = String(val(p.groupeSanguin, p.groupe, ''));
+    const set = (id, value) => { const el = document.getElementById(id); if(el) el.value = value || ''; };
+    set('trf-patient', patientName(p));
+    set('trf-dossier', val(p.dossier, p.numeroDossier));
+    set('trf-cubix', val(p.cubix, p.idCubix));
+    set('trf-code', patientCode(p));
+    set('trf-sexe', val(p.sexe));
+    set('trf-age', val(p.age));
+    set('trf-groupe', group.replace(/[+-]/g, ''));
+    set('trf-rhesus', group.includes('-') ? '-' : (group.includes('+') ? '+' : ''));
+    set('trf-diagnostic', val(p.diagnostic, p.localisation, p.localisations));
+    set('trf-indication', 'Anemie sous traitement');
+  };
+
+  window.saveTransfusionPatientFromModal = function(){
+    const get = id => document.getElementById(id)?.value?.trim() || '';
+    const name = get('trf-patient');
+    if(!name){
+      alert('Patient obligatoire.');
+      return;
+    }
     const records = transfusionRecords();
     records.unshift({
       id: `TRF-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       key: `manual|${Date.now()}`,
       patient: name,
-      dossier: val(found?.dossier, found?.numeroDossier),
-      code: patientCode(found || {}),
-      cubix: val(found?.cubix, found?.idCubix),
-      protocole: protocolNameFor(found || {}),
-      hb,
-      resultDate: todayIso(),
-      dateTransfusion: '',
-      groupe: String(group).replace(/[+-]/g, ''),
-      rhesus: String(group).includes('-') ? '-' : (String(group).includes('+') ? '+' : ''),
-      culots: '1',
-      indication: hb ? `Hb ${hb} g/dL` : 'Transfusion a programmer',
+      dossier: get('trf-dossier'),
+      code: get('trf-code'),
+      cubix: get('trf-cubix'),
+      protocole: '',
+      sexe: get('trf-sexe'),
+      age: get('trf-age'),
+      hb: get('trf-hb'),
+      gb: get('trf-gb'),
+      plaquettes: get('trf-plaquettes'),
+      resultDate: get('trf-result-date') || todayIso(),
+      dateTransfusion: get('trf-date'),
+      groupe: get('trf-groupe'),
+      rhesus: get('trf-rhesus'),
+      culots: get('trf-culots') || '1',
+      produit: get('trf-produit') || 'Concentres de globules rouges',
+      urgence: get('trf-urgence') || 'Programmee',
+      diagnostic: get('trf-diagnostic'),
+      indication: get('trf-indication') || (get('trf-hb') ? `Hb ${get('trf-hb')} g/dL` : 'Transfusion a programmer'),
+      antecedentTransfusion: get('trf-antecedent'),
+      incidentTransfusion: get('trf-incident'),
+      incidentPrecision: get('trf-incident-precision'),
+      lit: get('trf-lit'),
       statut: 'a_programmer',
       source: 'ajout manuel',
       createdAt: new Date().toISOString()
     });
     writeJson(STORAGE.transfusion, records);
-    logAudit('Ajout manuel transfusion', name, `Hb ${hb || '-'}, groupe ${group || '-'}`);
+    logAudit('Ajout manuel transfusion', name, `Hb ${get('trf-hb') || '-'}, groupe ${get('trf-groupe') || '-'}${get('trf-rhesus') || ''}`);
+    closeTransfusionPatientModal();
     window.renderTransfusion?.();
   };
 
@@ -1634,6 +1763,7 @@
   function signupAllowedTabs(role){
     if(role === 'admin') return ['dashboard','protocole','okchimio','medecins','stats','pharmacie','apercu','preparation','support','suivi','biologie','hematologie','transfusion','maintenance','programme','patients','rdv'];
     if(role === 'pharmacien') return ['dashboard','pharmacie','stats','preparation','rdv'];
+    if(role === 'infirmier') return ['dashboard','transfusion','rdv','apercu','support','suivi','stats','programme','patients'];
     return ['dashboard','protocole','okchimio','medecins','apercu','preparation','support','suivi','biologie','hematologie','transfusion','stats','programme','patients','rdv'];
   }
 
@@ -1654,6 +1784,43 @@
     try { window.refreshDynamicUsers?.(); } catch(e) {}
   }
 
+  window.changeAdminAccessCode = function(){
+    requireAdminAction('changer le code admin', () => {
+      const next = prompt('Nouveau code admin a 4 chiffres :', '');
+      if(next === null) return;
+      if(!/^\d{4}$/.test(next.trim())){
+        alert('Le code doit contenir exactement 4 chiffres.');
+        return;
+      }
+      const confirmNext = prompt('Confirmer le nouveau code admin :', '');
+      if(confirmNext === null) return;
+      if(confirmNext.trim() !== next.trim()){
+        alert('Les deux codes ne sont pas identiques.');
+        return;
+      }
+      localStorage.setItem(ADMIN_CODE_KEY, next.trim());
+      logAudit('Code admin modifie', 'Maintenance', 'Nouveau code admin enregistre localement.');
+      renderRegistrationsPanel();
+      showToastSafe('Code admin modifie.', 'success');
+    });
+  };
+
+  window.deleteApprovedUser = function(username){
+    requireAdminAction('supprimer ce compte utilisateur', () => {
+      const approved = readApprovedUsers();
+      const user = approved.find(u => norm(u.username) === norm(username));
+      if(!user){
+        alert('Compte introuvable.');
+        return;
+      }
+      if(!confirm(`Supprimer le compte ${user.username} ? Cette action retire son acces local.`)) return;
+      writeApprovedUsers(approved.filter(u => norm(u.username) !== norm(username)));
+      logAudit('Compte utilisateur supprime', user.username, `${val(user.prenom)} ${val(user.nom)} - role ${val(user.role)}`);
+      renderRegistrationsPanel();
+      showToastSafe('Compte utilisateur supprime.', 'success');
+    });
+  };
+
   window.openSignupModal = function(){
     document.getElementById('signup-modal')?.remove();
     const modal = document.createElement('div');
@@ -1665,16 +1832,16 @@
         <h3>Inscription utilisateur</h3>
         <p>Renseigner les informations du collegue. Le code admin active le compte immediatement, sinon la demande reste en attente.</p>
         <div class="signup-grid">
-          <label>Nom<input id="signup-nom"></label>
-          <label>Prenom<input id="signup-prenom"></label>
-          <label>Contact<input id="signup-contact"></label>
-          <label>Adresse mail<input id="signup-email" type="email"></label>
-          <label>Specialite<input id="signup-specialite"></label>
-          <label>Type de compte<select id="signup-role"><option value="medecin">Medecin</option><option value="pharmacien">Pharmacien</option><option value="admin">Admin</option></select></label>
+          <label>Nom<input id="signup-nom" placeholder="ex: NDIAYE"></label>
+          <label>Prenom<input id="signup-prenom" placeholder="ex: Awa"></label>
+          <label>Contact<input id="signup-contact" placeholder="ex: 77 000 00 00"></label>
+          <label>Adresse mail<input id="signup-email" type="email" placeholder="ex: awa.ndiaye@chncak.sn"></label>
+          <label>Specialite<input id="signup-specialite" placeholder="ex: Soins infirmiers"></label>
+          <label>Type de compte<select id="signup-role"><option value="medecin">Medecin</option><option value="pharmacien">Pharmacien</option><option value="infirmier">Infirmier</option><option value="admin">Admin</option></select></label>
           <label>Nom utilisateur<input id="signup-username" placeholder="ex: dr.ndiaye"></label>
-          <label>Mot de passe<input id="signup-password" type="password"></label>
+          <label>Mot de passe<input id="signup-password" type="password" placeholder="ex: mot de passe personnel"></label>
           <label class="signup-wide">Autorisation admin<select id="signup-auth-mode"><option value="pending">Demande a valider par admin</option><option value="code">J'ai le code admin</option></select></label>
-          <label class="signup-wide" id="signup-code-row" style="display:none">Code admin<input id="signup-admin-code" type="password" inputmode="numeric" maxlength="4"></label>
+          <label class="signup-wide" id="signup-code-row" style="display:none">Code admin<input id="signup-admin-code" type="password" inputmode="numeric" maxlength="4" placeholder="****"></label>
         </div>
         <div class="secure-code-error" id="signup-error"></div>
         <div class="secure-code-actions"><button onclick="closeSignupModal()">Annuler</button><button onclick="submitSignupRequest()">Envoyer</button></div>
@@ -1716,7 +1883,7 @@
       status: 'pending',
       requestedAt: new Date().toISOString()
     };
-    const hasAdminCode = get('signup-auth-mode') === 'code' && get('signup-admin-code') === CODE_ADMIN;
+    const hasAdminCode = get('signup-auth-mode') === 'code' && get('signup-admin-code') === getAdminCode();
     if(get('signup-auth-mode') === 'code' && !hasAdminCode){
       if(error) error.textContent = 'Code admin incorrect. Choisissez demande a valider ou contactez admin.';
       return;
@@ -1778,15 +1945,20 @@
     const regs = readRegistrations();
     const approved = readApprovedUsers();
     const rows = regs.map(r => `<tr><td><b>${esc(r.prenom)} ${esc(r.nom)}</b><div class="dash-muted">${esc(r.username)}</div></td><td>${esc(r.contact || '-')}<div class="dash-muted">${esc(r.email || '')}</div></td><td>${esc(r.specialite || '-')}</td><td>${esc(r.role || '-')}</td><td>${esc(r.status || 'pending')}</td><td>${r.status === 'pending' ? `<button class="btn-secondary official-github-mini" onclick="approveRegistration('${esc(r.id)}')">Valider</button><button class="btn-secondary official-github-mini" onclick="rejectRegistration('${esc(r.id)}')">Refuser</button>` : '-'}</td></tr>`).join('');
-    const approvedRows = approved.map(u => `<tr><td><b>${esc(u.prenom)} ${esc(u.nom)}</b><div class="dash-muted">${esc(u.username)}</div></td><td>${esc(u.role || '-')}</td><td>${esc(u.contact || '-')}</td><td>${esc(u.email || '-')}</td></tr>`).join('');
+    const approvedRows = approved.map(u => `<tr><td><b>${esc(u.prenom)} ${esc(u.nom)}</b><div class="dash-muted">${esc(u.username)}</div></td><td>${esc(u.role || '-')}</td><td>${esc(u.contact || '-')}</td><td>${esc(u.email || '-')}</td><td><button class="btn-secondary official-github-mini" onclick="deleteApprovedUser('${esc(u.username)}')">Supprimer</button></td></tr>`).join('');
     host.innerHTML = `
       <div class="card">
         <div class="card-header"><h2>Inscriptions et comptes</h2></div>
         <div class="card-body dash-table-wrap">
+          <div class="maintenance-code-box">
+            <div><b>Code admin actuel</b><span>Utilise pour valider une inscription directement et pour les actions sensibles.</span></div>
+            <strong>${esc(getAdminCode().replace(/\d/g, '*'))}</strong>
+            <button class="btn-secondary official-github-mini" onclick="changeAdminAccessCode()">Changer le code</button>
+          </div>
           <h3 style="margin:0 0 8px;color:#17324d;font-size:14px">Demandes d'inscription</h3>
           <table class="dash-table"><thead><tr><th>Utilisateur</th><th>Contact</th><th>Specialite</th><th>Type</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="dash-empty">Aucune demande.</td></tr>'}</tbody></table>
           <h3 style="margin:18px 0 8px;color:#17324d;font-size:14px">Comptes approuves</h3>
-          <table class="dash-table"><thead><tr><th>Utilisateur</th><th>Role</th><th>Contact</th><th>Email</th></tr></thead><tbody>${approvedRows || '<tr><td colspan="4" class="dash-empty">Aucun compte ajoute.</td></tr>'}</tbody></table>
+          <table class="dash-table"><thead><tr><th>Utilisateur</th><th>Role</th><th>Contact</th><th>Email</th><th>Actions</th></tr></thead><tbody>${approvedRows || '<tr><td colspan="5" class="dash-empty">Aucun compte ajoute.</td></tr>'}</tbody></table>
         </div>
       </div>`;
   };
@@ -1941,6 +2113,11 @@
     const chartRows = Object.entries(meds).sort((a,b) => b[1].preparations - a[1].preparations).slice(0, 10).map(([name, d]) => `<div class="stats-bar-row"><span>${esc(name)}</span><div><i style="width:${Math.max(5, Math.round(d.preparations / maxPrep * 100))}%"></i></div><strong>${d.preparations}</strong></div>`).join('');
     const preparations = Object.values(meds).reduce((sum, item) => sum + Number(item.preparations || 0), 0);
     const seances = treatedRdv.length || sorties.length;
+    const concomitantes = treatedRdv.filter(r => norm(protocolNameFor(r)).includes('cddp')).length ||
+      sorties.filter(s => norm(val(s.protocole, s.proto, s.protocol, s.details)).includes('cddp')).length;
+    const indicationRows = Object.entries(countBy(dedupeByPatientTreatment(patients), p => val(p.indication, p.indicationTraitement, p.typeTraitement, 'Indication non renseignee')))
+      .sort((a,b) => b[1] - a[1])
+      .map(([name, count]) => `<tr><td>${esc(name)}</td><td>${count}</td></tr>`).join('');
     const totalDose = Object.values(meds).reduce((sum, item) => sum + Number(item.dose || 0), 0);
     const totalWaste = Object.values(meds).reduce((sum, item) => sum + Number(item.wasteMg || 0), 0);
     const totalFlacons = Object.values(meds).reduce((sum, item) => sum + Number(item.flacons || 0), 0);
@@ -1951,6 +2128,7 @@
           <div class="stats-box"><h3>Patients</h3><p>${patients.length}</p><small>${patientsTraites} traites | ${patientsEnCours} en cours | ${patientsTermines} termines</small></div>
           <div class="stats-box"><h3>Preparations</h3><p>${preparations}</p></div>
           <div class="stats-box"><h3>Seances chimio</h3><p>${seances}</p></div>
+          <div class="stats-box"><h3>Chimio concomitante</h3><p>${concomitantes}</p><small>CDDP traites</small></div>
           <div class="stats-box"><h3>Protocoles sauvegardes</h3><p>${hist.length}</p></div>
           <div class="stats-box"><h3>Medicaments distincts</h3><p>${Object.keys(meds).length}</p></div>
           <div class="stats-box"><h3>Dose totale utilisee</h3><p>${Math.round(totalDose).toLocaleString('fr-FR')}</p><small>mg</small></div>
@@ -1966,8 +2144,10 @@
         <div class="clinical-report-grid">
           <div class="card"><div class="card-header"><h2>Protocoles</h2></div><div class="card-body">${miniRows(countBy(patients, p => val(p.proto, p.protocole, p.protoName)))}</div></div>
           <div class="card"><div class="card-header"><h2>Diagnostics</h2></div><div class="card-body">${miniRows(countBy(patients, p => val(p.localisation, p.diagnostic)))}</div></div>
+          <div class="card"><div class="card-header"><h2>Indications</h2></div><div class="card-body">${miniRows(countBy(patients, p => val(p.indication, p.indicationTraitement, p.typeTraitement)))}</div></div>
           <div class="card"><div class="card-header"><h2>Medecins</h2></div><div class="card-body">${miniRows(countBy(patients, p => p.medecin))}</div></div>
         </div>
+        <div class="card stats-section-card"><div class="card-header"><h2>Nombre par indication</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Indication</th><th>Nombre</th></tr></thead><tbody>${indicationRows || '<tr><td colspan="2" class="dash-empty">Aucune indication renseignee.</td></tr>'}</tbody></table></div></div>
         <div class="card stats-section-card"><div class="card-header"><h2>Diagnostics par protocole</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Diagnostic</th><th>Protocole</th><th>Nombre</th></tr></thead><tbody>${diagnosticProtocolRows || '<tr><td colspan="3" class="dash-empty">Aucune donnee diagnostic/protocole.</td></tr>'}</tbody></table></div></div>
       </div>`;
   }
@@ -2424,9 +2604,7 @@
         <td>${esc(val(r.medecin, '-'))}</td>
         <td><span class="dash-status ${normStatus(val(r.status, r.statut)).includes('traite') ? 'ok' : ''}">${esc(val(r.status, r.statut, 'planifie'))}</span></td>
       </tr>`).join('');
-    const adminTools = isAdminUser() ? '<div id="official-github-admin-tools" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px 0"><button id="official-github-data-dashboard" class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button><button id="code-gratuite-start-dashboard" class="btn-secondary official-github-mini" onclick="setCodeGratuiteStart()" style="background:#fff7e6!important;color:#7A4B00!important;border-color:#F0C060!important">Depart Code Gratuite</button></div>' : '';
     el.innerHTML = `
-      ${adminTools}
       <div class="dashboard-shell dash-final">
         <div class="dash-final-hero">
           <div class="dash-final-title">
@@ -4555,6 +4733,7 @@
   function cleanupLoginAndButtons(){
     document.body.classList.toggle('admin-session', isAdminUser());
     document.body.classList.toggle('pharmacien-session', isPharmacienUser());
+    document.body.classList.toggle('infirmier-session', isInfirmierUser());
     const login = document.getElementById('login-screen');
     if(login){
       Array.from(login.querySelectorAll('div')).forEach(div => {
@@ -4592,10 +4771,9 @@
     if(medPage && isAdminUser() && !document.getElementById('official-github-data-btn')){
       medPage.querySelector('h2')?.insertAdjacentHTML('afterend', '<button id="official-github-data-btn" class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button>');
     }
-    const dashPage = document.getElementById('page-dashboard');
-    if(dashPage && isAdminUser() && !document.getElementById('official-github-data-dashboard')){
-      document.getElementById('dashboard-content')?.insertAdjacentHTML('afterbegin', '<div id="official-github-admin-tools" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px 0"><button id="official-github-data-dashboard" class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button><button id="code-gratuite-start-dashboard" class="btn-secondary official-github-mini" onclick="setCodeGratuiteStart()" style="background:#fff7e6!important;color:#7A4B00!important;border-color:#F0C060!important">Depart Code Gratuite</button></div>');
-    }
+    document.getElementById('official-github-admin-tools')?.remove();
+    document.getElementById('official-github-data-dashboard')?.remove();
+    document.getElementById('code-gratuite-start-dashboard')?.remove();
     const pharmaPage = document.getElementById('page-pharmacie');
     if(pharmaPage && isAdminUser() && !document.getElementById('official-github-data-pharma')){
       pharmaPage.querySelector('h2')?.insertAdjacentHTML('afterend', '<button id="official-github-data-pharma" class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button>');
@@ -4608,6 +4786,30 @@
         if(isPharmacienUser() && el.closest('#page-pharmacie')) return;
         const text = norm(el.textContent || '');
         if(text.includes('effacer historique') || text === 'effacer' || text.includes('restaurer') || text.includes('ajouter un protocole') || text.includes('importer un protocole')) el.style.display = 'none';
+      });
+    }
+    if(isInfirmierUser()){
+      document.querySelectorAll('button').forEach(btn => {
+        const text = norm(btn.textContent || '');
+        const onclick = norm(btn.getAttribute('onclick') || '');
+        const allowed = onclick.includes('print') || onclick.includes('imprimer') || onclick.includes('marktransfused') || onclick.includes('validatestockfromrdv') || text.includes('imprimer') || text.includes('apercu') || text.includes('bon de sang') || text.includes('transfuse') || text.includes('traiter');
+        if(!allowed){
+          btn.disabled = true;
+          btn.style.opacity = '0.5';
+          btn.style.cursor = 'not-allowed';
+          btn.title = 'Acces infirmier en lecture seule';
+        }
+      });
+      document.querySelectorAll('label').forEach(label => {
+        const text = norm(label.textContent || '');
+        if(text.includes('importer') || text.includes('restaurer') || text.includes('export')) label.style.display = 'none';
+      });
+      document.querySelectorAll('#page-transfusion input,#page-transfusion select,#page-transfusion textarea,#page-rdv input,#page-rdv select,#page-rdv textarea,#page-patients input,#page-patients select,#page-patients textarea,#page-programme input,#page-programme select,#page-programme textarea,#page-suivi input,#page-suivi select,#page-suivi textarea').forEach(input => {
+        const type = (input.getAttribute('type') || '').toLowerCase();
+        const haystack = norm(`${input.id || ''} ${input.placeholder || ''} ${input.className || ''}`);
+        if(type === 'search' || haystack.includes('search') || haystack.includes('recherch') || haystack.includes('filtre')) return;
+        input.disabled = true;
+        input.style.opacity = '0.7';
       });
     }
     const codeInput = document.getElementById('codegratuite');
@@ -4974,6 +5176,17 @@
       .secure-code-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
       .secure-code-actions button{border:1px solid #ccd8e6;border-radius:6px;padding:9px 14px;font-weight:700;cursor:pointer;background:#f8fbff;color:#17324d}
       .secure-code-actions button:last-child{background:#0B5E3C;color:#fff;border-color:#0B5E3C}
+      .maintenance-code-box{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;border:1px solid #c9d8eb;background:#f8fbff;border-radius:8px;padding:10px 12px;margin:0 0 14px}
+      .maintenance-code-box span{display:block;color:#607080;font-size:11px;margin-top:3px}.maintenance-code-box strong{letter-spacing:4px;color:#17324d}
+      .transfusion-card{width:min(1120px,calc(100vw - 28px));max-height:92vh;overflow:auto}
+      .transfusion-search{width:100%!important;text-align:left!important;letter-spacing:0!important;font-size:13px!important;margin-bottom:10px}
+      .transfusion-patient-list{max-height:190px;overflow:auto;border:1px solid #dbe5f2;border-radius:8px;margin-bottom:12px}
+      .transfusion-patient-list tr{cursor:pointer}
+      .transfusion-form-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:10px}
+      .transfusion-form-grid label{font-size:11px;color:#44556b;font-weight:800}
+      .transfusion-form-grid input,.transfusion-form-grid select{width:100%;box-sizing:border-box;border:1px solid #b8c7d9;border-radius:7px;padding:8px 9px;font-size:12px;margin-top:4px;letter-spacing:0;text-align:left}
+      .transfusion-form-grid .signup-wide{grid-column:span 2}
+      body.infirmier-session .maintenance-shell,body.infirmier-session #page-maintenance,body.infirmier-session .official-github-mini[onclick*="exportOfficialGitHubData"],body.infirmier-session button[onclick*="setCodeGratuiteStart"]{display:none!important}
       .tab-btn,.btn-primary,.btn-secondary,.btn-med-add,.prog-day-btn,#patients-add-final,#programme-template-btn{border:1.6px solid #12395b!important;box-shadow:0 2px 0 rgba(8,31,55,.22),0 8px 16px rgba(8,31,55,.08);transition:transform .18s ease,box-shadow .18s ease,filter .18s ease}
       .tab-btn:hover,.btn-primary:hover,.btn-secondary:hover,.btn-med-add:hover,.prog-day-btn:hover,#patients-add-final:hover,#programme-template-btn:hover{transform:translateY(-1px);box-shadow:0 3px 0 rgba(8,31,55,.28),0 12px 22px rgba(8,31,55,.13);filter:saturate(1.08)}
       .dashboard-shell.dash-final{animation:dashFadeIn .35s ease both}
@@ -5014,7 +5227,7 @@
       .suivi-import-label{cursor:pointer}
       .login-clock-card{position:absolute;top:24px;right:24px;min-width:230px;background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.38);border-radius:10px;padding:16px 18px;box-shadow:0 16px 38px rgba(0,0,0,.18);backdrop-filter:blur(8px);text-align:left}
       .login-clock-card strong{font-size:38px}
-      @media (max-width:900px){.dash-final-hero,.dash-final-main,.proto-editor-grid{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}.proto-drug-line{grid-template-columns:1fr 1fr}.proto-remove{grid-column:1/-1}}
+      @media (max-width:900px){.dash-final-hero,.dash-final-main,.proto-editor-grid{grid-template-columns:1fr}.dash-final-grid{grid-template-columns:repeat(2,1fr)}.proto-drug-line{grid-template-columns:1fr 1fr}.proto-remove{grid-column:1/-1}.transfusion-form-grid,.maintenance-code-box{grid-template-columns:1fr}.transfusion-form-grid .signup-wide{grid-column:auto}}
       @media (max-width:900px){.dash-clock-lead,.dash-leadership,.suivi-actions-final{grid-template-columns:1fr}.dash-leadership .lead-director{grid-row:auto}.login-clock-card{position:static;margin:0 0 12px;background:rgba(255,255,255,.18)}}
       @media print{.protocol-print-fit table:first-child,.protocol-print-fit table:first-child *{font-size:6.8px!important;line-height:1.05!important;margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important}.protocol-print-fit table:first-child img{max-height:38px!important}}
     `;
