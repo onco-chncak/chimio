@@ -10,6 +10,7 @@
   const STAT_MED_RESET_KEY = 'chncak_stats_medicaments_reset_after';
   const STAT_BLOCK_RESET_KEY = 'chncak_stats_blocs_reset_after';
   const RESTORED_PROTOCOL_KEY = 'chncak_restored_protocol_lock';
+  const CATALOG_IMPORT_BACKUP_KEY = 'chncak_catalog_backup_before_import';
   const STORAGE = {
     patients: 'chncak_patients',
     rdv: 'chncak_rdv',
@@ -1552,7 +1553,7 @@
       </div>
       <table><thead><tr><th>Groupe sanguin</th><th>Produit sanguin demande</th><th>Nombre d'unites</th></tr></thead><tbody><tr><td><b>${esc(row.groupe || '-')} ${esc(row.rhesus || '')}</b></td><td>${esc(row.produit || 'Concentres de globules rouges')}</td><td>${esc(row.culots || '1')}</td></tr></tbody></table>
       <table><thead><tr><th>Transfusions anterieures</th><th>Incidents transfusionnels</th><th>Precision</th></tr></thead><tbody><tr><td>${esc(row.antecedentTransfusion || 'Non renseigne')}</td><td>${esc(row.incidentTransfusion || 'Non renseigne')}</td><td>${esc(row.incidentPrecision || '-')}</td></tr></tbody></table>
-      <div class="sign"><div><b>Nom, signature et cachet du prescripteur</b><br>Date de la demande :<div class="stamp-space"></div></div><div><b>Distribution produits sanguins</b><br>Date/heure :<br>N poches :<br>Agent distributeur :<br>Signature et cachet :<div class="stamp-space"></div></div></div>
+      <div class="sign"><div><b>Nom, signature et cachet du prescripteur</b><br>Date de la demande :<div class="stamp-space"></div></div><div><b>Distribution produits sanguins</b><br>Date/heure :<br>N poches :<br>Prenom et nom de l'agent ayant recu le sang :<br>Signature de l'agent ayant recu le sang :<br>Agent distributeur :<br>Signature et cachet :<div class="stamp-space"></div></div></div>
       <div class="nb"><b>NB :</b> Produits a utiliser immediatement apres reception ou a retourner obligatoirement a la banque de sang. Tout accident transfusionnel doit etre signale au coordinateur du comite hospitalier de securite transfusionnelle.</div>
       </body></html>`;
     printHtml(html, '210mm', '297mm');
@@ -3659,7 +3660,28 @@
       if(input && input.value !== undefined) input.value = '';
       return;
     }
+    localStorage.setItem(CATALOG_IMPORT_BACKUP_KEY, JSON.stringify({
+      savedAt: new Date().toISOString(),
+      catalog: readJson(STORAGE.catalog, Array.isArray(window.catalog) ? window.catalog : [])
+    }));
     return nativeImportCatalogExcel?.apply(this, arguments);
+  };
+
+  window.cancelLastCatalogImport = function(){
+    return requirePharmacienAction('annuler le dernier import catalogue', () => {
+      const backup = readJson(CATALOG_IMPORT_BACKUP_KEY, null);
+      if(!backup || !Array.isArray(backup.catalog)){
+        alert('Aucune sauvegarde avant import disponible.');
+        return;
+      }
+      if(!confirm(`Revenir au catalogue avant le dernier import ?\nSauvegarde : ${new Date(backup.savedAt || Date.now()).toLocaleString('fr-FR')}`)) return;
+      syncCatalogGlobal(cleanPharmacyCatalog(backup.catalog));
+      localStorage.removeItem(CATALOG_IMPORT_BACKUP_KEY);
+      window.renderCatalogTable?.();
+      window.renderPharmacie?.();
+      logAudit('Annulation import catalogue', 'Pharmacie centrale', `Retour sauvegarde ${backup.savedAt || ''}`);
+      showToastSafe('Dernier import catalogue annule. Le catalogue precedent est restaure.', 'success');
+    });
   };
 
   const nativeUpdateCatalogField = window.updateCatalogField;
@@ -3688,7 +3710,7 @@
     const page = document.getElementById('page-pharmacie');
     if(!page) return;
     const allowed = isPharmacienUser();
-    page.querySelectorAll('#catalog-body input, #catalog-body select, button[onclick*="saveCatalog"], button[onclick*="scrollToCatalog"], button[onclick*="addMissingDrugToCatalog"], input[onchange*="importCatalogExcel"]').forEach(el => {
+    page.querySelectorAll('#catalog-body input, #catalog-body select, button[onclick*="saveCatalog"], button[onclick*="cancelLastCatalogImport"], button[onclick*="scrollToCatalog"], button[onclick*="addMissingDrugToCatalog"], input[onchange*="importCatalogExcel"]').forEach(el => {
       el.disabled = !allowed;
       el.style.opacity = allowed ? '' : '0.48';
       el.style.cursor = allowed ? '' : 'not-allowed';
@@ -3697,7 +3719,7 @@
     page.querySelectorAll('button,label').forEach(el => {
       const text = norm(el.textContent || '');
       const onclick = el.getAttribute?.('onclick') || '';
-      if(text.includes('enregistrer le catalogue') || text.includes('importer') || onclick.includes('saveCatalog') || onclick.includes('scrollToCatalog') || onclick.includes('addMissingDrugToCatalog')){
+      if(text.includes('enregistrer le catalogue') || text.includes('importer') || text.includes('annuler import') || onclick.includes('saveCatalog') || onclick.includes('cancelLastCatalogImport') || onclick.includes('scrollToCatalog') || onclick.includes('addMissingDrugToCatalog')){
         el.style.display = allowed ? '' : 'none';
       }
     });
