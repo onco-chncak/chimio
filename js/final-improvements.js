@@ -5,6 +5,7 @@
 (function(){
   const DEFAULT_CODE_ADMIN = '2026';
   const ADMIN_CODE_KEY = 'chncak_admin_code';
+  const ADMIN_SIGNUP_KEY = 'chncak_allow_admin_signup';
   const VALIDATION_EMAIL = 'onco.chn.cak@gmail.com';
   const STAT_MED_RESET_KEY = 'chncak_stats_medicaments_reset_after';
   const STAT_BLOCK_RESET_KEY = 'chncak_stats_blocs_reset_after';
@@ -24,6 +25,10 @@
 
   function getAdminCode(){
     return localStorage.getItem(ADMIN_CODE_KEY) || DEFAULT_CODE_ADMIN;
+  }
+
+  function adminSignupAllowed(){
+    return localStorage.getItem(ADMIN_SIGNUP_KEY) === '1';
   }
 
   const readJson = (key, fallback) => {
@@ -528,6 +533,11 @@
   function isInfirmierUser(){
     const user = currentUser();
     return norm(user.role) === 'infirmier' || norm(user.username) === 'infirmier';
+  }
+
+  function isBiologisteUser(){
+    const user = currentUser();
+    return norm(user.role) === 'biologiste' || norm(user.username) === 'biologiste';
   }
 
   function requireAdminAction(actionLabel, onOk){
@@ -1589,7 +1599,7 @@
     host.innerHTML = `
       <div class="clinical-shell transfusion-shell">
         <div class="card">
-          <div class="card-header"><div class="card-num" style="background:#8B1A1A">T</div><h2>Transfusion sanguine</h2>${isInfirmierUser() ? '' : '<button class="btn-secondary transfusion-add-btn" onclick="addManualTransfusionPatient()">Ajouter patient</button>'}</div>
+          <div class="card-header"><div class="card-num" style="background:#8B1A1A">T</div><h2>Patients en attente de transfusion</h2>${isInfirmierUser() ? '' : '<button class="btn-secondary transfusion-add-btn" onclick="addManualTransfusionPatient()">Ajouter patient</button>'}</div>
           <div class="card-body">
             <div class="stats-final-note">Les patients apparaissent automatiquement ici quand la biologie enregistree contient Hb &lt; 9 g/dL. L'ajout manuel ouvre un formulaire complet inspire du bon de demande de produits sanguins labiles.</div>
             <div class="dash-table-wrap"><table class="dash-table transfusion-table"><thead><tr><th>Patient</th><th>Hb</th><th>Protocole</th><th>Date transfusion</th><th>Groupe</th><th>Rh</th><th>Produit</th><th>Unites</th><th>Indication</th><th>Actions</th></tr></thead><tbody>${active.map(rowHtml).join('') || '<tr><td colspan="10" class="dash-empty">Aucun patient avec Hb inferieure a 9 g/dL.</td></tr>'}</tbody></table></div>
@@ -1777,6 +1787,7 @@
     if(role === 'admin') return ['dashboard','protocole','okchimio','medecins','stats','pharmacie','apercu','preparation','support','suivi','biologie','hematologie','transfusion','maintenance','programme','patients','rdv'];
     if(role === 'pharmacien') return ['dashboard','pharmacie','stats','preparation','rdv'];
     if(role === 'infirmier') return ['dashboard','transfusion','rdv','apercu','support','suivi','stats','programme','patients'];
+    if(role === 'biologiste') return ['dashboard','transfusion','stats','programme'];
     return ['dashboard','protocole','okchimio','medecins','apercu','preparation','support','suivi','biologie','hematologie','transfusion','stats','programme','patients','rdv'];
   }
 
@@ -1834,11 +1845,28 @@
     });
   };
 
+  window.toggleAdminSignup = function(){
+    requireAdminAction('changer autorisation inscription admin', () => {
+      const next = !adminSignupAllowed();
+      localStorage.setItem(ADMIN_SIGNUP_KEY, next ? '1' : '0');
+      logAudit('Autorisation inscription admin', 'Maintenance', next ? 'Inscription admin autorisee' : 'Inscription admin desactivee');
+      renderRegistrationsPanel();
+      showToastSafe(next ? 'Inscription Admin autorisee temporairement.' : 'Inscription Admin desactivee.', 'success');
+    });
+  };
+
   window.openSignupModal = function(){
     document.getElementById('signup-modal')?.remove();
     const modal = document.createElement('div');
     modal.id = 'signup-modal';
     modal.className = 'secure-code-modal signup-modal';
+    const roleOptions = [
+      '<option value="medecin">Medecin</option>',
+      '<option value="pharmacien">Pharmacien</option>',
+      '<option value="infirmier">Infirmier</option>',
+      '<option value="biologiste">Biologiste</option>',
+      adminSignupAllowed() ? '<option value="admin">Admin</option>' : ''
+    ].join('');
     modal.innerHTML = `
       <div class="secure-code-backdrop" onclick="closeSignupModal()"></div>
       <div class="secure-code-card signup-card">
@@ -1850,7 +1878,7 @@
           <label>Contact<input id="signup-contact" placeholder="ex: 77 000 00 00"></label>
           <label>Adresse mail<input id="signup-email" type="email" placeholder="ex: awa.ndiaye@chncak.sn"></label>
           <label>Specialite<input id="signup-specialite" placeholder="ex: Soins infirmiers"></label>
-          <label>Type de compte<select id="signup-role"><option value="medecin">Medecin</option><option value="pharmacien">Pharmacien</option><option value="infirmier">Infirmier</option><option value="admin">Admin</option></select></label>
+          <label>Type de compte<select id="signup-role">${roleOptions}</select></label>
           <label>Nom utilisateur<input id="signup-username" placeholder="ex: dr.ndiaye"></label>
           <label>Mot de passe<input id="signup-password" type="password" placeholder="ex: mot de passe personnel"></label>
           <label class="signup-wide">Autorisation admin<select id="signup-auth-mode"><option value="pending">Demande a valider par admin</option><option value="code">J'ai le code admin</option></select></label>
@@ -1876,6 +1904,10 @@
     const password = get('signup-password');
     const role = get('signup-role') || 'medecin';
     const error = document.getElementById('signup-error');
+    if(role === 'admin' && !adminSignupAllowed()){
+      if(error) error.textContent = 'Inscription Admin non autorisee pour le moment. Activez-la dans Maintenance si necessaire.';
+      return;
+    }
     if(!nom || !prenom || !username || !password){
       if(error) error.textContent = 'Nom, prenom, nom utilisateur et mot de passe sont obligatoires.';
       return;
@@ -1967,6 +1999,11 @@
             <div><b>Code admin actuel</b><span>Utilise pour valider une inscription directement et pour les actions sensibles.</span></div>
             <strong>${esc(getAdminCode().replace(/\d/g, '*'))}</strong>
             <button class="btn-secondary official-github-mini" onclick="changeAdminAccessCode()">Changer le code</button>
+          </div>
+          <div class="maintenance-code-box">
+            <div><b>Inscription compte Admin</b><span>Par securite, le type Admin est masque sur la page d'inscription tant que cette option n'est pas autorisee.</span></div>
+            <strong>${adminSignupAllowed() ? 'AUTORISE' : 'BLOQUE'}</strong>
+            <button class="btn-secondary official-github-mini" onclick="toggleAdminSignup()">${adminSignupAllowed() ? 'Desactiver Admin' : 'Autoriser Admin'}</button>
           </div>
           <h3 style="margin:0 0 8px;color:#17324d;font-size:14px">Demandes d'inscription</h3>
           <table class="dash-table"><thead><tr><th>Utilisateur</th><th>Contact</th><th>Specialite</th><th>Type</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="dash-empty">Aucune demande.</td></tr>'}</tbody></table>
@@ -4747,6 +4784,7 @@
     document.body.classList.toggle('admin-session', isAdminUser());
     document.body.classList.toggle('pharmacien-session', isPharmacienUser());
     document.body.classList.toggle('infirmier-session', isInfirmierUser());
+    document.body.classList.toggle('biologiste-session', isBiologisteUser());
     const login = document.getElementById('login-screen');
     if(login){
       Array.from(login.querySelectorAll('div')).forEach(div => {
