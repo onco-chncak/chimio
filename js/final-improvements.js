@@ -1576,7 +1576,7 @@
     host.innerHTML = `
       <div class="clinical-shell transfusion-shell">
         <div class="card">
-          <div class="card-header"><div class="card-num" style="background:#8B1A1A">T</div><h2>Transfusion sanguine</h2>${isInfirmierUser() ? '' : '<button class="btn-secondary official-github-mini" onclick="addManualTransfusionPatient()">Ajouter patient</button>'}</div>
+          <div class="card-header"><div class="card-num" style="background:#8B1A1A">T</div><h2>Transfusion sanguine</h2>${isInfirmierUser() ? '' : '<button class="btn-secondary transfusion-add-btn" onclick="addManualTransfusionPatient()">Ajouter patient</button>'}</div>
           <div class="card-body">
             <div class="stats-final-note">Les patients apparaissent automatiquement ici quand la biologie enregistree contient Hb &lt; 9 g/dL. L'ajout manuel ouvre un formulaire complet inspire du bon de demande de produits sanguins labiles.</div>
             <div class="dash-table-wrap"><table class="dash-table transfusion-table"><thead><tr><th>Patient</th><th>Hb</th><th>Protocole</th><th>Date transfusion</th><th>Groupe</th><th>Rh</th><th>Produit</th><th>Unites</th><th>Indication</th><th>Actions</th></tr></thead><tbody>${active.map(rowHtml).join('') || '<tr><td colspan="10" class="dash-empty">Aucun patient avec Hb inferieure a 9 g/dL.</td></tr>'}</tbody></table></div>
