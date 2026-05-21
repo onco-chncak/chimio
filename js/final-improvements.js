@@ -1635,14 +1635,21 @@
     return isNaN(d) ? dateIso : d.toLocaleDateString('fr-FR', {weekday:'long', day:'2-digit', month:'long', year:'numeric'});
   }
 
+  function consultationDoctorOptions(selected){
+    const meds = readJson('chncak_medecins', window.medecins || []);
+    const names = Array.from(new Set(meds.map(m => val(m.name, `Dr ${val(m.prenom)} ${val(m.nom)}`.replace(/\s+/g, ' ').trim())).filter(Boolean)));
+    return '<option value="">Choisir</option>' + names.map(name => `<option value="${esc(name)}" ${name === selected ? 'selected' : ''}>${esc(name)}</option>`).join('');
+  }
+
   function consultationRows(list, withPrint){
+    const canEdit = isSecretaireUser();
     return list.sort((a,b) => String(a.dateRdv || '').localeCompare(String(b.dateRdv || '')) || String(a.medecin || '').localeCompare(String(b.medecin || '')) || String(a.nom || '').localeCompare(String(b.nom || ''))).map(row => `
       <tr>
         <td>${esc(consultationDateLabel(row.dateRdv))}</td>
-        <td><b>${esc(val(row.prenom))} ${esc(val(row.nom))}</b><div class="dash-muted">${esc(val(row.contact, '-'))}</div></td>
+        <td><b>${esc(val(row.prenom))} ${esc(val(row.nom))}</b><div class="dash-muted">${esc(val(row.contact, '-'))}${row.localisation ? ` | Localisation: ${esc(row.localisation)}` : ''}</div></td>
         <td>${esc(val(row.adresse, '-'))}</td>
         <td>${esc(val(row.medecin, '-'))}</td>
-        ${withPrint ? `<td><button class="btn-sm" onclick="printConsultationRdv('${esc(row.id)}')">Imprimer bon RDV</button><button class="btn-sm" style="margin-left:5px" onclick="deleteConsultationRdv('${esc(row.id)}')">Supprimer</button></td>` : ''}
+        ${withPrint ? `<td><button class="btn-sm" onclick="printConsultationRdv('${esc(row.id)}')">Imprimer bon RDV</button>${canEdit ? `<button class="btn-sm" style="margin-left:5px" onclick="openConsultationRdvModal('${esc(row.id)}')">Modifier</button><button class="btn-sm" style="margin-left:5px" onclick="deleteConsultationRdv('${esc(row.id)}')">Supprimer</button>` : ''}</td>` : ''}
       </tr>`).join('');
   }
 
@@ -1677,25 +1684,28 @@
     host.innerHTML = `<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Adresse</th><th>Medecin traitant</th><th>Actions</th></tr></thead><tbody>${consultationRows(list, true) || '<tr><td colspan="5" class="dash-empty">Aucun rendez-vous de consultation.</td></tr>'}</tbody></table></div>`;
   };
 
-  window.openConsultationRdvModal = function(){
+  window.openConsultationRdvModal = function(id){
     document.getElementById('consult-rdv-modal')?.remove();
+    const existing = id ? consultRdvList().find(row => row.id === id) : null;
     const modal = document.createElement('div');
     modal.id = 'consult-rdv-modal';
     modal.className = 'secure-code-modal consult-modal';
+    modal.dataset.editId = existing?.id || '';
     modal.innerHTML = `
       <div class="secure-code-backdrop" onclick="closeConsultationRdvModal()"></div>
       <div class="secure-code-card consult-card">
-        <h3>Ajouter rendez-vous de consultation</h3>
+        <h3>${existing ? 'Modifier rendez-vous de consultation' : 'Ajouter rendez-vous de consultation'}</h3>
         <p>Renseigner le patient et le medecin traitant pour le bon de rendez-vous.</p>
         <div class="transfusion-form-grid consult-form-grid">
-          <label>Nom<input id="consult-nom" placeholder="ex: NDIAYE"></label>
-          <label>Prenom<input id="consult-prenom" placeholder="ex: Awa"></label>
-          <label>Contact<input id="consult-contact" placeholder="ex: 77 000 00 00"></label>
-          <label>Adresse<input id="consult-adresse" placeholder="ex: Touba"></label>
-          <label class="signup-wide">Medecin traitant<input id="consult-medecin" placeholder="ex: Dr ..."></label>
-          <label>Date rendez-vous<input id="consult-date" type="date" value="${todayIso()}"></label>
+          <label>Nom<input id="consult-nom" placeholder="ex: NDIAYE" value="${esc(existing?.nom || '')}"></label>
+          <label>Prenom<input id="consult-prenom" placeholder="ex: Awa" value="${esc(existing?.prenom || '')}"></label>
+          <label>Contact<input id="consult-contact" placeholder="ex: 77 000 00 00" value="${esc(existing?.contact || '')}"></label>
+          <label>Adresse<input id="consult-adresse" placeholder="ex: Touba" value="${esc(existing?.adresse || '')}"></label>
+          <label class="signup-wide">Medecin traitant<select id="consult-medecin">${consultationDoctorOptions(existing?.medecin || '')}</select></label>
+          <label>Date rendez-vous<input id="consult-date" type="date" value="${esc(existing?.dateRdv || todayIso())}"></label>
+          <label class="signup-wide">Localisation / diagnostic <span class="field-hint">facultatif</span><input id="consult-localisation" placeholder="Facultatif : localisation ou diagnostic si connu" value="${esc(existing?.localisation || '')}"></label>
         </div>
-        <div class="secure-code-actions"><button onclick="closeConsultationRdvModal()">Annuler</button><button onclick="saveConsultationRdv()">Enregistrer</button></div>
+        <div class="secure-code-actions"><button onclick="closeConsultationRdvModal()">Annuler</button><button onclick="saveConsultationRdv()">${existing ? 'Modifier' : 'Enregistrer'}</button></div>
       </div>`;
     document.body.appendChild(modal);
   };
@@ -1706,14 +1716,16 @@
 
   window.saveConsultationRdv = function(){
     const get = id => document.getElementById(id)?.value?.trim() || '';
+    const editId = document.getElementById('consult-rdv-modal')?.dataset.editId || '';
     const item = {
-      id: `CONS-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: editId || `CONS-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       nom: get('consult-nom'),
       prenom: get('consult-prenom'),
       contact: get('consult-contact'),
       adresse: get('consult-adresse'),
       medecin: get('consult-medecin'),
       dateRdv: get('consult-date'),
+      localisation: get('consult-localisation'),
       createdAt: new Date().toISOString(),
       createdBy: val(currentUser().username, currentUser().name, '')
     };
@@ -1722,9 +1734,15 @@
       return;
     }
     const list = consultRdvList();
-    list.unshift(item);
+    if(editId){
+      const idx = list.findIndex(row => row.id === editId);
+      if(idx >= 0) list[idx] = {...list[idx], ...item, updatedAt:new Date().toISOString(), updatedBy:val(currentUser().username, currentUser().name, '')};
+      else list.unshift(item);
+    } else {
+      list.unshift(item);
+    }
     writeConsultRdv(list);
-    logAudit('RDV consultation ajoute', `${item.prenom} ${item.nom}`, `${item.dateRdv} - ${item.medecin}`);
+    logAudit(editId ? 'RDV consultation modifie' : 'RDV consultation ajoute', `${item.prenom} ${item.nom}`, `${item.dateRdv} - ${item.medecin}`);
     closeConsultationRdvModal();
     renderRdvConsultation();
     renderConsultationProgrammePanel();
@@ -1733,6 +1751,10 @@
   };
 
   window.deleteConsultationRdv = function(id){
+    if(!isSecretaireUser()){
+      alert('Suppression reservee au compte secretaire.');
+      return;
+    }
     const item = consultRdvList().find(row => row.id === id);
     if(!item) return;
     if(!confirm(`Supprimer le rendez-vous de ${item.prenom} ${item.nom} ?`)) return;
@@ -1749,7 +1771,7 @@
     const logo = document.querySelector('.nav-logo img')?.src || '';
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Bon rendez-vous consultation</title>
       <style>@page{size:A5 landscape;margin:10mm}body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:13px}.head{display:grid;grid-template-columns:58px 1fr;gap:10px;align-items:center;border-bottom:2px solid #0A3D7A;padding-bottom:8px;margin-bottom:14px}.head img{width:54px;height:54px;object-fit:contain}.head div{text-align:center;line-height:1.25}h1{text-align:center;color:#0A3D7A;font-size:20px;margin:10px 0 16px;text-transform:uppercase}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.box{border:1px solid #9db6d3;border-radius:6px;padding:9px;min-height:46px}.label{font-size:10px;color:#607080;text-transform:uppercase;font-weight:800}.value{font-size:16px;font-weight:800;margin-top:5px}.note{margin-top:14px;border:1px solid #F0C060;background:#FFF8E8;padding:9px;font-size:12px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
-      </head><body><div class="head"><img src="${logo}"><div>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba<br><b>Service d'Oncologie-Radiotherapie</b></div></div><h1>Bon de rendez-vous consultation</h1><div class="grid"><div class="box"><div class="label">Patient</div><div class="value">${esc(row.prenom)} ${esc(row.nom)}</div></div><div class="box"><div class="label">Contact</div><div class="value">${esc(row.contact)}</div></div><div class="box"><div class="label">Adresse</div><div class="value">${esc(row.adresse || '-')}</div></div><div class="box"><div class="label">Medecin traitant</div><div class="value">${esc(row.medecin)}</div></div><div class="box" style="grid-column:1/-1"><div class="label">Date rendez-vous</div><div class="value">${esc(consultationDateLabel(row.dateRdv))}</div></div></div><div class="note">Merci de venir avec vos documents medicaux et d'arriver avant l'heure de consultation.</div></body></html>`;
+      </head><body><div class="head"><img src="${logo}"><div>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba<br><b>Service d'Oncologie-Radiotherapie</b></div></div><h1>Bon de rendez-vous consultation</h1><div class="grid"><div class="box"><div class="label">Patient</div><div class="value">${esc(row.prenom)} ${esc(row.nom)}</div></div><div class="box"><div class="label">Contact</div><div class="value">${esc(row.contact)}</div></div><div class="box"><div class="label">Adresse</div><div class="value">${esc(row.adresse || '-')}</div></div><div class="box"><div class="label">Medecin traitant</div><div class="value">${esc(row.medecin)}</div></div><div class="box"><div class="label">Localisation / diagnostic</div><div class="value">${esc(row.localisation || '-')}</div></div><div class="box"><div class="label">Date rendez-vous</div><div class="value">${esc(consultationDateLabel(row.dateRdv))}</div></div></div><div class="note">Merci de venir avec vos documents medicaux et d'arriver avant l'heure de consultation.</div></body></html>`;
     printHtml(html, '210mm', '148mm');
   };
 
@@ -5418,6 +5440,8 @@
       .consult-filter-bar{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:10px;margin-bottom:12px;align-items:end}
       .consult-filter-bar label{font-size:11px;color:#44556b;font-weight:800}
       .consult-filter-bar input{width:100%;box-sizing:border-box;border:1px solid #b8c7d9;border-radius:7px;padding:8px 9px;font-size:12px;margin-top:4px}
+      .consult-form-grid select{width:100%;box-sizing:border-box;border:1px solid #b8c7d9;border-radius:7px;padding:8px 9px;font-size:12px;margin-top:4px;background:white}
+      .field-hint{font-weight:700;color:#7a8796;font-size:10px;margin-left:5px;text-transform:none}
       .consult-card{width:min(760px,calc(100vw - 28px));max-height:88vh;overflow:auto}
       .consult-dash-doctor{border:1px solid #dbe5f2;border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#f8fbff}
       .consult-dash-doctor h3{display:flex;justify-content:space-between;gap:8px;align-items:center;margin:0 0 8px;color:#17324d;font-size:14px}
