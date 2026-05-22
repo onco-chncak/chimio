@@ -1521,8 +1521,12 @@
         .cell{border-right:1px solid #111;border-bottom:1px solid #111;padding:6px;min-height:33px}
         .wide{grid-column:1/-1}.thirds{display:grid;grid-template-columns:1fr 1fr 1fr}.label{font-size:9px;color:#444;text-transform:uppercase;margin-bottom:3px}.value{font-size:12.5px;font-weight:700}
         table{width:100%;border-collapse:collapse;margin-bottom:9px}th,td{border:1px solid #111;padding:6px;text-align:left}th{background:#eef4fd}
-        .check{display:inline-block;border:1px solid #111;width:12px;height:12px;margin:0 4px -2px 10px}.sign{display:grid;grid-template-columns:1fr 1fr;gap:14px}.sign>div{border:1px solid #111;min-height:105px;padding:8px;line-height:1.45}
-        .stamp-space{height:58px;margin-top:8px;border-top:1px dashed #aaa}
+        .check{display:inline-block;border:1px solid #111;width:12px;height:12px;margin:0 4px -2px 10px}.sign{display:grid;grid-template-columns:1fr 1fr;gap:14px}.sign>div{border:1px solid #111;min-height:128px;padding:9px;line-height:1.6}
+        .stamp-space{height:68px;margin-top:10px;border-top:1px dashed #aaa}
+        .distribution-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+        .distribution-box{border:1px solid #111;min-height:72px;padding:8px;line-height:1.55}
+        .distribution-label{font-size:9px;text-transform:uppercase;color:#444;font-weight:800;margin-bottom:16px}
+        .distribution-line{border-top:1px dashed #999;height:28px}
         .nb{font-size:9.5px;line-height:1.35;border:1px solid #111;padding:7px;margin-top:9px}
       </style></head><body>
       <div class="top"><img src="${logo}"><div class="ministry">Republique du Senegal - Un peuple, un but, une foi<br>Ministere de la Sante et de l'Action Sociale<br><b>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba</b><br>Service d'Oncologie-Radiotherapie - Secteur chimiotherapie</div><div class="right">Date demande: <b>${new Date().toLocaleDateString('fr-FR')}</b><br>Dossier: <b>${esc(row.dossier || '-')}</b><br>Code: <b>${esc(row.code || '-')}</b></div></div>
@@ -1553,7 +1557,7 @@
       </div>
       <table><thead><tr><th>Groupe sanguin</th><th>Produit sanguin demande</th><th>Nombre d'unites</th></tr></thead><tbody><tr><td><b>${esc(row.groupe || '-')} ${esc(row.rhesus || '')}</b></td><td>${esc(row.produit || 'Concentres de globules rouges')}</td><td>${esc(row.culots || '1')}</td></tr></tbody></table>
       <table><thead><tr><th>Transfusions anterieures</th><th>Incidents transfusionnels</th><th>Precision</th></tr></thead><tbody><tr><td>${esc(row.antecedentTransfusion || 'Non renseigne')}</td><td>${esc(row.incidentTransfusion || 'Non renseigne')}</td><td>${esc(row.incidentPrecision || '-')}</td></tr></tbody></table>
-      <div class="sign"><div><b>Nom, signature et cachet du prescripteur</b><br>Date de la demande :<div class="stamp-space"></div></div><div><b>Distribution produits sanguins</b><br>Date/heure :<br>N poches :<br>Prenom et nom de l'agent ayant recu le sang :<br>Signature de l'agent ayant recu le sang :<br>Agent distributeur :<br>Signature et cachet :<div class="stamp-space"></div></div></div>
+      <div class="sign"><div><b>Nom, signature et cachet du prescripteur</b><br>Date de la demande :<div class="stamp-space"></div></div><div><b>Distribution produits sanguins</b><div class="distribution-grid"><div class="distribution-box"><div class="distribution-label">Numero de poche</div><div class="distribution-line"></div></div><div class="distribution-box"><div class="distribution-label">Date / heure</div><div class="distribution-line"></div></div><div class="distribution-box"><div class="distribution-label">Agent distributeur</div><div class="distribution-line"></div><div class="distribution-label">Signature / cachet</div><div class="distribution-line"></div></div><div class="distribution-box"><div class="distribution-label">Agent ayant recu le sang</div><div class="distribution-line"></div><div class="distribution-label">Signature</div><div class="distribution-line"></div></div></div></div></div>
       <div class="nb"><b>NB :</b> Produits a utiliser immediatement apres reception ou a retourner obligatoirement a la banque de sang. Tout accident transfusionnel doit etre signale au coordinateur du comite hospitalier de securite transfusionnelle.</div>
       </body></html>`;
     printHtml(html, '210mm', '297mm');
@@ -1642,6 +1646,17 @@
     return '<option value="">Choisir</option>' + names.map(name => `<option value="${esc(name)}" ${name === selected ? 'selected' : ''}>${esc(name)}</option>`).join('');
   }
 
+  function consultationMotifOptions(selected){
+    const motifs = ['Consultation', "Resultats d'analyse", 'Radiotherapie', 'Evaluation', 'Onco-chirurgie', 'Chimiotherapie', 'Reference', 'Recommande', 'Autres a preciser'];
+    return '<option value="">Choisir</option>' + motifs.map(name => `<option value="${esc(name)}" ${name === selected ? 'selected' : ''}>${esc(name)}</option>`).join('');
+  }
+
+  window.toggleConsultationMotifPrecision = function(){
+    const row = document.getElementById('consult-motif-precision-row');
+    const motif = document.getElementById('consult-motif')?.value || '';
+    if(row) row.style.display = motif === 'Autres a preciser' ? '' : 'none';
+  };
+
   function consultationRows(list, withPrint){
     const canEdit = isSecretaireUser();
     const today = todayIso();
@@ -1652,6 +1667,7 @@
         <td><b>${esc(val(row.prenom))} ${esc(val(row.nom))}</b><div class="dash-muted">${esc(row.typePatient === 'ancien' ? 'Ancien patient' : 'Nouveau patient')} | ${esc(val(row.contact, '-'))}${row.localisation ? ` | Localisation: ${esc(row.localisation)}` : ''}${isDone(row) ? ' | Consulte' : ''}</div></td>
         <td>${esc(val(row.adresse, '-'))}</td>
         <td>${esc(val(row.medecin, '-'))}</td>
+        <td>${esc(val(row.motifPrecision, row.motif, '-'))}</td>
         ${withPrint ? `<td><button class="btn-sm" onclick="printConsultationRdv('${esc(row.id)}')">Imprimer bon RDV</button>${canEdit ? `<button class="btn-sm" style="margin-left:5px" onclick="openConsultationRdvModal('${esc(row.id)}')">Modifier</button><button class="btn-sm" style="margin-left:5px" onclick="deleteConsultationRdv('${esc(row.id)}')">Supprimer</button><button class="btn-sm" style="margin-left:5px" ${row.dateRdv === today && !isDone(row) ? '' : 'disabled'} onclick="markConsultationDone('${esc(row.id)}')">Consulte</button>` : ''}</td>` : ''}
       </tr>`).join('');
   }
@@ -1688,9 +1704,9 @@
     const actifs = list.filter(row => !isDone(row));
     const archives = list.filter(isDone);
     host.innerHTML = `
-      <div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Adresse</th><th>Medecin traitant</th><th>Actions</th></tr></thead><tbody>${consultationRows(actifs, true) || '<tr><td colspan="5" class="dash-empty">Aucun rendez-vous de consultation en attente.</td></tr>'}</tbody></table></div>
+      <div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Adresse</th><th>Medecin traitant</th><th>Motif</th><th>Actions</th></tr></thead><tbody>${consultationRows(actifs, true) || '<tr><td colspan="6" class="dash-empty">Aucun rendez-vous de consultation en attente.</td></tr>'}</tbody></table></div>
       <h3 style="margin:18px 0 8px">Archives consultations</h3>
-      <div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Adresse</th><th>Medecin traitant</th><th>Actions</th></tr></thead><tbody>${consultationRows(archives, true) || '<tr><td colspan="5" class="dash-empty">Aucune consultation archivee.</td></tr>'}</tbody></table></div>`;
+      <div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Adresse</th><th>Medecin traitant</th><th>Motif</th><th>Actions</th></tr></thead><tbody>${consultationRows(archives, true) || '<tr><td colspan="6" class="dash-empty">Aucune consultation archivee.</td></tr>'}</tbody></table></div>`;
   };
 
   window.openConsultationRdvModal = function(id){
@@ -1713,6 +1729,8 @@
           <label>Nouveau / Ancien<select id="consult-type"><option value="nouveau" ${existing?.typePatient !== 'ancien' ? 'selected' : ''}>Nouveau patient</option><option value="ancien" ${existing?.typePatient === 'ancien' ? 'selected' : ''}>Ancien patient</option></select></label>
           <label class="signup-wide">Medecin traitant<select id="consult-medecin">${consultationDoctorOptions(existing?.medecin || '')}</select></label>
           <label>Date rendez-vous<input id="consult-date" type="date" value="${esc(existing?.dateRdv || todayIso())}"></label>
+          <label>Motif <span class="field-hint">facultatif</span><select id="consult-motif" onchange="toggleConsultationMotifPrecision()">${consultationMotifOptions(existing?.motif || '')}</select></label>
+          <label id="consult-motif-precision-row" class="signup-wide" style="display:${existing?.motif === 'Autres a preciser' ? '' : 'none'}">Autre motif<input id="consult-motif-precision" placeholder="Preciser le motif" value="${esc(existing?.motifPrecision || '')}"></label>
           <label class="signup-wide">Localisation / diagnostic <span class="field-hint">facultatif</span><input id="consult-localisation" placeholder="Facultatif : localisation ou diagnostic si connu" value="${esc(existing?.localisation || '')}"></label>
         </div>
         <div class="secure-code-actions"><button onclick="closeConsultationRdvModal()">Annuler</button><button onclick="saveConsultationRdv()">${existing ? 'Modifier' : 'Enregistrer'}</button></div>
@@ -1738,6 +1756,8 @@
       typePatient: get('consult-type') || 'nouveau',
       medecin: get('consult-medecin'),
       dateRdv: get('consult-date'),
+      motif: get('consult-motif'),
+      motifPrecision: get('consult-motif-precision'),
       localisation: get('consult-localisation'),
       statut: previous?.statut || previous?.status || 'programme',
       consultedAt: previous?.consultedAt || '',
@@ -1827,7 +1847,7 @@
     const logo = document.querySelector('.nav-logo img')?.src || '';
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Bon rendez-vous consultation</title>
       <style>@page{size:A5 landscape;margin:10mm}body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:13px}.head{display:grid;grid-template-columns:58px 1fr;gap:10px;align-items:center;border-bottom:2px solid #0A3D7A;padding-bottom:8px;margin-bottom:14px}.head img{width:54px;height:54px;object-fit:contain}.head div{text-align:center;line-height:1.25}h1{text-align:center;color:#0A3D7A;font-size:20px;margin:10px 0 16px;text-transform:uppercase}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.box{border:1px solid #9db6d3;border-radius:6px;padding:9px;min-height:46px}.label{font-size:10px;color:#607080;text-transform:uppercase;font-weight:800}.value{font-size:16px;font-weight:800;margin-top:5px}.note{margin-top:14px;border:1px solid #F0C060;background:#FFF8E8;padding:9px;font-size:12px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
-      </head><body><div class="head"><img src="${logo}"><div>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba<br><b>Service d'Oncologie-Radiotherapie</b></div></div><h1>Bon de rendez-vous consultation</h1><div class="grid"><div class="box"><div class="label">Patient</div><div class="value">${esc(row.prenom)} ${esc(row.nom)}</div></div><div class="box"><div class="label">Type</div><div class="value">${esc(row.typePatient === 'ancien' ? 'Ancien patient' : 'Nouveau patient')}</div></div><div class="box"><div class="label">Contact</div><div class="value">${esc(row.contact)}</div></div><div class="box"><div class="label">Adresse</div><div class="value">${esc(row.adresse || '-')}</div></div><div class="box"><div class="label">Medecin traitant</div><div class="value">${esc(row.medecin)}</div></div><div class="box"><div class="label">Localisation / diagnostic</div><div class="value">${esc(row.localisation || '-')}</div></div><div class="box"><div class="label">Date rendez-vous</div><div class="value">${esc(consultationDateLabel(row.dateRdv))}</div></div></div><div class="note">Merci de venir avec vos documents medicaux et d'arriver avant l'heure de consultation.</div></body></html>`;
+      </head><body><div class="head"><img src="${logo}"><div>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba<br><b>Service d'Oncologie-Radiotherapie</b></div></div><h1>Bon de rendez-vous consultation</h1><div class="grid"><div class="box"><div class="label">Patient</div><div class="value">${esc(row.prenom)} ${esc(row.nom)}</div></div><div class="box"><div class="label">Type</div><div class="value">${esc(row.typePatient === 'ancien' ? 'Ancien patient' : 'Nouveau patient')}</div></div><div class="box"><div class="label">Contact</div><div class="value">${esc(row.contact)}</div></div><div class="box"><div class="label">Adresse</div><div class="value">${esc(row.adresse || '-')}</div></div><div class="box"><div class="label">Medecin traitant</div><div class="value">${esc(row.medecin)}</div></div><div class="box"><div class="label">Motif</div><div class="value">${esc(val(row.motifPrecision, row.motif, '-'))}</div></div><div class="box"><div class="label">Localisation / diagnostic</div><div class="value">${esc(row.localisation || '-')}</div></div><div class="box"><div class="label">Date rendez-vous</div><div class="value">${esc(consultationDateLabel(row.dateRdv))}</div></div></div><div class="note">Merci de venir avec vos documents medicaux et d'arriver avant l'heure de consultation.</div></body></html>`;
     printHtml(html, '210mm', '148mm');
   };
 
@@ -1852,7 +1872,7 @@
             <label>Date <input type="date" id="consult-programme-date" value="${esc(date)}" oninput="renderConsultationProgrammePanel()"></label>
             <label>Medecin traitant <select id="consult-programme-medecin" onchange="renderConsultationProgrammePanel()">${consultationDoctorOptions(document.getElementById('consult-programme-medecin')?.value || '')}</select></label>
           </div>
-          <div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Adresse</th><th>Medecin traitant</th></tr></thead><tbody>${consultationRows(rows, false) || '<tr><td colspan="4" class="dash-empty">Aucune consultation programmee.</td></tr>'}</tbody></table></div>
+          <div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Date</th><th>Patient</th><th>Adresse</th><th>Medecin traitant</th><th>Motif</th></tr></thead><tbody>${consultationRows(rows, false) || '<tr><td colspan="5" class="dash-empty">Aucune consultation programmee.</td></tr>'}</tbody></table></div>
         </div>
       </div>`;
   };

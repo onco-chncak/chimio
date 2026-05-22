@@ -8,6 +8,8 @@
   const SNAPSHOT_KEY = 'cloud_snapshot_v1';
   const LOCAL_META_KEY = 'chncak_cloud_last_sync';
   const DEVICE_ID_KEY = 'chncak_cloud_device_id';
+  const AUTO_SYNC_INTERVAL_MS = 10 * 60 * 1000;
+  let autoSyncTimer = null;
   const ADMIN_CODE = '2026';
 
   const DATA_KEYS = [
@@ -397,11 +399,47 @@
     if(!silent) notify('Donnees locales envoyees vers Supabase.', 'success');
   }
 
-  async function cloudSync(){
+  function localCurrentUser(){
+    try{ return JSON.parse(localStorage.getItem('chncak_currentUser') || '{}') || {}; }
+    catch(_){ return {}; }
+  }
+
+  function isCloudAdmin(){
+    const user = localCurrentUser();
+    const role = String(user.role || '').toLowerCase();
+    const username = String(user.username || '').toLowerCase();
+    return role === 'admin' || username === 'admin';
+  }
+
+  function refreshCloudRoleUi(){
+    const panel = document.getElementById('cloud-sync-panel');
+    if(!panel) return;
+    const admin = isCloudAdmin();
+    panel.classList.toggle('cloud-admin', admin);
+    panel.querySelectorAll('[data-cloud-admin-only]').forEach(btn => {
+      btn.style.display = admin ? '' : 'none';
+    });
+  }
+
+  function stopAutoSync(){
+    if(autoSyncTimer) clearInterval(autoSyncTimer);
+    autoSyncTimer = null;
+  }
+
+  function startAutoSync(){
+    stopAutoSync();
+    autoSyncTimer = setInterval(async () => {
+      if(!window.chimioproCloudReady || document.hidden) return;
+      try{ await cloudSync(true); }
+      catch(e){ console.warn('Synchronisation automatique echouee:', e.message); }
+    }, AUTO_SYNC_INTERVAL_MS);
+  }
+
+  async function cloudSync(silent){
     const snap = await loadCloudSnapshot();
     const merged = snap?.data ? applyCloudData(snap.data) : collectLocalData();
     await saveCloudSnapshot(merged);
-    notify('Synchronisation cloud terminee.', 'success');
+    if(!silent) notify('Synchronisation cloud terminee.', 'success');
   }
 
   function updateCloudUi(email){
@@ -410,12 +448,13 @@
     if(!panel || !status) return;
     const last = localStorage.getItem(LOCAL_META_KEY);
     if(email){
-      status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}`;
+      status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}<br><small>Synchro automatique toutes les 10 minutes.</small>`;
       panel.classList.add('cloud-connected');
     } else {
       status.textContent = 'Non connecte au cloud';
       panel.classList.remove('cloud-connected');
     }
+    refreshCloudRoleUi();
   }
 
   function installCloudUi(){
@@ -425,15 +464,12 @@
         <button id="cloud-sync-toggle" type="button" onclick="toggleCloudSyncPanel()">Cloud</button>
         <div id="cloud-sync-body">
           <div id="cloud-sync-status">Non connecte au cloud</div>
-          <input id="cloud-email" type="email" placeholder="Email Supabase">
-          <input id="cloud-password" type="password" placeholder="Mot de passe">
           <div class="cloud-actions">
-            <button type="button" onclick="chimioproCloudLogin()">Connexion</button>
             <button type="button" onclick="chimioproCloudSync()">Synchroniser</button>
-            <button type="button" onclick="chimioproCloudPull()">Recuperer</button>
-            <button type="button" onclick="chimioproCloudPush()">Envoyer</button>
-            <button type="button" onclick="chimioproCloudLogout()">Quitter</button>
-            <button type="button" class="danger" onclick="chimioproOfficialReset()">Initialisation officielle</button>
+            <button type="button" data-cloud-admin-only onclick="chimioproCloudPull()">Recuperer</button>
+            <button type="button" data-cloud-admin-only onclick="chimioproCloudPush()">Envoyer</button>
+            <button type="button" data-cloud-admin-only onclick="chimioproCloudLogout()">Quitter</button>
+            <button type="button" data-cloud-admin-only class="danger" onclick="chimioproOfficialReset()">Initialisation officielle</button>
           </div>
         </div>
       </div>
@@ -453,6 +489,7 @@
       await signIn(email, password);
       window.chimioproCloudReady = true;
       patchLocalStorage();
+      startAutoSync();
       await cloudSync();
     } catch(e){
       alert('Connexion cloud impossible: ' + e.message);
@@ -466,25 +503,31 @@
       patchLocalStorage();
       updateCloudUi(current.user.email || '');
       await setupRealtime();
+      startAutoSync();
       return current;
     }
     window.chimioproCloudReady = false;
     updateCloudUi('');
+    stopAutoSync();
     return null;
   };
 
   window.chimioproCloudLogout = async function(){
+    if(!isCloudAdmin()) return alert('Deconnexion cloud reservee au compte admin.');
     await signOut();
     window.chimioproCloudReady = false;
+    stopAutoSync();
     notify('Deconnecte du cloud.', 'info');
   };
 
   window.chimioproCloudPull = async function(silent){
+    if(!isCloudAdmin()) return alert('Recuperation cloud reservee au compte admin.');
     try{ await cloudPull(Boolean(silent)); }
     catch(e){ alert('Recuperation cloud impossible: ' + e.message); }
   };
 
   window.chimioproCloudPush = async function(silent){
+    if(!isCloudAdmin()) return alert('Envoi cloud reserve au compte admin.');
     try{ await cloudPush(Boolean(silent)); }
     catch(e){ if(!silent) alert('Envoi cloud impossible: ' + e.message); else throw e; }
   };
@@ -495,6 +538,7 @@
   };
 
   window.chimioproOfficialReset = async function(){
+    if(!isCloudAdmin()) return alert('Initialisation reservee au compte admin.');
     const code = prompt('Code admin 4 chiffres pour initialisation officielle :');
     if(code === null) return;
     if(code !== ADMIN_CODE) return alert('Code incorrect.');
