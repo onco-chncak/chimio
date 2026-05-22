@@ -1521,7 +1521,7 @@
         .cell{border-right:1px solid #111;border-bottom:1px solid #111;padding:6px;min-height:33px}
         .wide{grid-column:1/-1}.thirds{display:grid;grid-template-columns:1fr 1fr 1fr}.label{font-size:9px;color:#444;text-transform:uppercase;margin-bottom:3px}.value{font-size:12.5px;font-weight:700}
         table{width:100%;border-collapse:collapse;margin-bottom:9px}th,td{border:1px solid #111;padding:6px;text-align:left}th{background:#eef4fd}
-        .check{display:inline-block;border:1px solid #111;width:12px;height:12px;margin:0 4px -2px 10px}.sign{display:grid;grid-template-columns:1fr 1fr;gap:14px}.sign>div{border:1px solid #111;min-height:128px;padding:9px;line-height:1.6}
+        .check{display:inline-block;border:1px solid #111;width:12px;height:12px;margin:0 4px -2px 10px}.sign{display:grid;grid-template-columns:.72fr 1.28fr;gap:14px}.sign>div{border:1px solid #111;min-height:128px;padding:9px;line-height:1.6}
         .stamp-space{height:68px;margin-top:10px;border-top:1px dashed #aaa}
         .distribution-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
         .distribution-box{border:1px solid #111;min-height:72px;padding:8px;line-height:1.55}
