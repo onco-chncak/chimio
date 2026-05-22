@@ -1510,24 +1510,24 @@
     const logo = document.querySelector('.nav-logo img')?.src || '';
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Demande produits sanguins labiles</title>
       <style>
-        @page{size:A4 portrait;margin:9mm}
+        @page{size:A4 portrait;margin:7mm}
         *{box-sizing:border-box}
-        body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:11.5px;line-height:1.28}
-        .top{display:grid;grid-template-columns:62px 1fr 165px;gap:10px;align-items:start;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:10px}
-        .top img{width:56px;height:56px;object-fit:contain}.ministry{text-align:center;line-height:1.32;font-size:9.6px}.right{text-align:right;font-size:9.5px;line-height:1.4}
-        h1{text-align:center;font-size:17px;margin:9px 0 11px;text-transform:uppercase;letter-spacing:.03em;border:1px solid #111;padding:7px}
-        .section-title{background:#e9eef5;border:1px solid #111;border-bottom:none;padding:5px 7px;font-weight:800;text-transform:uppercase}
-        .grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #111;border-left:1px solid #111;margin-bottom:9px}
-        .cell{border-right:1px solid #111;border-bottom:1px solid #111;padding:6px;min-height:33px}
-        .wide{grid-column:1/-1}.thirds{display:grid;grid-template-columns:1fr 1fr 1fr}.label{font-size:9px;color:#444;text-transform:uppercase;margin-bottom:3px}.value{font-size:12.5px;font-weight:700}
-        table{width:100%;border-collapse:collapse;margin-bottom:9px}th,td{border:1px solid #111;padding:6px;text-align:left}th{background:#eef4fd}
-        .check{display:inline-block;border:1px solid #111;width:12px;height:12px;margin:0 4px -2px 10px}.sign{display:grid;grid-template-columns:.72fr 1.28fr;gap:14px}.sign>div{border:1px solid #111;min-height:128px;padding:9px;line-height:1.6}
-        .stamp-space{height:68px;margin-top:10px;border-top:1px dashed #aaa}
-        .distribution-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-        .distribution-box{border:1px solid #111;min-height:72px;padding:8px;line-height:1.55}
-        .distribution-label{font-size:9px;text-transform:uppercase;color:#444;font-weight:800;margin-bottom:16px}
-        .distribution-line{border-top:1px dashed #999;height:28px}
-        .nb{font-size:9.5px;line-height:1.35;border:1px solid #111;padding:7px;margin-top:9px}
+        body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:11px;line-height:1.22}
+        .top{display:grid;grid-template-columns:58px 1fr 155px;gap:9px;align-items:start;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:7px}
+        .top img{width:52px;height:52px;object-fit:contain}.ministry{text-align:center;line-height:1.24;font-size:9.2px}.right{text-align:right;font-size:9px;line-height:1.3}
+        h1{text-align:center;font-size:15px;margin:6px 0 8px;text-transform:uppercase;letter-spacing:.03em;border:1px solid #111;padding:5px}
+        .section-title{background:#e9eef5;border:1px solid #111;border-bottom:none;padding:4px 6px;font-weight:800;text-transform:uppercase}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #111;border-left:1px solid #111;margin-bottom:6px}
+        .cell{border-right:1px solid #111;border-bottom:1px solid #111;padding:4px 5px;min-height:28px}
+        .wide{grid-column:1/-1}.thirds{display:grid;grid-template-columns:1fr 1fr 1fr}.label{font-size:8.4px;color:#444;text-transform:uppercase;margin-bottom:2px}.value{font-size:11.8px;font-weight:700}
+        table{width:100%;border-collapse:collapse;margin-bottom:6px}th,td{border:1px solid #111;padding:4px 5px;text-align:left}th{background:#eef4fd}
+        .check{display:inline-block;border:1px solid #111;width:12px;height:12px;margin:0 4px -2px 10px}.sign{display:grid;grid-template-columns:.68fr 1.32fr;gap:10px}.sign>div{border:1px solid #111;min-height:112px;padding:7px;line-height:1.42}
+        .stamp-space{height:50px;margin-top:8px;border-top:1px dashed #aaa}
+        .distribution-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+        .distribution-box{border:1px solid #111;min-height:58px;padding:6px;line-height:1.35}
+        .distribution-label{font-size:8.2px;text-transform:uppercase;color:#444;font-weight:800;margin-bottom:9px}
+        .distribution-line{border-top:1px dashed #999;height:20px}
+        .nb{font-size:8.6px;line-height:1.22;border:1px solid #111;padding:5px;margin-top:6px}
       </style></head><body>
       <div class="top"><img src="${logo}"><div class="ministry">Republique du Senegal - Un peuple, un but, une foi<br>Ministere de la Sante et de l'Action Sociale<br><b>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba</b><br>Service d'Oncologie-Radiotherapie - Secteur chimiotherapie</div><div class="right">Date demande: <b>${new Date().toLocaleDateString('fr-FR')}</b><br>Dossier: <b>${esc(row.dossier || '-')}</b><br>Code: <b>${esc(row.code || '-')}</b></div></div>
       <h1>Demande de produits sanguins labiles</h1>
@@ -5162,6 +5162,7 @@
         const text = norm(el.textContent || '');
         if(text.includes('effacer historique') || text === 'effacer' || text.includes('restaurer') || text.includes('ajouter un protocole') || text.includes('importer un protocole')) el.style.display = 'none';
       });
+      hideAdminOnlyControls();
     }
     if(isInfirmierUser()){
       document.querySelectorAll('button').forEach(btn => {
@@ -5206,6 +5207,61 @@
     }
     removeSupportChangeIdea();
     installApercuSearch();
+  }
+
+  function hideAdminOnlyControls(){
+    const sensitiveText = [
+      'export github',
+      'remettre a zero',
+      'remettre compteurs',
+      'effacer historique',
+      'effacer les historiques',
+      'vider historique',
+      'vider journal',
+      'initialisation officielle',
+      'initialiser',
+      'restaurer',
+      'supprimer',
+      'modifier',
+      'ajouter medecin',
+      'ajouter un medecin',
+      'nouveau rdv',
+      'ajouter rdv',
+      'ajouter rendez',
+      'ajouter patient'
+    ];
+    const sensitiveOnclick = [
+      'exportofficialgithubdata',
+      'resetallstatcounters',
+      'resetmedicationstats',
+      'clearallhistory',
+      'clearbiologie',
+      'clearhematologie',
+      'clearprogramme',
+      'clearauditlog',
+      'delete',
+      'supprimer',
+      'editrdv',
+      'openconsultationrdvmodal',
+      'showrdvmodal',
+      'addmedecin',
+      'deletemed',
+      'openpatientmodal',
+      'showaddpatientmodal',
+      'addpatientrow',
+      'clearday',
+      'chimioproofficialreset'
+    ];
+    document.querySelectorAll('button,label,a').forEach(el => {
+      if(isPharmacienUser() && el.closest('#page-pharmacie')) return;
+      const text = norm(el.textContent || '');
+      const onclick = norm(el.getAttribute('onclick') || '');
+      const title = norm(el.getAttribute('title') || '');
+      const isSensitive = sensitiveText.some(pattern => text.includes(pattern) || title.includes(pattern)) || sensitiveOnclick.some(pattern => onclick.includes(pattern));
+      const isAllowedClinical = text.includes('imprimer') || text.includes('bon de sang') || text.includes('traiter') || text.includes('transfuse') || text.includes('apercu') || text.includes('synchroniser');
+      if(isSensitive && !isAllowedClinical) el.style.display = 'none';
+    });
+    document.querySelectorAll('#official-github-data-btn,#official-github-data-dashboard,#official-github-data-pharma,#official-github-admin-tools,#programme-template-btn,#patients-add-final').forEach(el => el.remove());
   }
 
   function removeSupportChangeIdea(){
