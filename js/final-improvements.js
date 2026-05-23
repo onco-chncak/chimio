@@ -2466,6 +2466,13 @@
     const indicationRows = Object.entries(countBy(dedupeByPatientTreatment(patients), p => val(p.indication, p.indicationTraitement, p.typeTraitement, 'Indication non renseignee')))
       .sort((a,b) => b[1] - a[1])
       .map(([name, count]) => `<tr><td>${esc(name)}</td><td>${count}</td></tr>`).join('');
+    const suiviAlerts = buildClinicalFollowupAlerts();
+    const suiviAlertCounts = countBy(suiviAlerts, alert => alert.type);
+    const suiviAlertRows = suiviAlerts.map(alert => `
+      <tr><td>${esc(alert.type)}</td><td>${esc(alert.patient || '-')}</td><td>${esc(alert.detail || '-')}</td><td>${esc(alert.action || '-')}</td></tr>
+    `).join('');
+    const suiviTypeRows = Object.entries(suiviAlertCounts).sort((a,b) => b[1] - a[1]).map(([type, count]) => `<tr><td>${esc(type)}</td><td>${count}</td></tr>`).join('');
+    const alertCount = type => Number(suiviAlertCounts[type] || 0);
     const totalDose = Object.values(meds).reduce((sum, item) => sum + Number(item.dose || 0), 0);
     const totalWaste = Object.values(meds).reduce((sum, item) => sum + Number(item.wasteMg || 0), 0);
     const totalFlacons = Object.values(meds).reduce((sum, item) => sum + Number(item.flacons || 0), 0);
@@ -2486,6 +2493,10 @@
           <div class="stats-box"><h3>Transfusions</h3><p>${transfusions.length}</p></div>
           <div class="stats-box"><h3>Consultants</h3><p>${consultantsNew}</p><small>Nouveaux patients vus</small></div>
           <div class="stats-box"><h3>Consultations</h3><p>${consultationsDone.length}</p><small>Ensemble des patients vus</small></div>
+          <div class="stats-box"><h3>Alertes suivi</h3><p>${suiviAlerts.length}</p><small>Actives</small></div>
+          <div class="stats-box"><h3>Absences / retards</h3><p>${alertCount('Absence / RDV depasse')}</p><small>RDV depasses non traites</small></div>
+          <div class="stats-box"><h3>Irrégularités</h3><p>${alertCount('Traitement irregulier')}</p><small>Intervalles longs</small></div>
+          <div class="stats-box"><h3>Rappels RT</h3><p>${alertCount('Rappel radiotherapie')}</p><small>Attente / induction</small></div>
         </div>
         <div class="stats-final-note">Patients: registre patients. Preparations: nombre de medicaments prepares/valides. Seances: RDV traites, sinon sorties de stock. Protocoles sauvegardes: historique des protocoles sauvegardes. Consultants: nouveaux patients marques consultes. Consultations: tous les RDV consultations marques consultes.${statsResetAt ? ` Depart activite: ${esc(new Date(statsResetAt).toLocaleString('fr-FR'))}.` : ''}${medicationResetAt ? ` Depart medicaments: ${esc(new Date(medicationResetAt).toLocaleString('fr-FR'))}.` : ''}</div>
         <div class="card stats-section-card"><div class="card-header"><h2>Graphique medicaments</h2>${isAdminUser() ? '<button class="btn-secondary official-github-mini" onclick="resetMedicationStats()">Remettre a zero</button>' : ''}</div><div class="card-body">${chartRows || '<div class="dash-empty">Aucune donnee medicament.</div>'}</div></div>
@@ -2498,6 +2509,8 @@
           <div class="card"><div class="card-header"><h2>Medecins</h2></div><div class="card-body">${miniRows(countBy(patients, p => p.medecin))}</div></div>
         </div>
         <div class="card stats-section-card"><div class="card-header"><h2>Nombre par indication</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Indication</th><th>Nombre</th></tr></thead><tbody>${indicationRows || '<tr><td colspan="2" class="dash-empty">Aucune indication renseignee.</td></tr>'}</tbody></table></div></div>
+        <div class="card stats-section-card"><div class="card-header"><h2>Alertes de suivi clinique</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Type alerte</th><th>Nombre</th></tr></thead><tbody>${suiviTypeRows || '<tr><td colspan="2" class="dash-empty">Aucune alerte active.</td></tr>'}</tbody></table></div></div>
+        <div class="card stats-section-card"><div class="card-header"><h2>Detail des alertes suivi</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Alerte</th><th>Patient</th><th>Constat</th><th>Action conseillee</th></tr></thead><tbody>${suiviAlertRows || '<tr><td colspan="4" class="dash-empty">Aucune alerte active.</td></tr>'}</tbody></table></div></div>
         <div class="card stats-section-card"><div class="card-header"><h2>Diagnostics par protocole</h2></div><div class="card-body dash-table-wrap"><table class="dash-table"><thead><tr><th>Diagnostic</th><th>Protocole</th><th>Nombre</th></tr></thead><tbody>${diagnosticProtocolRows || '<tr><td colspan="3" class="dash-empty">Aucune donnee diagnostic/protocole.</td></tr>'}</tbody></table></div></div>
       </div>`;
   }
