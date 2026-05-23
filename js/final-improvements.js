@@ -683,13 +683,41 @@
     if(Array.isArray(official.catalog) && official.catalog.length){
       const currentOfficialCatalogVersion = localStorage.getItem('chncak_official_catalog_version');
       if(currentOfficialCatalogVersion !== official.version){
-        const cleanCatalog = cleanPharmacyCatalog(official.catalog);
+        const liveCatalog = cleanPharmacyCatalog(readJson(STORAGE.catalog, []));
+        const cleanCatalog = mergeOfficialCatalogPreservingLiveStock(official.catalog, liveCatalog);
         writeJson(STORAGE.catalog, cleanCatalog);
         localStorage.setItem('chncak_official_catalog_version', official.version || todayIso());
         try { if(Array.isArray(window.catalog)) window.catalog = cleanCatalog; } catch(e) {}
         try { if(typeof catalog !== 'undefined') catalog = cleanCatalog; } catch(e) {}
       }
     }
+  }
+
+  function mergeOfficialCatalogPreservingLiveStock(officialCatalog, liveCatalog){
+    const officialClean = cleanPharmacyCatalog(officialCatalog);
+    const liveClean = cleanPharmacyCatalog(liveCatalog);
+    if(!liveClean.length) return officialClean;
+    const liveByKey = new Map();
+    liveClean.forEach(item => {
+      const key = catalogAliasKey(val(item.name, item.dci)) || norm(val(item.name, item.dci));
+      if(key) liveByKey.set(key, item);
+    });
+    const merged = officialClean.map(item => {
+      const key = catalogAliasKey(val(item.name, item.dci)) || norm(val(item.name, item.dci));
+      const live = liveByKey.get(key);
+      if(!live) return item;
+      liveByKey.delete(key);
+      return {
+        ...item,
+        prixUnit: Number(val(live.prixUnit, live.prix, item.prixUnit, item.prix, 0)),
+        statutTarif: val(live.statutTarif, live.statut, item.statutTarif, item.statut, 'Payant'),
+        qteService: Number(val(live.qteService, live.stockService, live.qteStock, live.stock, item.qteService, item.qteStock, 0)),
+        qteCentral: Number(val(live.qteCentral, live.stockCentral, item.qteCentral, 0))
+      };
+    });
+    liveByKey.forEach(item => merged.push(item));
+    merged.forEach(item => { item.qteStock = Number(val(item.qteService, item.qteStock, item.stock, 0)); });
+    return merged;
   }
 
   window.exportOfficialGitHubData = function(){
@@ -3819,8 +3847,11 @@
   function syncCatalogGlobal(list){
     list = cleanPharmacyCatalog(list);
     writeJson(STORAGE.catalog, list);
+    localStorage.setItem('chncak_catalog_last_saved_at', new Date().toISOString());
+    localStorage.setItem('chncak_catalog_safety_backup', JSON.stringify({savedAt:new Date().toISOString(), catalog:list}));
     try { if(Array.isArray(window.catalog)) window.catalog = list; } catch(e) {}
     try { if(typeof catalog !== 'undefined') catalog = list; } catch(e) {}
+    try { window.chimioproCloudPush?.(true); } catch(e) {}
   }
 
   function visibleMissingDrugName(){
@@ -3860,7 +3891,12 @@
 
   const nativeSaveCatalog = window.saveCatalog;
   window.saveCatalog = function(){
-    return requirePharmacienAction('enregistrer le catalogue pharmacie', () => nativeSaveCatalog?.apply(this, arguments));
+    return requirePharmacienAction('enregistrer le catalogue pharmacie', () => {
+      const out = nativeSaveCatalog?.apply(this, arguments);
+      syncCatalogGlobal(readJson(STORAGE.catalog, Array.isArray(window.catalog) ? window.catalog : []));
+      showToastSafe('Catalogue sauvegarde localement et pousse vers le cloud.', 'success');
+      return out;
+    });
   };
 
   window.importCatalogExcel = function(){

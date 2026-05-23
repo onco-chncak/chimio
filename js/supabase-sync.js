@@ -521,13 +521,19 @@
   };
 
   window.chimioproCloudPull = async function(silent){
-    if(!isCloudAdmin()) return alert('Recuperation cloud reservee au compte admin.');
+    if(!isCloudAdmin()){
+      if(!silent) alert('Recuperation cloud reservee au compte admin.');
+      return;
+    }
     try{ await cloudPull(Boolean(silent)); }
     catch(e){ alert('Recuperation cloud impossible: ' + e.message); }
   };
 
   window.chimioproCloudPush = async function(silent){
-    if(!isCloudAdmin()) return alert('Envoi cloud reserve au compte admin.');
+    if(!isCloudAdmin()){
+      if(!silent) alert('Envoi cloud reserve au compte admin.');
+      return;
+    }
     try{ await cloudPush(Boolean(silent)); }
     catch(e){ if(!silent) alert('Envoi cloud impossible: ' + e.message); else throw e; }
   };
