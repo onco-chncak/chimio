@@ -813,7 +813,10 @@
       totalMg += size;
       remaining -= size;
     }
-    return {drug:item, nbFlacons:flacons.length, flacons, totalMg, reliquat:Math.max(0, Math.round((totalMg - dose) * 10) / 10), stock:Number(val(item.qteService, item.stockService, item.qteStock, item.stock, 0))};
+    const formStock = item.qteServiceByDosage && typeof item.qteServiceByDosage === 'object'
+      ? Object.values(item.qteServiceByDosage).reduce((sum, qty) => sum + Number(qty || 0), 0)
+      : Number(val(item.qteService, item.stockService, item.qteStock, item.stock, 0));
+    return {drug:item, nbFlacons:flacons.length, flacons, totalMg, reliquat:Math.max(0, Math.round((totalMg - dose) * 10) / 10), stock:formStock};
   }
 
   function confirmFlaconsByDosage(drugName, dose, calc){
@@ -989,9 +992,23 @@
         calc = confirmFlaconsByDosage(row.name, dose, calc);
         if(!calc){ warnings.push(`${row.name}: deduction annulee ou quantites invalides.`); return; }
       }
-      const stock = Number(val(catalog[idx].qteService, catalog[idx].stockService, catalog[idx].qteStock, catalog[idx].stock, 0));
-      if(stock < calc.nbFlacons){ warnings.push(`${row.name}: stock insuffisant (${stock} flacon(s), besoin ${calc.nbFlacons}).`); return; }
-      catalog[idx].qteService = stock - calc.nbFlacons;
+      const formCounts = {};
+      (calc.flacons || []).forEach(size => { formCounts[size] = (formCounts[size] || 0) + 1; });
+      if(catalog[idx].qteServiceByDosage && typeof catalog[idx].qteServiceByDosage === 'object'){
+        const missing = Object.entries(formCounts).filter(([size, qty]) => Number(catalog[idx].qteServiceByDosage[size] || 0) < qty);
+        if(missing.length){
+          warnings.push(`${row.name}: stock service insuffisant pour forme ${missing.map(([size, qty]) => `${size}mg besoin ${qty}, dispo ${Number(catalog[idx].qteServiceByDosage[size] || 0)}`).join('; ')}.`);
+          return;
+        }
+        Object.entries(formCounts).forEach(([size, qty]) => {
+          catalog[idx].qteServiceByDosage[size] = Number(catalog[idx].qteServiceByDosage[size] || 0) - qty;
+        });
+        catalog[idx].qteService = Object.values(catalog[idx].qteServiceByDosage).reduce((sum, qty) => sum + Number(qty || 0), 0);
+      } else {
+        const stock = Number(val(catalog[idx].qteService, catalog[idx].stockService, catalog[idx].qteStock, catalog[idx].stock, 0));
+        if(stock < calc.nbFlacons){ warnings.push(`${row.name}: stock insuffisant (${stock} flacon(s), besoin ${calc.nbFlacons}).`); return; }
+        catalog[idx].qteService = stock - calc.nbFlacons;
+      }
       catalog[idx].qteStock = catalog[idx].qteService;
       updated++;
       details.push({name: row.name, dose, nbFlacons: calc.nbFlacons, reliquatMg: Number(calc.reliquat || 0), reliquatFlacons: reliquatFlaconsFromCalc(calc), flacons: calc.flacons || []});
@@ -3873,10 +3890,28 @@
     const dosagesRaw = prompt('Dosages disponibles en mg, separes par virgule (ex: 50,100,500) :', '');
     const dosages = String(dosagesRaw || '').split(/[,;\/\s]+/).map(Number).filter(n => n > 0);
     if(!dosages.length) return alert('Dosage invalide. Medicament non ajoute.');
-    const stock = Number(prompt('Stock initial en flacons :', '0') || 0);
+    let qteService = 0;
+    let qteCentral = 0;
+    const qteServiceByDosage = {};
+    const qteCentralByDosage = {};
+    if(dosages.length > 1){
+      dosages.forEach(size => {
+        const key = dosageKey(size);
+        qteServiceByDosage[key] = Number(prompt(`Stock service initial pour ${drugName} ${size} mg :`, '0') || 0);
+        qteCentralByDosage[key] = Number(prompt(`Stock pharmacie centrale initial pour ${drugName} ${size} mg :`, '0') || 0);
+      });
+      qteService = Object.values(qteServiceByDosage).reduce((sum, qty) => sum + Number(qty || 0), 0);
+      qteCentral = Object.values(qteCentralByDosage).reduce((sum, qty) => sum + Number(qty || 0), 0);
+    } else {
+      const key = dosageKey(dosages[0]);
+      qteService = Number(prompt('Stock service initial en flacons :', '0') || 0);
+      qteCentral = Number(prompt('Stock pharmacie centrale initial en flacons :', '0') || 0);
+      qteServiceByDosage[key] = qteService;
+      qteCentralByDosage[key] = qteCentral;
+    }
     const prix = Number(prompt('Prix par flacon en FCFA :', '0') || 0);
     const statutTarif = confirm('Ce medicament est-il gratuit ?\n\nOK = Gratuit\nAnnuler = Payant') ? 'Gratuit' : 'Payant';
-    list.push({name:drugName, dci, dosages, forme:'Injectable', cond:'B1', qteStock:stock, prixUnit:prix, statutTarif});
+    list.push({name:drugName, dci, dosages, forme:'Injectable', cond:'B1', qteStock:qteService, qteService, qteCentral, qteServiceByDosage, qteCentralByDosage, prixUnit:prix, statutTarif});
     syncCatalogGlobal(list);
     window.renderCatalogTable?.();
     window.renderPharmacie?.();
@@ -4112,6 +4147,48 @@
     });
   }
 
+  function dosageKey(dosage){
+    return String(dosage || 'global').replace(/[^\d.]/g, '') || 'global';
+  }
+
+  function ensureDosageStockMaps(item){
+    const dosages = (item.dosages || item.flacons || []).map(Number).filter(Boolean);
+    const firstKey = dosageKey(dosages[0]);
+    const serviceHasMap = item.qteServiceByDosage && typeof item.qteServiceByDosage === 'object' && Object.keys(item.qteServiceByDosage).length;
+    const centralHasMap = item.qteCentralByDosage && typeof item.qteCentralByDosage === 'object' && Object.keys(item.qteCentralByDosage).length;
+    item.qteServiceByDosage = serviceHasMap ? item.qteServiceByDosage : {};
+    item.qteCentralByDosage = centralHasMap ? item.qteCentralByDosage : {};
+    if(!serviceHasMap && dosages.length){
+      item.qteServiceByDosage[firstKey] = Number(val(item.qteService, item.stockService, item.qteStock, item.stock, 0));
+      dosages.slice(1).forEach(size => { item.qteServiceByDosage[dosageKey(size)] = 0; });
+    }
+    if(!centralHasMap && dosages.length){
+      item.qteCentralByDosage[firstKey] = Number(val(item.qteCentral, item.stockCentral, 0));
+      dosages.slice(1).forEach(size => { item.qteCentralByDosage[dosageKey(size)] = 0; });
+    }
+    return item;
+  }
+
+  function stockForDosage(item, dosage, field){
+    const key = dosageKey(dosage);
+    const mapName = field === 'central' ? 'qteCentralByDosage' : 'qteServiceByDosage';
+    const totalFallback = field === 'central'
+      ? Number(val(item.qteCentral, item.stockCentral, 0))
+      : Number(val(item.qteService, item.stockService, item.qteStock, item.stock, 0));
+    const dosages = (item.dosages || item.flacons || []).map(Number).filter(Boolean);
+    if(item[mapName] && Object.prototype.hasOwnProperty.call(item[mapName], key)) return Number(item[mapName][key] || 0);
+    if(dosages.length <= 1) return totalFallback;
+    return key === dosageKey(dosages[0]) ? totalFallback : 0;
+  }
+
+  function recomputeCatalogTotals(item){
+    const serviceMap = item.qteServiceByDosage && typeof item.qteServiceByDosage === 'object' ? item.qteServiceByDosage : null;
+    const centralMap = item.qteCentralByDosage && typeof item.qteCentralByDosage === 'object' ? item.qteCentralByDosage : null;
+    if(serviceMap) item.qteService = Object.values(serviceMap).reduce((sum, qty) => sum + Number(qty || 0), 0);
+    if(centralMap) item.qteCentral = Object.values(centralMap).reduce((sum, qty) => sum + Number(qty || 0), 0);
+    item.qteStock = Number(val(item.qteService, item.qteStock, item.stock, 0));
+  }
+
   function expandCatalogDosageRows(){
     const tbody = document.getElementById('catalog-body');
     if(!tbody) return;
@@ -4131,15 +4208,16 @@
     }
     const list = readJson(STORAGE.catalog, Array.isArray(window.catalog) ? window.catalog : []);
     tbody.innerHTML = list.map((d, i) => {
-      const stock = Number(val(d.qteService, d.stockService, d.qteStock, d.stock, 0));
-      const central = Number(val(d.qteCentral, d.stockCentral, 0));
       const prix = d.prixUnit ?? d.prix ?? 0;
       const statutTarif = d.statutTarif || d.statut || 'Payant';
-      const stockLow = Number(stock) <= 5;
-      const stockCrit = Number(stock) <= 2;
       const dosages = (d.dosages || d.flacons || []).map(Number).filter(Boolean);
       const rows = dosages.length ? dosages : [''];
-      return rows.map((dosage, j) => `
+      return rows.map((dosage, j) => {
+        const stock = stockForDosage(d, dosage, 'service');
+        const central = stockForDosage(d, dosage, 'central');
+        const stockLow = Number(stock) <= 5;
+        const stockCrit = Number(stock) <= 2;
+        return `
         <tr style="${(i+j)%2===0?'background:var(--gray-light)':'background:white'}">
           <td style="padding:7px 10px;font-size:12px;font-weight:600;color:var(--blue)">${esc(d.name)}${rows.length > 1 ? ` <span style="font-size:10px;color:var(--gray-mid)">forme ${j+1}</span>` : ''}</td>
           <td style="padding:7px 8px;font-size:11px;color:var(--gray-mid)">${esc(d.dci || '')}</td>
@@ -4155,38 +4233,57 @@
             <input type="number" value="${esc(prix)}" data-idx="${i}" data-field="prixUnit" placeholder="FCFA" style="width:100px;padding:5px 7px;font-size:12px;border:1px solid var(--gray-border);border-radius:4px" oninput="updateCatalogField(${i},'prixUnit',this.value)">
           </td>
           <td style="padding:4px 6px">
-            <input type="number" value="${esc(stock)}" data-idx="${i}" data-field="qteStock" placeholder="flacons" min="0" style="width:80px;padding:5px 7px;font-size:12px;border:1px solid ${stockCrit?'var(--red2)':stockLow?'var(--amber2)':'var(--gray-border)'};border-radius:4px;background:${stockCrit?'var(--red-pale)':stockLow?'var(--amber-pale)':'white'}" oninput="updateCatalogField(${i},'qteStock',this.value)">
+            <input type="number" value="${esc(stock)}" placeholder="flacons" min="0" style="width:80px;padding:5px 7px;font-size:12px;border:1px solid ${stockCrit?'var(--red2)':stockLow?'var(--amber2)':'var(--gray-border)'};border-radius:4px;background:${stockCrit?'var(--red-pale)':stockLow?'var(--amber-pale)':'white'}" oninput="updateCatalogFormStock(${i},'${esc(dosageKey(dosage))}','service',this.value)">
             ${stockCrit?'<span style="font-size:10px;color:var(--red2);margin-left:4px;display:block">ALERTE Critique</span>':stockLow?'<span style="font-size:10px;color:var(--amber2);margin-left:4px;display:block">Bas</span>':''}
           </td>
           <td style="padding:4px 6px">
-            <input type="number" value="${esc(central)}" data-idx="${i}" data-field="qteCentral" placeholder="flacons" min="0" style="width:90px;padding:5px 7px;font-size:12px;border:1px solid var(--gray-border);border-radius:4px" oninput="updateCatalogField(${i},'qteCentral',this.value)">
+            <input type="number" value="${esc(central)}" placeholder="flacons" min="0" style="width:90px;padding:5px 7px;font-size:12px;border:1px solid var(--gray-border);border-radius:4px" oninput="updateCatalogFormStock(${i},'${esc(dosageKey(dosage))}','central',this.value)">
           </td>
           <td style="padding:4px 6px">
-            ${j === 0 ? `<button class="btn-sm" onclick="transferCentralToService(${i})">Approvisionner service</button>` : ''}
+            <button class="btn-sm" onclick="transferCentralToService(${i},'${esc(dosageKey(dosage))}')">Approvisionner service</button>
           </td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
     }).join('');
   }
 
-  window.transferCentralToService = function(index){
+  window.updateCatalogFormStock = function(index, dosage, field, value){
+    return requirePharmacienAction('modifier le stock par forme', () => {
+      const list = readJson(STORAGE.catalog, Array.isArray(window.catalog) ? window.catalog : []);
+      const item = list[index];
+      if(!item) return;
+      ensureDosageStockMaps(item);
+      const key = dosageKey(dosage);
+      if(field === 'central') item.qteCentralByDosage[key] = Number(value || 0);
+      else item.qteServiceByDosage[key] = Number(value || 0);
+      recomputeCatalogTotals(item);
+      syncCatalogGlobal(list);
+      window.renderPharmacie?.();
+    });
+  };
+
+  window.transferCentralToService = function(index, dosage){
     return requirePharmacienAction('approvisionner le stock service', () => {
       const list = readJson(STORAGE.catalog, Array.isArray(window.catalog) ? window.catalog : []);
       const item = list[index];
       if(!item) return alert('Medicament introuvable.');
-      const central = Number(val(item.qteCentral, item.stockCentral, 0));
-      const service = Number(val(item.qteService, item.stockService, item.qteStock, item.stock, 0));
-      const qty = Number(prompt(`Quantite a transferer vers le stock service pour ${item.name}\nDisponible pharmacie centrale: ${central} flacon(s)`, '1') || 0);
+      ensureDosageStockMaps(item);
+      const key = dosageKey(dosage);
+      const central = stockForDosage(item, key, 'central');
+      const service = stockForDosage(item, key, 'service');
+      const label = key === 'global' ? item.name : `${item.name} ${key} mg`;
+      const qty = Number(prompt(`Quantite a transferer vers le stock service pour ${label}\nDisponible pharmacie centrale: ${central} flacon(s)`, '1') || 0);
       if(!qty || qty <= 0) return;
       if(qty > central) return alert(`Stock pharmacie centrale insuffisant. Disponible: ${central} flacon(s).`);
-      item.qteCentral = central - qty;
-      item.qteService = service + qty;
-      item.qteStock = item.qteService;
+      item.qteCentralByDosage[key] = central - qty;
+      item.qteServiceByDosage[key] = service + qty;
+      recomputeCatalogTotals(item);
       syncCatalogGlobal(list);
       const moves = readJson('chncak_stock_mouvements', []);
-      moves.unshift({id:`MOV-${Date.now()}`, dateTs:new Date().toISOString(), date:new Date().toLocaleString('fr-FR'), type:'transfert_central_service', medicament:item.name, quantite:qty, centralAvant:central, centralApres:item.qteCentral, serviceAvant:service, serviceApres:item.qteService, actor:actorLabel()});
+      moves.unshift({id:`MOV-${Date.now()}`, dateTs:new Date().toISOString(), date:new Date().toLocaleString('fr-FR'), type:'transfert_central_service', medicament:item.name, dosage:key, quantite:qty, centralAvant:central, centralApres:item.qteCentralByDosage[key], serviceAvant:service, serviceApres:item.qteServiceByDosage[key], actor:actorLabel()});
       writeJson('chncak_stock_mouvements', moves.slice(0, 1000));
-      logAudit('Transfert stock', item.name, `${qty} flacon(s) pharmacie centrale -> stock service`);
+      logAudit('Transfert stock', item.name, `${qty} flacon(s) ${key === 'global' ? '' : key + ' mg '}pharmacie centrale -> stock service`);
       window.renderCatalogTable?.();
       window.renderPharmacie?.();
       showToastSafe('Stock service approvisionne.', 'success');

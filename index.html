@@ -496,6 +496,9 @@
                 &#128229; Importer Excel
                 <input type="file" accept=".xlsx,.xls,.csv" onchange="importCatalogExcel(this)" style="display:none">
               </label>
+              <button onclick="addMissingDrugToCatalog()" style="padding:8px 14px;background:white;color:#4A2A80;border:1.5px solid #D0C0F0;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+                + Ajouter medicament
+              </button>
               <button onclick="cancelLastCatalogImport()" style="padding:8px 14px;background:#FFF8E8;color:#8A5A00;border:1.5px solid #F0C060;border-radius:var(--radius);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
                 Annuler import
               </button>
@@ -1171,23 +1174,23 @@ Rinçage 250 cc SSI 0.9% | support | fix | 250"
     </div>
   </div>
 </div>
-<script src="js/auth.js?v=20260523c"></script>
-<script src="js/main.js?v=20260523c"></script>
+<script src="js/auth.js?v=20260523d"></script>
+<script src="js/main.js?v=20260523d"></script>
 <script src="js/dashboard.js"></script>
-<script src="js/rdv.js?v=20260523c"></script>
+<script src="js/rdv.js?v=20260523d"></script>
 <script src="js/enhancements.js"></script>
 <script src="js/clinical-modules.js"></script>
 <script src="js/data-tools.js?v=20260514i"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/supabase-sync.js?v=20260523c"></script>
+<script src="js/supabase-sync.js?v=20260523d"></script>
 <script src="js/protocol-editor.js"></script>
 <script src="js/app-polish.js"></script>
 <script src="js/requested-improvements.js"></script>
-<script src="js/site-official-data.js?v=20260523c"></script>
-<script src="js/final-improvements.js?v=20260523c"></script>
+<script src="js/site-official-data.js?v=20260523d"></script>
+<script src="js/final-improvements.js?v=20260523d"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const CHIMIOPRO_PUBLIC_VERSION = '20260523c';
+    const CHIMIOPRO_PUBLIC_VERSION = '20260523d';
     let chimioproReloadingForUpdate = false;
     const showChimioProUpdateNotice = () => {
       if (document.getElementById('chimiopro-update-notice')) return;
