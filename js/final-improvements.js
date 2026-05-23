@@ -11,6 +11,9 @@
   const STAT_BLOCK_RESET_KEY = 'chncak_stats_blocs_reset_after';
   const RESTORED_PROTOCOL_KEY = 'chncak_restored_protocol_lock';
   const CATALOG_IMPORT_BACKUP_KEY = 'chncak_catalog_backup_before_import';
+  const NOTIFICATIONS_KEY = 'chncak_notifications';
+  const MESSAGES_KEY = 'chncak_messages';
+  const ROLE_REQUESTS_KEY = 'chncak_role_change_requests';
   const STORAGE = {
     patients: 'chncak_patients',
     rdv: 'chncak_rdv',
@@ -526,6 +529,279 @@
     if(document.getElementById('maintenance-content')) renderAuditLogPanel();
   }
   window.logAudit = logAudit;
+
+  function userKey(user){
+    return norm(val(user?.email, user?.username, user?.name, 'local'));
+  }
+
+  function currentUserKey(){
+    return userKey(currentUser());
+  }
+
+  function displayUserName(user){
+    return val(user?.name, `${val(user?.prenom)} ${val(user?.nom)}`.trim(), user?.username, user?.email, 'Utilisateur');
+  }
+
+  function allAppUsers(){
+    const approved = readJson('chncak_approved_users', []);
+    const current = currentUser();
+    const base = [
+      {username:'onco.chn.cak@gmail.com', email:'onco.chn.cak@gmail.com', name:'Administrateur ChimioPro', role:'admin'},
+      ...approved.map(u => ({
+        ...u,
+        name: displayUserName(u),
+        username: val(u.username, u.email),
+        email: val(u.email, u.username),
+        role: val(u.role, 'medecin')
+      })),
+      current?.username ? current : null
+    ].filter(Boolean);
+    const map = new Map();
+    base.forEach(u => {
+      const key = userKey(u);
+      if(key && !map.has(key)) map.set(key, u);
+    });
+    return Array.from(map.values()).sort((a,b) => displayUserName(a).localeCompare(displayUserName(b), 'fr'));
+  }
+
+  function usersByRoles(roles){
+    const wanted = roles.map(norm);
+    return allAppUsers().filter(u => wanted.includes(norm(u.role)));
+  }
+
+  function readNotifications(){
+    return readJson(NOTIFICATIONS_KEY, []);
+  }
+
+  function writeNotifications(list){
+    writeJson(NOTIFICATIONS_KEY, list.slice(0, 1000));
+    updateCommunicationBadges();
+  }
+
+  function notifyUsers(users, title, body, options = {}){
+    const me = currentUser();
+    const meKey = currentUserKey();
+    const targets = users.map(u => ({...u, key:userKey(u)})).filter(u => u.key && (!options.skipSelf || u.key !== meKey));
+    if(!targets.length) return;
+    const list = readNotifications();
+    targets.forEach(u => {
+      list.unshift({
+        id:`NOTIF-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        to:u.key,
+        toName:displayUserName(u),
+        from:meKey,
+        fromName:actorLabel(),
+        title:val(title, 'Notification'),
+        body:val(body, ''),
+        kind:val(options.kind, 'general'),
+        patientName:val(options.patientName, ''),
+        patientId:val(options.patientId, ''),
+        createdAt:new Date().toISOString(),
+        read:false
+      });
+    });
+    writeNotifications(list);
+  }
+
+  function unreadNotifications(){
+    const key = currentUserKey();
+    return readNotifications().filter(n => n.to === key && !n.read);
+  }
+
+  function readMessages(){
+    return readJson(MESSAGES_KEY, []);
+  }
+
+  function writeMessages(list){
+    writeJson(MESSAGES_KEY, list.slice(0, 1500));
+    updateCommunicationBadges();
+  }
+
+  function unreadMessages(){
+    const key = currentUserKey();
+    return readMessages().filter(m => m.to === key && !m.readAt);
+  }
+
+  function updateCommunicationBadges(){
+    const n = unreadNotifications().length;
+    const m = unreadMessages().length;
+    const nb = document.getElementById('comm-notif-badge');
+    const mb = document.getElementById('comm-msg-badge');
+    if(nb){ nb.textContent = n; nb.style.display = n ? 'inline-flex' : 'none'; }
+    if(mb){ mb.textContent = m; mb.style.display = m ? 'inline-flex' : 'none'; }
+  }
+
+  function ensureCommunicationBar(){
+    if(document.getElementById('comm-bar')){ updateCommunicationBadges(); return; }
+    const bar = document.createElement('div');
+    bar.id = 'comm-bar';
+    bar.className = 'comm-bar no-print';
+    bar.innerHTML = `
+      <button title="Notifications" onclick="openCommunicationCenter('notifications')">🔔<span id="comm-notif-badge" class="comm-badge"></span></button>
+      <button title="Messagerie" onclick="openCommunicationCenter('messages')">💬<span id="comm-msg-badge" class="comm-badge"></span></button>
+      <button title="Profil" onclick="openCommunicationCenter('profile')">👤</button>`;
+    document.body.appendChild(bar);
+    updateCommunicationBadges();
+  }
+
+  window.openCommunicationCenter = function(tab = 'notifications'){
+    if(!currentUserKey()) return alert('Connectez-vous pour utiliser notifications et messagerie.');
+    document.getElementById('communication-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'communication-modal';
+    modal.className = 'secure-code-modal communication-modal';
+    modal.innerHTML = `
+      <div class="secure-code-backdrop" onclick="closeCommunicationCenter()"></div>
+      <div class="secure-code-card communication-card">
+        <div class="comm-head"><h3>Communication interne</h3><button onclick="closeCommunicationCenter()">×</button></div>
+        <div class="comm-tabs">
+          <button data-comm-tab="notifications" onclick="renderCommunicationTab('notifications')">Notifications</button>
+          <button data-comm-tab="messages" onclick="renderCommunicationTab('messages')">Messagerie</button>
+          <button data-comm-tab="profile" onclick="renderCommunicationTab('profile')">Profil</button>
+        </div>
+        <div id="communication-content"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    renderCommunicationTab(tab);
+  };
+
+  window.closeCommunicationCenter = function(){
+    document.getElementById('communication-modal')?.remove();
+  };
+
+  window.renderCommunicationTab = function(tab){
+    const host = document.getElementById('communication-content');
+    if(!host) return;
+    document.querySelectorAll('.comm-tabs button').forEach(btn => btn.classList.toggle('active', btn.dataset.commTab === tab));
+    if(tab === 'messages') return renderMessagesPanel(host);
+    if(tab === 'profile') return renderProfilePanel(host);
+    return renderNotificationsPanel(host);
+  };
+
+  function renderNotificationsPanel(host){
+    const key = currentUserKey();
+    const rows = readNotifications().filter(n => n.to === key).slice(0, 80);
+    host.innerHTML = `
+      <div class="comm-toolbar"><button class="btn-secondary official-github-mini" onclick="markAllNotificationsRead()">Tout marquer lu</button></div>
+      <div class="comm-list">${rows.map(n => `
+        <div class="comm-item ${n.read ? '' : 'unread'}">
+          <div><b>${esc(n.title)}</b><span>${esc(new Date(n.createdAt).toLocaleString('fr-FR'))}</span></div>
+          <p>${esc(n.body)}</p>
+          <small>De : ${esc(n.fromName || '-')} ${n.patientName ? ' · Patient : ' + esc(n.patientName) : ''}</small>
+          ${n.read ? '' : `<button onclick="markNotificationRead('${esc(n.id)}')">Marquer lu</button>`}
+        </div>`).join('') || '<div class="dash-empty">Aucune notification.</div>'}</div>`;
+  }
+
+  window.markNotificationRead = function(id){
+    const list = readNotifications();
+    const idx = list.findIndex(n => n.id === id);
+    if(idx >= 0) list[idx].read = true;
+    writeNotifications(list);
+    renderCommunicationTab('notifications');
+  };
+
+  window.markAllNotificationsRead = function(){
+    const key = currentUserKey();
+    const list = readNotifications().map(n => n.to === key ? {...n, read:true} : n);
+    writeNotifications(list);
+    renderCommunicationTab('notifications');
+  };
+
+  function renderMessagesPanel(host){
+    const users = allAppUsers().filter(u => userKey(u) !== currentUserKey());
+    const selected = document.getElementById('comm-recipient')?.value || userKey(users[0]);
+    const messages = readMessages().filter(m => {
+      const a = currentUserKey();
+      return (m.from === a && m.to === selected) || (m.from === selected && m.to === a);
+    }).sort((a,b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    const updated = readMessages().map(m => (m.to === currentUserKey() && m.from === selected && !m.readAt) ? {...m, readAt:new Date().toISOString()} : m);
+    if(JSON.stringify(updated) !== JSON.stringify(readMessages())) writeMessages(updated);
+    host.innerHTML = `
+      <div class="comm-message-layout">
+        <label>Collegue
+          <select id="comm-recipient" onchange="renderCommunicationTab('messages')">${users.map(u => `<option value="${esc(userKey(u))}" ${userKey(u) === selected ? 'selected' : ''}>${esc(displayUserName(u))} - ${esc(u.role || '')}</option>`).join('')}</select>
+        </label>
+        <div class="comm-thread">${messages.map(m => `<div class="comm-msg ${m.from === currentUserKey() ? 'mine' : ''}"><b>${esc(m.fromName)}</b><p>${esc(m.body)}</p><span>${esc(new Date(m.createdAt).toLocaleString('fr-FR'))}</span></div>`).join('') || '<div class="dash-empty">Aucun message avec ce collegue.</div>'}</div>
+        <div class="comm-send"><textarea id="comm-message-body" placeholder="Ecrire un message interne..."></textarea><button onclick="sendInternalMessage()">Envoyer</button></div>
+      </div>`;
+    updateCommunicationBadges();
+  }
+
+  window.sendInternalMessage = function(toOverride, bodyOverride){
+    const to = toOverride || document.getElementById('comm-recipient')?.value;
+    const body = String(bodyOverride ?? document.getElementById('comm-message-body')?.value ?? '').trim();
+    if(!to || !body) return alert('Choisissez un collegue et ecrivez un message.');
+    const recipient = allAppUsers().find(u => userKey(u) === to) || {username:to, name:to};
+    const list = readMessages();
+    list.unshift({
+      id:`MSG-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      from:currentUserKey(),
+      fromName:actorLabel(),
+      to,
+      toName:displayUserName(recipient),
+      body,
+      createdAt:new Date().toISOString(),
+      readAt:''
+    });
+    writeMessages(list);
+    notifyUsers([recipient], 'Nouveau message interne', `${actorLabel()} vous a envoye un message.`, {kind:'message'});
+    renderCommunicationTab('messages');
+  };
+
+  function renderProfilePanel(host){
+    const user = currentUser();
+    const approved = readJson('chncak_approved_users', []);
+    const approvedMatch = approved.find(u => userKey(u) === currentUserKey()) || {};
+    const roles = ['medecin','pharmacien','infirmier','biologiste','secretaire','admin'];
+    host.innerHTML = `
+      <div class="profile-grid">
+        <label>Nom affiche<input id="profile-name" value="${esc(displayUserName({...approvedMatch, ...user}))}"></label>
+        <label>Contact<input id="profile-contact" value="${esc(val(approvedMatch.contact, user.contact, ''))}"></label>
+        <label>Email<input id="profile-email" value="${esc(val(approvedMatch.email, user.email, user.username, ''))}"></label>
+        <label>Specialite<input id="profile-specialite" value="${esc(val(approvedMatch.specialite, user.specialite, ''))}"></label>
+        <label>Type de compte actuel<input value="${esc(val(user.role, approvedMatch.role, 'medecin'))}" disabled></label>
+        <label>Demander un changement de type<select id="profile-role-request"><option value="">Aucun changement</option>${roles.map(r => `<option value="${r}">${r}</option>`).join('')}</select></label>
+      </div>
+      <p class="comm-note">Le nom, contact, email et specialite peuvent etre modifies ici. Le type de compte necessite l'aval admin dans Maintenance.</p>
+      <div class="secure-code-actions"><button onclick="saveOwnProfile()">Enregistrer profil</button><button onclick="requestOwnRoleChange()">Demander changement de type</button></div>`;
+  }
+
+  window.saveOwnProfile = function(){
+    const user = currentUser();
+    const name = document.getElementById('profile-name')?.value?.trim() || user.name;
+    const email = document.getElementById('profile-email')?.value?.trim() || user.email;
+    const contact = document.getElementById('profile-contact')?.value?.trim() || '';
+    const specialite = document.getElementById('profile-specialite')?.value?.trim() || '';
+    const nextUser = {...user, name, email, contact, specialite};
+    writeJson('chncak_currentUser', nextUser);
+    const approved = readJson('chncak_approved_users', []);
+    const idx = approved.findIndex(u => userKey(u) === userKey(user));
+    if(idx >= 0){
+      approved[idx] = {...approved[idx], email, contact, specialite, nomComplet:name, name};
+      const parts = name.split(/\s+/);
+      if(parts.length > 1){ approved[idx].prenom = parts.slice(0, -1).join(' '); approved[idx].nom = parts.slice(-1).join(''); }
+      writeJson('chncak_approved_users', approved);
+      try { window.refreshDynamicUsers?.(); } catch(e) {}
+    }
+    logAudit('Profil modifie', name, `Contact/email/specialite mis a jour`);
+    showToastSafe('Profil enregistre.', 'success');
+    updateCommunicationBadges();
+    renderCommunicationTab('profile');
+  };
+
+  window.requestOwnRoleChange = function(){
+    const role = document.getElementById('profile-role-request')?.value;
+    if(!role) return alert('Choisissez le type de compte souhaite.');
+    const user = currentUser();
+    if(norm(role) === norm(user.role)) return alert('Ce type de compte est deja votre type actuel.');
+    const list = readJson(ROLE_REQUESTS_KEY, []);
+    list.unshift({id:`ROLE-${Date.now()}`, username:user.username, email:user.email, name:displayUserName(user), currentRole:user.role, requestedRole:role, status:'pending', requestedAt:new Date().toISOString()});
+    writeJson(ROLE_REQUESTS_KEY, list.slice(0, 300));
+    notifyUsers(usersByRoles(['admin']), 'Demande de changement de type', `${displayUserName(user)} demande le type ${role}.`, {kind:'role_request', skipSelf:false});
+    logAudit('Demande changement type compte', displayUserName(user), `${user.role} -> ${role}`);
+    alert('Demande envoyee a l administrateur.');
+    closeCommunicationCenter();
+  };
 
   function isAdminUser(){
     const user = currentUser();
@@ -2294,6 +2570,47 @@
     });
   };
 
+  window.approveRoleChangeRequest = function(id){
+    requireAdminAction('valider le changement de type de compte', () => {
+      const requests = readJson(ROLE_REQUESTS_KEY, []);
+      const idx = requests.findIndex(r => r.id === id);
+      if(idx < 0) return alert('Demande introuvable.');
+      requests[idx].status = 'approved';
+      requests[idx].approvedAt = new Date().toISOString();
+      requests[idx].approvedBy = actorLabel();
+      writeJson(ROLE_REQUESTS_KEY, requests);
+      const approved = readApprovedUsers();
+      const userIdx = approved.findIndex(u => norm(u.username) === norm(requests[idx].username) || norm(u.email) === norm(requests[idx].email));
+      if(userIdx >= 0){
+        approved[userIdx].role = requests[idx].requestedRole;
+        approved[userIdx].allowedTabs = signupAllowedTabs(requests[idx].requestedRole);
+        writeApprovedUsers(approved);
+      }
+      const current = currentUser();
+      if(norm(current.username) === norm(requests[idx].username) || norm(current.email) === norm(requests[idx].email)){
+        writeJson('chncak_currentUser', {...current, role:requests[idx].requestedRole, allowedTabs:signupAllowedTabs(requests[idx].requestedRole)});
+      }
+      notifyUsers([{username:requests[idx].username, email:requests[idx].email, name:requests[idx].name}], 'Changement de type valide', `Votre type de compte est maintenant ${requests[idx].requestedRole}. Reconnectez-vous si les onglets ne changent pas tout de suite.`, {kind:'role_request'});
+      logAudit('Changement type compte valide', requests[idx].name, `${requests[idx].currentRole} -> ${requests[idx].requestedRole}`);
+      renderRegistrationsPanel();
+    });
+  };
+
+  window.rejectRoleChangeRequest = function(id){
+    requireAdminAction('refuser le changement de type de compte', () => {
+      const requests = readJson(ROLE_REQUESTS_KEY, []);
+      const idx = requests.findIndex(r => r.id === id);
+      if(idx < 0) return alert('Demande introuvable.');
+      requests[idx].status = 'rejected';
+      requests[idx].rejectedAt = new Date().toISOString();
+      requests[idx].rejectedBy = actorLabel();
+      writeJson(ROLE_REQUESTS_KEY, requests);
+      notifyUsers([{username:requests[idx].username, email:requests[idx].email, name:requests[idx].name}], 'Changement de type refuse', `Votre demande de type ${requests[idx].requestedRole} a ete refusee par admin.`, {kind:'role_request'});
+      logAudit('Changement type compte refuse', requests[idx].name, `${requests[idx].currentRole} -> ${requests[idx].requestedRole}`);
+      renderRegistrationsPanel();
+    });
+  };
+
   window.rejectRegistration = function(id){
     requireAdminAction('refuser cette inscription', () => {
       const regs = readRegistrations();
@@ -2326,8 +2643,10 @@
     if(!host) return;
     const regs = readRegistrations();
     const approved = readApprovedUsers();
+    const roleRequests = readJson(ROLE_REQUESTS_KEY, []);
     const rows = regs.map(r => `<tr><td><b>${esc(r.prenom)} ${esc(r.nom)}</b><div class="dash-muted">${esc(r.username)}</div></td><td>${esc(r.contact || '-')}<div class="dash-muted">${esc(r.email || '')}</div></td><td>${esc(r.specialite || '-')}</td><td>${esc(r.role || '-')}</td><td>${esc(registrationStatusLabel(r.status))}</td><td>${r.status === 'pending' ? `<button class="btn-secondary official-github-mini" onclick="approveRegistration('${esc(r.id)}')">Valider</button><button class="btn-secondary official-github-mini" onclick="rejectRegistration('${esc(r.id)}')">Refuser</button>` : '-'}</td></tr>`).join('');
     const approvedRows = approved.map(u => `<tr><td><b>${esc(u.prenom)} ${esc(u.nom)}</b><div class="dash-muted">${esc(u.username)}</div></td><td>${esc(u.role || '-')}</td><td>${esc(u.contact || '-')}</td><td>${esc(u.email || '-')}</td><td><span class="dash-muted">${esc(supabaseAccountHint(u))}</span></td><td><button class="btn-secondary official-github-mini" onclick="deleteApprovedUser('${esc(u.username)}')">Supprimer</button></td></tr>`).join('');
+    const roleRows = roleRequests.map(r => `<tr><td><b>${esc(r.name || r.username)}</b><div class="dash-muted">${esc(r.email || r.username || '')}</div></td><td>${esc(r.currentRole || '-')}</td><td>${esc(r.requestedRole || '-')}</td><td>${esc(registrationStatusLabel(r.status))}</td><td>${r.status === 'pending' ? `<button class="btn-secondary official-github-mini" onclick="approveRoleChangeRequest('${esc(r.id)}')">Valider</button><button class="btn-secondary official-github-mini" onclick="rejectRoleChangeRequest('${esc(r.id)}')">Refuser</button>` : '-'}</td></tr>`).join('');
     host.innerHTML = `
       <div class="card">
         <div class="card-header"><h2>Inscriptions et comptes</h2></div>
@@ -2348,6 +2667,8 @@
           </div>
           <h3 style="margin:0 0 8px;color:#17324d;font-size:14px">Demandes d'inscription</h3>
           <table class="dash-table"><thead><tr><th>Utilisateur</th><th>Contact</th><th>Specialite</th><th>Type</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="dash-empty">Aucune demande.</td></tr>'}</tbody></table>
+          <h3 style="margin:18px 0 8px;color:#17324d;font-size:14px">Demandes de changement de type de compte</h3>
+          <table class="dash-table"><thead><tr><th>Utilisateur</th><th>Type actuel</th><th>Type demande</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${roleRows || '<tr><td colspan="5" class="dash-empty">Aucune demande de changement.</td></tr>'}</tbody></table>
           <h3 style="margin:18px 0 8px;color:#17324d;font-size:14px">Comptes approuves</h3>
           <table class="dash-table"><thead><tr><th>Utilisateur</th><th>Role</th><th>Contact</th><th>Email</th><th>Supabase</th><th>Actions</th></tr></thead><tbody>${approvedRows || '<tr><td colspan="6" class="dash-empty">Aucun compte ajoute.</td></tr>'}</tbody></table>
         </div>
@@ -3674,7 +3995,7 @@
     writeJson(STORAGE.historique, dedupeByPatientTreatment(history));
     const list = readJson(STORAGE.patients, []);
     const idx = list.findIndex(p => (patient.dossier && p.dossier === patient.dossier) || (norm(patientName(p)) === norm(`${patient.prenom} ${patient.nom}`)));
-    const entry = {...patient, proto: patient.protocole, updatedAt:new Date().toISOString(), statut:'actif'};
+    const entry = {...patient, proto: patient.protocole, updatedAt:new Date().toISOString(), statut:'actif', createdBy:actorLabel(), createdByUser:currentUserKey()};
     if(idx >= 0) list[idx] = {...list[idx], ...entry, id:list[idx].id || Date.now().toString()};
     else list.push({...entry, id:Date.now().toString()});
     writeJson(STORAGE.patients, dedupeByPatientTreatment(list));
@@ -3689,6 +4010,7 @@
     reserveCodeGratuite(patient.codegratuite);
     writeJson(LAST_PROTOCOL_PATIENT_KEY, entry);
     logAudit('Protocole sauvegarde', patientName(entry), `Dossier ${val(entry.dossier, '-')}, code ${val(entry.codegratuite, '-')}, protocole ${val(entry.protocole, '-')}`);
+    notifyUsers(usersByRoles(['admin','medecin']), 'Nouveau protocole a valider', `${actorLabel()} a sauvegarde le protocole ${val(entry.protocole, entry.proto, '-')} pour ${patientName(entry)}.`, {kind:'protocol_saved', patientName:patientName(entry), patientId:entry.id, skipSelf:true});
     clearProtocolFormForNextPatient();
     clearRestoredProtocolMode();
     try { openValidationEmail(patient); } catch(e){}
@@ -3744,6 +4066,14 @@
     list.splice(idx, 1);
     saveOkChimioList(list);
     logAudit('OK Chimio refuse', patientName(refused), `Motif: ${motif}`);
+    const authorKey = val(refused.createdByUser, refused.patient?.createdByUser);
+    const recipients = authorKey
+      ? allAppUsers().filter(u => userKey(u) === authorKey)
+      : usersByRoles(['admin','medecin']).filter(u => userKey(u) !== currentUserKey());
+    notifyUsers(recipients, 'Protocole envoye pour verification', `${actorLabel()} a refuse le protocole de ${patientName(refused)}. Motif : ${motif}`, {kind:'protocol_refused', patientName:patientName(refused), patientId:refused.id});
+    if(authorKey && authorKey !== currentUserKey()){
+      window.sendInternalMessage?.(authorKey, `Protocole de ${patientName(refused)} envoye pour verification. Motif : ${motif}`);
+    }
     window.renderOkChimio?.();
     window.renderBiologie?.();
     showToastSafe('Protocole envoye pour verification et retire des OK chimio en attente.', 'info');
@@ -5831,6 +6161,8 @@
     Promise.resolve(out).then(() => {
       setTimeout(() => {
         if(!localStorage.getItem('chncak_currentUser')) return;
+        ensureCommunicationBar();
+        updateCommunicationBadges();
         const btn = document.querySelector(".tab-btn[onclick*=\"dashboard\"]");
         if(typeof showPage === 'function') showPage('dashboard', btn);
       }, 80);
@@ -5972,6 +6304,7 @@
     ensureProtocolCatalogCompleteness();
     document.body.classList.toggle('admin-session', isAdminUser());
     document.body.classList.toggle('pharmacien-session', isPharmacienUser());
+    if(localStorage.getItem('chncak_currentUser')) ensureCommunicationBar();
     cleanMedecinsFinal();
     setProtocolAutoCode(false);
     if(typeof renderProtos === 'function') renderProtos();
@@ -5983,6 +6316,18 @@
     style.textContent = `
       .dashboard-photo-btn{display:none!important}
       .page{max-width:1580px}
+      .comm-bar{position:fixed;top:12px;right:128px;z-index:100001;display:flex;gap:6px;align-items:center}
+      .comm-bar button{width:38px;height:38px;border-radius:999px;border:1px solid #b9cbe3;background:#fff;color:#12395b;box-shadow:0 6px 18px rgba(10,61,122,.14);cursor:pointer;font-size:17px;position:relative;display:flex;align-items:center;justify-content:center}
+      .comm-bar button:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(10,61,122,.2)}
+      .comm-badge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;border-radius:999px;background:#E74C3C;color:#fff;font-size:10px;font-weight:900;display:none;align-items:center;justify-content:center;padding:0 4px;border:2px solid #fff}
+      .communication-card{width:min(780px,calc(100vw - 28px));max-height:88vh;overflow:auto}
+      .comm-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}.comm-head h3{margin:0}.comm-head button{border:0;background:transparent;font-size:24px;cursor:pointer;color:#607080}
+      .comm-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}.comm-tabs button{border:1px solid #c7d4e4;background:#f8fbff;color:#17324d;border-radius:8px;padding:8px 12px;font-weight:800;cursor:pointer}.comm-tabs button.active{background:#0A3D7A;color:#fff;border-color:#0A3D7A}
+      .comm-toolbar{display:flex;justify-content:flex-end;margin-bottom:8px}.comm-list{display:grid;gap:8px}.comm-item{border:1px solid #dbe5f2;border-radius:8px;background:#fff;padding:10px 12px}.comm-item.unread{border-left:4px solid #0A3D7A;background:#f8fbff}.comm-item div{display:flex;justify-content:space-between;gap:10px}.comm-item b{color:#17324d}.comm-item span,.comm-item small{color:#607080;font-size:11px}.comm-item p{margin:7px 0;color:#24384b;font-size:13px;line-height:1.45}.comm-item button{margin-top:7px;border:1px solid #0A3D7A;background:#fff;color:#0A3D7A;border-radius:6px;padding:5px 8px;font-size:11px;font-weight:800;cursor:pointer}
+      .comm-message-layout{display:grid;gap:10px}.comm-message-layout label{font-size:12px;font-weight:800;color:#17324d}.comm-message-layout select,.profile-grid input,.profile-grid select{width:100%;box-sizing:border-box;border:1px solid #c7d4e4;border-radius:7px;padding:8px 9px;background:#fff;font-size:13px;margin-top:4px}
+      .comm-thread{border:1px solid #dbe5f2;border-radius:8px;background:#f8fbff;padding:10px;min-height:260px;max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:8px}.comm-msg{max-width:78%;align-self:flex-start;background:#fff;border:1px solid #dbe5f2;border-radius:8px;padding:8px 10px}.comm-msg.mine{align-self:flex-end;background:#eaf5ef;border-color:#9fd0b6}.comm-msg b{font-size:11px;color:#17324d}.comm-msg p{margin:4px 0;font-size:13px;color:#24384b;line-height:1.35}.comm-msg span{font-size:10px;color:#607080}
+      .comm-send{display:grid;grid-template-columns:1fr auto;gap:8px}.comm-send textarea{min-height:70px;border:1px solid #c7d4e4;border-radius:8px;padding:9px;font-size:13px;resize:vertical}.comm-send button{border:0;border-radius:8px;background:#0B5E3C;color:#fff;font-weight:900;padding:0 16px;cursor:pointer}
+      .profile-grid{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:10px}.profile-grid label{font-size:12px;font-weight:800;color:#17324d}.comm-note{font-size:12px;color:#607080;line-height:1.45;margin:10px 0}
       body:not(.admin-session) .tab-btn[onclick*="maintenance"],
       body:not(.admin-session) #page-maintenance,
       body:not(.admin-session) .data-tools-btn,
