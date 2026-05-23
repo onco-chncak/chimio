@@ -2538,8 +2538,147 @@
     printHtml(html);
   };
 
+  function suiviPatientKey(item){
+    return norm(val(item?.dossier, item?.codegratuite, item?.code, patientName(item)));
+  }
+
+  function isRdvTreated(item){
+    const status = norm(val(item?.status, item?.statut));
+    return status.includes('traite') || status.includes('valide') || !!(item?.validatedAt || item?.stockValide);
+  }
+
+  function isRdvReported(item){
+    const status = norm(val(item?.status, item?.statut, item?.motifReport));
+    return status.includes('report') || status.includes('absent') || !!item?.motifReport;
+  }
+
+  function numericLine(value){
+    const text = norm(value);
+    const direct = parseInt(text.replace(/[^0-9]/g, ''), 10);
+    if(direct) return direct;
+    if(text.includes('trois') || text.includes('3e')) return 3;
+    if(text.includes('quatre') || text.includes('4e')) return 4;
+    if(text.includes('deux') || text.includes('2e')) return 2;
+    if(text.includes('prem') || text.includes('1re') || text.includes('1er')) return 1;
+    return 0;
+  }
+
+  function buildClinicalFollowupAlerts(){
+    const patients = readJson(STORAGE.patients, []);
+    const rdvs = readJson(STORAGE.rdv, []);
+    const hist = readJson(STORAGE.historique, []);
+    const rows = [];
+    const patientByKey = new Map();
+    [...patients, ...hist, ...rdvs].forEach(item => {
+      const key = suiviPatientKey(item);
+      if(key && !patientByKey.has(key)) patientByKey.set(key, item);
+    });
+    const today = todayIso();
+    const rdvByPatient = new Map();
+    rdvs.forEach(rdv => {
+      const key = suiviPatientKey(rdv);
+      if(!key) return;
+      if(!rdvByPatient.has(key)) rdvByPatient.set(key, []);
+      rdvByPatient.get(key).push(rdv);
+    });
+
+    rdvs.forEach(rdv => {
+      if(!rdv.dateRdv || rdv.dateRdv >= today || isRdvTreated(rdv) || isRdvReported(rdv)) return;
+      rows.push({
+        level:'danger',
+        type:'Absence / RDV depasse',
+        patient: patientName(rdv),
+        detail:`RDV du ${rdv.dateRdv.split('-').reverse().join('/')} non marque traite.`,
+        action:'Contacter le patient, reporter le RDV ou documenter l absence.'
+      });
+    });
+
+    patientByKey.forEach((patient, key) => {
+      const list = (rdvByPatient.get(key) || []).filter(r => r.dateRdv).sort((a,b) => String(a.dateRdv).localeCompare(String(b.dateRdv)));
+      const treated = list.filter(isRdvTreated);
+      const totalCures = Number(val(patient.totalCures, patient.nombreCures, patient.curesTotal, 0));
+      const currentCure = Math.max(Number(val(patient.cure, patient.cureNum, 0)), ...list.map(r => Number(val(r.cureNum, r.cure, 0)) || 0), 0);
+      if(totalCures && (currentCure > totalCures || treated.length > totalCures)){
+        rows.push({
+          level:'danger',
+          type:'Depassement de cures',
+          patient: patientName(patient),
+          detail:`Cure ${currentCure || treated.length} / total prescrit ${totalCures}.`,
+          action:'Verifier la prescription medicale avant toute cure supplementaire.'
+        });
+      }
+
+      const proto = protocolsList().find(p => p.id === val(patient.protoId) || norm(p.name) === norm(protocolNameFor(patient)));
+      const expected = protocolIntervalDays(proto, patient);
+      for(let i = 1; i < treated.length; i++){
+        const previous = val(treated[i - 1].dateRdv, treated[i - 1].date);
+        const current = val(treated[i].dateRdv, treated[i].date);
+        const gap = daysBetweenIso(previous, current);
+        if(Number.isFinite(gap) && gap > expected + 7){
+          rows.push({
+            level:'warn',
+            type:'Traitement irregulier',
+            patient: patientName(patient),
+            detail:`Intervalle de ${gap} jours entre deux traitements (attendu environ ${expected} jours).`,
+            action:'Verifier les causes : toxicite, absence, rupture stock, report medical.'
+          });
+          break;
+        }
+      }
+
+      const line = numericLine(val(patient.ligne, patient.ligneTraitement));
+      if(line >= 3){
+        rows.push({
+          level:'warn',
+          type:'Lignes de chimiotherapie multiples',
+          patient: patientName(patient),
+          detail:`Patient en ligne ${line}.`,
+          action:'Revoir benefice attendu, tolerance et decision RCP.'
+        });
+      }
+
+      const indication = norm(val(patient.indication, patient.phase, patient.typeTraitement));
+      if(indication.includes('attente') || indication.includes('induction')){
+        rows.push({
+          level:'info',
+          type:'Rappel radiotherapie',
+          patient: patientName(patient),
+          detail:`Indication : ${val(patient.indication, 'chimiotherapie d attente/induction')}.`,
+          action:'Programmer ou confirmer l entree en radiotherapie.'
+        });
+      }
+    });
+
+    return rows.slice(0, 80);
+  }
+
+  function renderClinicalFollowupAlerts(){
+    const host = document.getElementById('suivi-content');
+    if(!host) return;
+    document.getElementById('clinical-followup-alerts')?.remove();
+    const alerts = buildClinicalFollowupAlerts();
+    const severityColor = level => level === 'danger' ? '#B42318' : level === 'warn' ? '#B7791F' : '#0A3D7A';
+    const rows = alerts.map(alert => `
+      <tr>
+        <td><span class="clinical-pill" style="border-color:${severityColor(alert.level)};color:${severityColor(alert.level)}">${esc(alert.type)}</span></td>
+        <td><b>${esc(alert.patient || '-')}</b></td>
+        <td>${esc(alert.detail)}</td>
+        <td>${esc(alert.action)}</td>
+      </tr>`).join('');
+    host.insertAdjacentHTML('afterbegin', `
+      <div id="clinical-followup-alerts" class="card stats-section-card" style="margin-bottom:12px">
+        <div class="card-header"><h2>Alertes de suivi clinique</h2><button class="btn-secondary official-github-mini" onclick="renderClinicalFollowupAlerts()">Actualiser</button></div>
+        <div class="card-body dash-table-wrap">
+          <div class="stats-final-note">Surveille les absences, traitements irreguliers, depassements de cures, lignes multiples et rappels radiotherapie pour chimiotherapie d attente ou d induction.</div>
+          <table class="dash-table"><thead><tr><th>Alerte</th><th>Patient</th><th>Constat</th><th>Action conseillee</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="dash-empty">Aucune alerte clinique active.</td></tr>'}</tbody></table>
+        </div>
+      </div>`);
+  }
+  window.renderClinicalFollowupAlerts = renderClinicalFollowupAlerts;
+
   function renderSuiviFinal(){
     if(typeof nativeRenderSuiviFinal === 'function') nativeRenderSuiviFinal();
+    renderClinicalFollowupAlerts();
     const saveBtn = document.querySelector('#suivi-content .clinical-save');
     if(saveBtn && !document.getElementById('suivi-date-evaluation')){
       saveBtn.insertAdjacentHTML('beforebegin', `
@@ -3440,6 +3579,12 @@
     const finish = () => { if(saveBtn) setTimeout(() => { saveBtn.dataset.saving = ''; }, 700); };
     if(!patient.prenom || !patient.nom){ finish(); return alert('Veuillez renseigner au minimum prenom et nom.'); }
     if(!patient.dossier){ finish(); return alert('Veuillez renseigner le numero de dossier.'); }
+    const cureNum = Number(patient.cure || 0);
+    const totalCures = Number(patient.totalCures || 0);
+    if(totalCures && cureNum > totalCures){
+      finish();
+      return alert(`Depassement de cures bloque : cure ${cureNum} alors que le total prescrit est ${totalCures}.\n\nSi le medecin decide de poursuivre, modifiez d abord le nombre total de cures prescrit.`);
+    }
     if(!patient.codegratuite) patient.codegratuite = setProtocolAutoCode(true);
     if(patient.codegratuite && savedCodeExists(patient.codegratuite, patient)){
       alert('Code de gratuite deja utilise. Enregistrement refuse pour eviter un doublon.');
