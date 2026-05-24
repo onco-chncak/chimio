@@ -1069,6 +1069,7 @@
       return {
         ...item,
         prixUnit: Number(val(live.prixUnit, live.prix, item.prixUnit, item.prix, 0)),
+        prixByDosage: live.prixByDosage || item.prixByDosage,
         statutTarif: val(live.statutTarif, live.statut, item.statutTarif, item.statut, 'Payant'),
         qteService: liveService,
         qteStock: liveService,
@@ -1258,7 +1259,11 @@
         existing.qteCentral = Number(val(existing.qteCentral, existing.stockCentral, 0)) + Number(val(item.qteCentral, item.stockCentral, 0));
         existing.qteStock = existing.qteService;
         existing.prixUnit = Number(val(existing.prixUnit, existing.prix, 0)) || Number(val(item.prixUnit, item.prix, 0)) || 0;
+        existing.prixByDosage = {...(existing.prixByDosage || {}), ...(item.prixByDosage || {})};
+        existing.qteServiceByDosage = mergeDosageQuantityMaps(existing.qteServiceByDosage, item.qteServiceByDosage);
+        existing.qteCentralByDosage = mergeDosageQuantityMaps(existing.qteCentralByDosage, item.qteCentralByDosage);
         existing.dosages = Array.from(new Set([...(existing.dosages || []), ...(item.dosages || [])].map(Number).filter(Boolean))).sort((a,b) => b-a);
+        recomputeCatalogTotals(existing);
         return;
       }
       seen.add(key);
@@ -4341,10 +4346,10 @@
         showToastSafe('Connexion Supabase necessaire pour synchroniser le stock.', 'warning');
       }
       if(user?.role === 'pharmacien' && !window.chimioproCloudReady){
-        showToastSafe('Session Supabase absente: une connexion cloud va etre demandee.', 'warning');
+        showToastSafe('Session Supabase absente: reconnectez-vous avec le compte Supabase.', 'warning');
       }
       if(!window.chimioproCloudSaveCatalog && !window.chimioproCloudPush){
-        alert('Attention: module cloud non charge. Catalogue garde localement seulement.');
+        showToastSafe('Module cloud non charge: catalogue garde localement seulement.', 'warning');
         return;
       }
       const pushed = window.chimioproCloudSaveCatalog ? window.chimioproCloudSaveCatalog(list, true) : window.chimioproCloudPush?.(true);
@@ -4354,15 +4359,12 @@
             if(info){
               const msg = `Cloud confirme Supabase:\n${info.name}\nStock service: ${info.service}\nStock pharmacie centrale: ${info.central}`;
               showToastSafe(`Cloud verifie: ${info.name} service ${info.service}, centrale ${info.central}.`, 'success');
-              alert(msg);
             } else {
               showToastSafe('Catalogue envoye au cloud dedie.', 'success');
-              alert('Catalogue envoye a Supabase, mais verification TAXOL indisponible.');
             }
           })
           .catch(e => {
             showToastSafe(`Catalogue garde localement. Cloud non synchronise: ${e.message}`, 'warning');
-            alert('Catalogue sauvegarde localement seulement.\n\nSupabase n a pas confirme la sauvegarde cloud.\nErreur: ' + e.message);
           });
       }
     } catch(e) {}
@@ -4487,25 +4489,42 @@
           const qteCentral = numberValue(stockCentralRaw || stockFallback || 0);
           const existing = findCatalogItem(name, current) || findCatalogItem(dci, current);
           const idx = current.findIndex(item => item === existing);
+          const formKey = dosageKey(dosages[0] || 'global');
           if(idx >= 0){
-            const oldService = Number(val(current[idx].qteService, current[idx].stockService, current[idx].qteStock, current[idx].stock, 0));
-            const oldCentral = Number(val(current[idx].qteCentral, current[idx].stockCentral, 0));
+            const nextDosages = Array.from(new Set([...(current[idx].dosages || current[idx].flacons || []), ...dosages].map(Number).filter(Boolean))).sort((a,b) => b-a);
             current[idx] = {
               ...current[idx],
               name: current[idx].name || name,
               dci: dci || current[idx].dci,
-              dosages: dosages.length ? dosages : current[idx].dosages,
+              dosages: nextDosages.length ? nextDosages : (current[idx].dosages || dosages),
               forme,
               cond,
               statutTarif,
-              prixUnit: prixUnit || current[idx].prixUnit || 0,
-              qteService: cumulate ? oldService + qteService : qteService,
-              qteCentral: cumulate ? oldCentral + qteCentral : qteCentral
+              prixUnit: prixUnit || current[idx].prixUnit || 0
             };
+            ensureDosageStockMaps(current[idx]);
+            ensureDosagePriceMap(current[idx]);
+            const oldService = stockForDosage(current[idx], formKey, 'service');
+            const oldCentral = stockForDosage(current[idx], formKey, 'central');
+            current[idx].qteServiceByDosage[formKey] = cumulate ? oldService + qteService : qteService;
+            current[idx].qteCentralByDosage[formKey] = cumulate ? oldCentral + qteCentral : qteCentral;
+            if(prixUnit || !Object.prototype.hasOwnProperty.call(current[idx].prixByDosage, formKey)){
+              current[idx].prixByDosage[formKey] = prixUnit || priceForDosage(current[idx], formKey);
+            }
+            recomputeCatalogTotals(current[idx]);
+            recomputeCatalogPrice(current[idx]);
             current[idx].qteStock = current[idx].qteService;
             updated++;
           } else {
-            current.push({name, dci, dosages, forme, cond, statutTarif, prixUnit, qteService, qteCentral, qteStock:qteService});
+            const item = {name, dci, dosages, forme, cond, statutTarif, prixUnit, qteService, qteCentral, qteStock:qteService};
+            ensureDosageStockMaps(item);
+            ensureDosagePriceMap(item);
+            item.qteServiceByDosage[formKey] = qteService;
+            item.qteCentralByDosage[formKey] = qteCentral;
+            item.prixByDosage[formKey] = prixUnit;
+            recomputeCatalogTotals(item);
+            recomputeCatalogPrice(item);
+            current.push(item);
             added++;
           }
         });
@@ -4541,17 +4560,24 @@
 
   window.exportCatalogExcel = function(){
     const list = readJson(STORAGE.catalog, Array.isArray(window.catalog) ? window.catalog : []);
-    const rows = list.map(d => ({
-      'Medicament': d.name || '',
-      'DCI': d.dci || '',
-      'Dosage (mg)': (d.dosages || d.flacons || []).map(Number).filter(Boolean).join(', '),
-      'Forme': d.forme || 'Injectable',
-      'Conditionnement': d.cond || 'B1',
-      'Statut': d.statutTarif || d.statut || 'Payant',
-      'Prix/flacon (FCFA)': d.prixUnit || d.prix || 0,
-      'Stock service (flacons)': Number(val(d.qteService, d.stockService, d.qteStock, d.stock, 0)),
-      'Stock pharmacie centrale (flacons)': Number(val(d.qteCentral, d.stockCentral, 0))
-    }));
+    const rows = [];
+    list.forEach(d => {
+      const dosages = (d.dosages || d.flacons || []).map(Number).filter(Boolean);
+      const forms = dosages.length ? dosages : [''];
+      forms.forEach(dosage => {
+        rows.push({
+          'Medicament': d.name || '',
+          'DCI': d.dci || '',
+          'Dosage (mg)': dosage || '',
+          'Forme': d.forme || 'Injectable',
+          'Conditionnement': d.cond || 'B1',
+          'Statut': d.statutTarif || d.statut || 'Payant',
+          'Prix/flacon (FCFA)': priceForDosage(d, dosage),
+          'Stock service (flacons)': stockForDosage(d, dosage, 'service'),
+          'Stock pharmacie centrale (flacons)': stockForDosage(d, dosage, 'central')
+        });
+      });
+    });
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [28,22,14,16,18,14,18,22,28].map(w => ({wch:w}));
     const wb = XLSX.utils.book_new();
@@ -4573,7 +4599,7 @@
           'Forme': d.forme || 'Injectable',
           'Conditionnement': d.cond || 'B1',
           'Statut': d.statutTarif || d.statut || 'Payant',
-          'Prix/flacon (FCFA)': d.prixUnit || d.prix || 0,
+          'Prix/flacon (FCFA)': priceForDosage(d, dosage),
           'Stock service (flacons)': stockForDosage(d, dosage, 'service'),
           'Stock pharmacie centrale (flacons)': stockForDosage(d, dosage, 'central')
         });
@@ -4654,6 +4680,14 @@
     return String(dosage || 'global').replace(/[^\d.]/g, '') || 'global';
   }
 
+  function mergeDosageQuantityMaps(a, b){
+    const out = {...(a || {})};
+    Object.entries(b || {}).forEach(([key, qty]) => {
+      out[key] = Number(out[key] || 0) + Number(qty || 0);
+    });
+    return out;
+  }
+
   function ensureDosageStockMaps(item){
     const dosages = (item.dosages || item.flacons || []).map(Number).filter(Boolean);
     const firstKey = dosageKey(dosages[0]);
@@ -4672,6 +4706,20 @@
     return item;
   }
 
+  function ensureDosagePriceMap(item){
+    const dosages = (item.dosages || item.flacons || []).map(Number).filter(Boolean);
+    const fallback = Number(val(item.prixUnit, item.prix, 0));
+    const hasMap = item.prixByDosage && typeof item.prixByDosage === 'object' && Object.keys(item.prixByDosage).length;
+    item.prixByDosage = hasMap ? item.prixByDosage : {};
+    if(!hasMap && dosages.length){
+      dosages.forEach(size => { item.prixByDosage[dosageKey(size)] = fallback; });
+    }
+    if(!hasMap && !dosages.length){
+      item.prixByDosage.global = fallback;
+    }
+    return item;
+  }
+
   function stockForDosage(item, dosage, field){
     const key = dosageKey(dosage);
     const mapName = field === 'central' ? 'qteCentralByDosage' : 'qteServiceByDosage';
@@ -4684,6 +4732,17 @@
     return key === dosageKey(dosages[0]) ? totalFallback : 0;
   }
 
+  function priceForDosage(item, dosage){
+    const key = dosageKey(dosage);
+    const fallback = Number(val(item.prixUnit, item.prix, 0));
+    if(item.prixByDosage && Object.prototype.hasOwnProperty.call(item.prixByDosage, key)){
+      return Number(item.prixByDosage[key] || 0);
+    }
+    const dosages = (item.dosages || item.flacons || []).map(Number).filter(Boolean);
+    if(dosages.length <= 1) return fallback;
+    return key === dosageKey(dosages[0]) ? fallback : 0;
+  }
+
   function recomputeCatalogTotals(item){
     const serviceMap = item.qteServiceByDosage && typeof item.qteServiceByDosage === 'object' ? item.qteServiceByDosage : null;
     const centralMap = item.qteCentralByDosage && typeof item.qteCentralByDosage === 'object' ? item.qteCentralByDosage : null;
@@ -4691,6 +4750,27 @@
     if(centralMap) item.qteCentral = Object.values(centralMap).reduce((sum, qty) => sum + Number(qty || 0), 0);
     item.qteStock = Number(val(item.qteService, item.qteStock, item.stock, 0));
   }
+
+  function recomputeCatalogPrice(item){
+    const priceMap = item.prixByDosage && typeof item.prixByDosage === 'object' ? item.prixByDosage : null;
+    if(!priceMap) return;
+    const dosages = (item.dosages || item.flacons || []).map(Number).filter(Boolean);
+    const firstKey = dosages.length ? dosageKey(dosages[0]) : 'global';
+    item.prixUnit = Number(priceMap[firstKey] || Object.values(priceMap)[0] || item.prixUnit || item.prix || 0);
+  }
+
+  window.updateCatalogFormPrice = function(index, dosage, value){
+    return requirePharmacienAction('modifier le prix par forme', () => {
+      const list = readJson(STORAGE.catalog, Array.isArray(window.catalog) ? window.catalog : []);
+      const item = list[index];
+      if(!item) return;
+      ensureDosagePriceMap(item);
+      const key = dosageKey(dosage);
+      item.prixByDosage[key] = Number(value || 0);
+      recomputeCatalogPrice(item);
+      syncCatalogGlobal(list);
+    });
+  };
 
   function expandCatalogDosageRows(){
     const tbody = document.getElementById('catalog-body');
@@ -4711,11 +4791,11 @@
     }
     const list = readJson(STORAGE.catalog, Array.isArray(window.catalog) ? window.catalog : []);
     tbody.innerHTML = list.map((d, i) => {
-      const prix = d.prixUnit ?? d.prix ?? 0;
       const statutTarif = d.statutTarif || d.statut || 'Payant';
       const dosages = (d.dosages || d.flacons || []).map(Number).filter(Boolean);
       const rows = dosages.length ? dosages : [''];
       return rows.map((dosage, j) => {
+        const prix = priceForDosage(d, dosage);
         const stock = stockForDosage(d, dosage, 'service');
         const central = stockForDosage(d, dosage, 'central');
         const stockLow = Number(stock) <= 5;
@@ -4733,7 +4813,7 @@
             </select>
           </td>
           <td style="padding:4px 6px">
-            <input type="number" value="${esc(prix)}" data-idx="${i}" data-field="prixUnit" placeholder="FCFA" style="width:100px;padding:5px 7px;font-size:12px;border:1px solid var(--gray-border);border-radius:4px" oninput="updateCatalogField(${i},'prixUnit',this.value)">
+            <input type="number" value="${esc(prix)}" data-idx="${i}" data-field="prixUnit" placeholder="FCFA" style="width:100px;padding:5px 7px;font-size:12px;border:1px solid var(--gray-border);border-radius:4px" oninput="updateCatalogFormPrice(${i},'${esc(dosageKey(dosage))}',this.value)">
           </td>
           <td style="padding:4px 6px">
             <input type="number" value="${esc(stock)}" placeholder="flacons" min="0" style="width:80px;padding:5px 7px;font-size:12px;border:1px solid ${stockCrit?'var(--red2)':stockLow?'var(--amber2)':'var(--gray-border)'};border-radius:4px;background:${stockCrit?'var(--red-pale)':stockLow?'var(--amber-pale)':'white'}" oninput="updateCatalogFormStock(${i},'${esc(dosageKey(dosage))}','service',this.value)">
@@ -4810,9 +4890,12 @@
           item.dosages = nextDosages;
           if(Array.isArray(item.flacons)) item.flacons = nextDosages;
           ensureDosageStockMaps(item);
+          ensureDosagePriceMap(item);
           delete item.qteServiceByDosage[key];
           delete item.qteCentralByDosage[key];
+          delete item.prixByDosage[key];
           recomputeCatalogTotals(item);
+          recomputeCatalogPrice(item);
           list[index] = item;
         } else {
           list.splice(index, 1);
