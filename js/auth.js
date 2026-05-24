@@ -100,6 +100,18 @@ function checkAuth() {
   
   if (savedUser) {
     currentUser = JSON.parse(savedUser);
+    if (currentUser.authProvider !== 'supabase' && ['pharmacien', 'admin'].includes(currentUser.role)) {
+      localStorage.removeItem('chncak_currentUser');
+      currentUser = null;
+      const login = document.getElementById('login-screen');
+      if (login) login.style.display = 'flex';
+      const errorDiv = document.getElementById('login-error');
+      if (errorDiv) {
+        errorDiv.textContent = 'Session locale refusee pour ce compte. Le pharmacien/admin doit se connecter avec son compte Supabase pour synchroniser les stocks.';
+        errorDiv.style.display = 'block';
+      }
+      return;
+    }
     if (currentUser.authProvider !== 'supabase' && !USERS[currentUser.username]?.password) {
       localStorage.removeItem('chncak_currentUser');
       currentUser = null;
@@ -158,9 +170,11 @@ async function handleLogin(event) {
   const localUser = USERS[username];
   const localApproved = approvedUserFor(username, username);
   if (!user && localUser?.password && localUser.password === password) {
-    if ((localUser.role === 'pharmacien' || localUser.role === 'admin') && localApproved?.email) {
+    if (localUser.role === 'pharmacien' || localUser.role === 'admin') {
       const errorDiv = document.getElementById('login-error');
-      errorDiv.textContent = 'Connexion Supabase obligatoire pour ce compte. Utilisez le meme email Supabase que dans Maintenance. Detail: ' + (cloudError?.message || 'session cloud absente');
+      errorDiv.textContent = localApproved?.email
+        ? 'Connexion Supabase obligatoire pour ce compte. Utilisez le meme email Supabase que dans Maintenance. Detail: ' + (cloudError?.message || 'session cloud absente')
+        : 'Connexion Supabase obligatoire pour ce compte, mais aucun email Supabase approuve n est associe dans Maintenance.';
       errorDiv.style.display = 'block';
       document.getElementById('login-password').value = '';
       return false;
