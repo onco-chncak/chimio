@@ -6,7 +6,6 @@
   const DEFAULT_CODE_ADMIN = '2026';
   const ADMIN_CODE_KEY = 'chncak_admin_code';
   const ADMIN_SIGNUP_KEY = 'chncak_allow_admin_signup';
-  const VALIDATION_EMAIL = 'onco.chn.cak@gmail.com';
   const STAT_MED_RESET_KEY = 'chncak_stats_medicaments_reset_after';
   const STAT_BLOCK_RESET_KEY = 'chncak_stats_blocs_reset_after';
   const RESTORED_PROTOCOL_KEY = 'chncak_restored_protocol_lock';
@@ -1076,24 +1075,11 @@
 
   function openValidationEmail(data){
     const patient = data.patient || {};
-    const subject = `Validation protocole ${val(data.protocole, data.protoName, '')} - ${val(patient.prenom, data.prenom)} ${val(patient.nom, data.nom)}`.trim();
-    const body = [
-      'Bonjour,',
-      '',
-      'Le protocole suivant a ete valide dans ChimioPro.',
-      '',
-      `Patient : ${val(patient.prenom, data.prenom)} ${val(patient.nom, data.nom)}`.trim(),
-      `Dossier : ${val(patient.dossier, data.dossier, '-')}`,
-      `Code gratuite : ${val(patient.codegratuite, data.codegratuite, '-')}`,
-      `Protocole : ${val(data.protocole, data.protoName, '-')}`,
-      `Cure : ${val(data.cure, data.cureNum, '-')}`,
-      `Medecin : ${val(data.medecin, '-')}`,
-      `Date validation : ${new Date().toLocaleString('fr-FR')}`,
-      '',
-      'Message genere automatiquement par ChimioPro.'
-    ].join('\n');
-    const mailto = `mailto:${VALIDATION_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailto;
+    const patientLabel = `${val(patient.prenom, data.prenom)} ${val(patient.nom, data.nom)}`.trim();
+    const protoLabel = val(data.protocole, data.protoName, data.proto, '-');
+    const doctor = medecinRecipientFromName(val(data.medecin, patient.medecin));
+    const recipients = [...usersByRoles(['admin']), doctor].filter(Boolean);
+    notifyUsers(recipients, 'Validation protocole ChimioPro', `Protocole ${protoLabel} valide pour ${patientLabel || 'patient non renseigne'}. Dossier ${val(patient.dossier, data.dossier, '-')}.`, {kind:'protocol_validated', patientName:patientLabel, patientId:val(data.id, patient.id), skipSelf:true});
   }
 
   function findProtocolByPatient(patient){
@@ -4075,7 +4061,6 @@
     }
     clearProtocolFormForNextPatient();
     clearRestoredProtocolMode();
-    try { openValidationEmail(patient); } catch(e){}
     finish();
   };
 
@@ -4088,7 +4073,7 @@
     logAudit('OK Chimio valide', patientName(list[idx]), `Protocole ${protocolNameFor(list[idx])}`);
     window.renderOkChimio?.();
     window.renderBiologie?.();
-    showToastSafe('Protocole valide. Ouverture du mail de notification.', 'success');
+    showToastSafe('Protocole valide. Notification interne envoyee.', 'success');
     try { openValidationEmail(list[idx]); } catch(e){}
   };
 

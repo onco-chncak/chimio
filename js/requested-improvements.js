@@ -100,12 +100,29 @@
 
   function sendMail(to, subject, body){
     if(!to) {
-      showToast?.('Email du médecin introuvable dans l’onglet Médecins.', 'error');
+      showToast?.('Email du medecin introuvable dans l onglet Medecins.', 'error');
       return;
     }
-    const href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = href;
-    showToast?.('Fenêtre email préparée.', 'info');
+    let current = {};
+    try { current = JSON.parse(localStorage.getItem('chncak_currentUser') || '{}') || {}; } catch(e) {}
+    const key = String(to || '').toLowerCase().trim();
+    const from = String(current.email || current.username || current.name || 'local').toLowerCase().trim();
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem('chncak_notifications') || '[]'); } catch(e) { list = []; }
+    list.unshift({
+      id:`NOTIF-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      to:key,
+      toName:to,
+      from,
+      fromName:current.name || current.username || 'ChimioPro',
+      title:subject || 'Notification ChimioPro',
+      body:body || '',
+      kind:'internal_replaces_email',
+      createdAt:new Date().toISOString(),
+      read:false
+    });
+    localStorage.setItem('chncak_notifications', JSON.stringify(list.slice(0, 1000)));
+    showToast?.('Notification interne envoyee dans ChimioPro.', 'info');
   }
 
   function formValue(id){
