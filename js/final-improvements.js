@@ -14,6 +14,7 @@
   const MESSAGES_KEY = 'chncak_messages';
   const ROLE_REQUESTS_KEY = 'chncak_role_change_requests';
   const DELETED_SAVED_PROTOCOLS_KEY = 'chncak_deleted_saved_protocols';
+  const DELETED_MEDECINS_KEY = 'chncak_deleted_medecins';
   const STORAGE = {
     patients: 'chncak_patients',
     rdv: 'chncak_rdv',
@@ -998,14 +999,28 @@
     };
   }
 
+  function medecinSignature(m){
+    return norm([
+      val(m?.id),
+      val(m?.email),
+      val(m?.contact),
+      val(m?.name, `Dr ${val(m?.prenom)} ${val(m?.nom)}`),
+      val(m?.prenom),
+      val(m?.nom)
+    ].join('|'));
+  }
+
   function applyOfficialSiteData(){
     const official = window.CHIMIOPRO_OFFICIAL_DATA || {};
     const officialMeds = Array.isArray(official.medecins) ? official.medecins.map(normalizeOfficialMedecin) : [];
     if(officialMeds.length){
       const existing = readJson('chncak_medecins', []);
+      const deletedMeds = new Set(readJson(DELETED_MEDECINS_KEY, []));
       const merged = [...existing];
       officialMeds.forEach(med => {
         const key = norm(val(med.name, `${med.prenom} ${med.nom}`));
+        const signature = medecinSignature(med);
+        if(deletedMeds.has(signature) || deletedMeds.has(key)) return;
         if(!merged.some(item => norm(val(item.name, `Dr ${val(item.prenom)} ${val(item.nom)}`)) === key || norm(`${val(item.prenom)} ${val(item.nom)}`) === norm(`${med.prenom} ${med.nom}`))){
           merged.push(med);
         }
@@ -1049,12 +1064,17 @@
       const live = liveByKey.get(key);
       if(!live) return item;
       liveByKey.delete(key);
+      const liveService = Number(val(live.qteStock, live.qteService, live.stockService, live.stock, item.qteService, item.qteStock, 0));
+      const liveCentral = Number(val(live.qteCentral, live.stockCentral, item.qteCentral, 0));
       return {
         ...item,
         prixUnit: Number(val(live.prixUnit, live.prix, item.prixUnit, item.prix, 0)),
         statutTarif: val(live.statutTarif, live.statut, item.statutTarif, item.statut, 'Payant'),
-        qteService: Number(val(live.qteService, live.stockService, live.qteStock, live.stock, item.qteService, item.qteStock, 0)),
-        qteCentral: Number(val(live.qteCentral, live.stockCentral, item.qteCentral, 0))
+        qteService: liveService,
+        qteStock: liveService,
+        qteCentral: liveCentral,
+        qteServiceByDosage: live.qteServiceByDosage || item.qteServiceByDosage,
+        qteCentralByDosage: live.qteCentralByDosage || item.qteCentralByDosage
       };
     });
     liveByKey.forEach(item => merged.push(item));
@@ -4178,10 +4198,17 @@
       ? allAppUsers().filter(u => userKey(u) === authorKey)
       : [medecinRecipientFromName(val(refused.medecin, refused.patient?.medecin))].filter(Boolean);
     const refusalText = `OK Chimio - protocole refuse. Patient: ${patientName(refused)}. Dossier: ${val(refused.dossier, refused.patient?.dossier, '-')}. Code gratuite: ${val(refused.codegratuite, refused.codeGratuite, refused.patient?.codegratuite, '-')}. Protocole: ${protocolNameFor(refused)}. Motif: ${motif}. Action demandee: verifier/corriger puis renvoyer.`;
-    notifyUsers(recipients, 'OK Chimio: protocole refuse', refusalText, {kind:'protocol_refused', patientName:patientName(refused), patientId:refused.id});
+    notifyUsers(recipients.length ? recipients : [currentUser()], 'OK Chimio: protocole refuse', refusalText, {kind:'protocol_refused', patientName:patientName(refused), patientId:refused.id});
+    if(recipients.length && !recipients.some(u => userKey(u) === currentUserKey())){
+      notifyUsers([currentUser()], 'Copie refus OK Chimio', refusalText, {kind:'protocol_refused_copy', patientName:patientName(refused), patientId:refused.id});
+    }
     if(authorKey && authorKey !== currentUserKey()){
       window.sendInternalMessage?.(authorKey, refusalText);
     }
+    try {
+      const pushed = window.chimioproCloudPush?.(true);
+      if(pushed && typeof pushed.catch === 'function') pushed.catch(e => showToastSafe(`Refus garde localement. Cloud non synchronise: ${e.message}`, 'warning'));
+    } catch(e) {}
     window.renderOkChimio?.();
     window.renderBiologie?.();
     showToastSafe('Protocole envoye pour verification et retire des OK chimio en attente.', 'info');
@@ -4306,7 +4333,10 @@
     localStorage.setItem('chncak_catalog_safety_backup', JSON.stringify({savedAt:new Date().toISOString(), catalog:list}));
     try { if(Array.isArray(window.catalog)) window.catalog = list; } catch(e) {}
     try { if(typeof catalog !== 'undefined') catalog = list; } catch(e) {}
-    try { window.chimioproCloudPush?.(true); } catch(e) {}
+    try {
+      const pushed = window.chimioproCloudPush?.(true);
+      if(pushed && typeof pushed.catch === 'function') pushed.catch(e => showToastSafe(`Catalogue garde localement. Cloud non synchronise: ${e.message}`, 'warning'));
+    } catch(e) {}
   }
 
   function visibleMissingDrugName(){
@@ -5105,11 +5135,13 @@
 
   function cleanMedecinsFinal(){
     const existing = readJson('chncak_medecins', []);
+    const deleted = new Set(readJson(DELETED_MEDECINS_KEY, []));
     const cleaned = [];
     existing.forEach(m => {
       const nom = val(m.nom);
       const prenom = val(m.prenom);
       if(!nom && !prenom) return;
+      if(deleted.has(medecinSignature(m)) || deleted.has(norm(val(m.name, `Dr ${prenom} ${nom}`)))) return;
       const key = norm(`${prenom} ${nom}`);
       if(cleaned.some(x => norm(`${x.prenom} ${x.nom}`) === key)) return;
       cleaned.push(m);
@@ -5163,6 +5195,11 @@
       const email = prompt('Email :', val(med.email)); if(email === null) return;
       list[index] = {...med, prenom:prenom.trim(), nom:nom.trim(), specialite:specialite.trim(), contact:contact.trim(), email:email.trim(), updatedAt:new Date().toISOString()};
       writeJson('chncak_medecins', list);
+      localStorage.setItem('chncak_medecins_user_modified_at', new Date().toISOString());
+      try {
+        const pushed = window.chimioproCloudPush?.(true);
+        if(pushed && typeof pushed.catch === 'function') pushed.catch(e => showToastSafe(`Medecins gardes localement. Cloud non synchronise: ${e.message}`, 'warning'));
+      } catch(e) {}
       window.renderMedecins?.();
       showToastSafe('Medecin modifie.', 'success');
     });
@@ -5170,11 +5207,23 @@
   window.deleteMed = function(index){
     requireAdminAction('supprimer un medecin', () => {
       const list = cleanMedecinsFinal();
-      if(!list[index]) return;
+      const med = list[index];
+      if(!med) return;
+      if(!confirm(`Supprimer ${val(med.name, `Dr ${val(med.prenom)} ${val(med.nom)}`)} ?`)) return;
+      const deleted = new Set(readJson(DELETED_MEDECINS_KEY, []));
+      deleted.add(medecinSignature(med));
+      deleted.add(norm(val(med.name, `Dr ${val(med.prenom)} ${val(med.nom)}`)));
+      writeJson(DELETED_MEDECINS_KEY, Array.from(deleted));
       list.splice(index, 1);
       writeJson('chncak_medecins', list);
+      localStorage.setItem('chncak_medecins_user_modified_at', new Date().toISOString());
+      try {
+        const pushed = window.chimioproCloudPush?.(true);
+        if(pushed && typeof pushed.catch === 'function') pushed.catch(e => showToastSafe(`Suppression gardee localement. Cloud non synchronise: ${e.message}`, 'warning'));
+      } catch(e) {}
       window.renderMedecins?.();
       window.populateMedecinSelect?.();
+      showToastSafe('Medecin supprime.', 'success');
     });
   };
   const nativeAddMedecinFromForm = window.addMedecinFromForm;
@@ -5705,6 +5754,10 @@
       window.renderSuivi?.();
       window.renderOkChimio?.();
       renderPreparationTodayList();
+      try {
+        const pushed = window.chimioproCloudPush?.(true);
+        if(pushed && typeof pushed.catch === 'function') pushed.catch(e => showToastSafe(`Suppression gardee localement. Cloud non synchronise: ${e.message}`, 'warning'));
+      } catch(e) {}
       showToastSafe(removed ? 'Ligne/protocole supprime sans effacer les autres lignes similaires.' : 'Aucune ligne exacte trouvee a supprimer.', removed ? 'success' : 'warning');
     });
   };

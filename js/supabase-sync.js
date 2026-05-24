@@ -10,9 +10,10 @@
   const DEVICE_ID_KEY = 'chncak_cloud_device_id';
   const LOCAL_PULL_BACKUP_KEY = 'chncak_local_backup_before_cloud_pull';
   const CLOUD_ERROR_KEY = 'chncak_cloud_last_error';
+  const LOCAL_DIRTY_KEY = 'chncak_cloud_local_dirty';
   const AUTO_SYNC_INTERVAL_MS = 30 * 1000;
   let autoSyncTimer = null;
-  let localDirty = false;
+  let localDirty = localStorage.getItem(LOCAL_DIRTY_KEY) === '1';
   let suppressLocalTracking = false;
   const ADMIN_CODE = '2026';
 
@@ -36,6 +37,8 @@
     'chncak_okchimio',
     'chncak_stock_sorties',
     'chncak_okchimio_refuses',
+    'chncak_deleted_saved_protocols',
+    'chncak_deleted_medecins',
     'patients',
     'okchimio',
     'sorties',
@@ -62,6 +65,8 @@
     'chncak_okchimio',
     'chncak_stock_sorties',
     'chncak_okchimio_refuses',
+    'chncak_deleted_saved_protocols',
+    'chncak_deleted_medecins',
     'patients',
     'okchimio',
     'sorties',
@@ -99,6 +104,8 @@
     'chncak_okchimio',
     'chncak_stock_sorties',
     'chncak_okchimio_refuses',
+    'chncak_deleted_saved_protocols',
+    'chncak_deleted_medecins',
     'chncak_last_backup',
     'chncak_last_restore',
     'chncak_cloud_last_sync',
@@ -115,6 +122,7 @@
     DEVICE_ID_KEY,
     LOCAL_META_KEY,
     LOCAL_PULL_BACKUP_KEY,
+    LOCAL_DIRTY_KEY,
     'chncak_currentUser',
     'chncak_dark'
   ]);
@@ -164,6 +172,55 @@
       item.dateTs ||
       index
     );
+  }
+
+  function norm(value){
+    return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  }
+
+  function protocolNameFor(entry){
+    return entry?.protocole || entry?.proto || entry?.protocolName || entry?.protoName || entry?.nomProtocole || entry?.patient?.protocole || entry?.patient?.proto || '';
+  }
+
+  function protocolSignature(entry){
+    if(!entry || typeof entry !== 'object') return '';
+    const patient = entry.patient || {};
+    const val = (...values) => {
+      const found = values.find(v => v !== undefined && v !== null && String(v).trim() !== '');
+      return found === undefined ? '' : found;
+    };
+    const strongId = val(entry.id, entry.dateTs, entry.createdAt, entry.dateCreation, patient.id, patient.dateTs, patient.createdAt);
+    const identifiers = [
+      norm(val(entry.idCubix, entry.id_cubix, patient.idCubix, patient.id_cubix)),
+      norm(val(entry.dossier, entry.numeroDossier, patient.dossier, patient.numeroDossier)),
+      norm(val(entry.codegratuite, entry.codeGratuite, entry.code, patient.codegratuite, patient.codeGratuite, patient.code))
+    ].filter(Boolean).join('|');
+    const proto = norm(protocolNameFor(entry));
+    const date = norm(val(entry.dateRdv, entry.rdv, entry.prochainRdv, entry.date, entry.formSnapshot?.['date-rdv'], patient.dateRdv, patient.rdv));
+    const cure = norm(val(entry.cure, patient.cure));
+    return [strongId ? `id:${strongId}` : '', identifiers ? `ids:${identifiers}` : '', proto ? `p:${proto}` : '', date ? `d:${date}` : '', cure ? `c:${cure}` : ''].filter(Boolean).join('::');
+  }
+
+  function sameProtocolRecord(item, signature){
+    if(!signature) return false;
+    const own = protocolSignature(item);
+    if(own && own === signature) return true;
+    const patientSig = protocolSignature(item?.patient);
+    return Boolean(patientSig && patientSig === signature);
+  }
+
+  function pruneDeletedProtocolData(data){
+    const deleted = readJsonValue(data?.chncak_deleted_saved_protocols, []);
+    if(!Array.isArray(deleted) || !deleted.length) return data;
+    const keys = ['chncak_historique','historique','chncak_protocols','chncak_okchimio','chncak_okchimio_refuses','chncak_rdv','rdv','chncak_biologie','biologie','chncak_suivi','suivi','chncak_patients','patients'];
+    const out = {...data};
+    keys.forEach(key => {
+      const list = readJsonValue(out[key], null);
+      if(!Array.isArray(list)) return;
+      const next = list.filter(item => !deleted.some(sig => sameProtocolRecord(item, sig)));
+      out[key] = JSON.stringify(next);
+    });
+    return out;
   }
 
   function mergeArrays(cloudValue, localValue){
@@ -239,7 +296,7 @@
         const value = localStorage.getItem(key);
         if(value !== null) preserved[key] = value;
       });
-      const cloud = {...(cloudData || {})};
+      const cloud = pruneDeletedProtocolData({...(cloudData || {})});
       const cloudResetAt = Date.parse(cloud.chncak_official_reset_at || '') || 0;
       const localResetAt = Date.parse(localStorage.getItem('chncak_official_reset_at') || '') || 0;
       if(cloudResetAt > localResetAt){
@@ -262,6 +319,7 @@
       Object.keys(preserved).forEach(key => localStorage.setItem(key, preserved[key]));
       localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());
       localDirty = false;
+      localStorage.removeItem(LOCAL_DIRTY_KEY);
       refreshViews();
       return collectLocalData();
     } finally {
@@ -300,16 +358,17 @@
         });
       }
       const localData = collectLocalData();
-      const merged = {...cloudData};
+      const merged = pruneDeletedProtocolData({...cloudData});
       Object.keys(localData).forEach(key => {
         merged[key] = mergeValues(key, cloudData?.[key], localData[key]);
       });
-      Object.keys(merged).forEach(key => {
-        if(merged[key] !== undefined && merged[key] !== null) localStorage.setItem(key, merged[key]);
+      const pruned = pruneDeletedProtocolData(merged);
+      Object.keys(pruned).forEach(key => {
+        if(pruned[key] !== undefined && pruned[key] !== null) localStorage.setItem(key, pruned[key]);
       });
       localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());
       refreshViews();
-      return merged;
+      return pruned;
     } finally {
       suppressLocalTracking = false;
     }
@@ -415,6 +474,7 @@
   function scheduleCloudPush(){
     if(suppressLocalTracking) return;
     localDirty = true;
+    localStorage.setItem(LOCAL_DIRTY_KEY, '1');
     if(!window.chimioproCloudReady) return;
     clearTimeout(autoTimer);
     autoTimer = setTimeout(() => {
@@ -429,11 +489,13 @@
     const nativeRemove = Storage.prototype.removeItem;
     Storage.prototype.setItem = function(key, value){
       const out = nativeSet.apply(this, arguments);
+      if(String(key) === LOCAL_DIRTY_KEY || String(key) === LOCAL_META_KEY || String(key) === CLOUD_ERROR_KEY) return out;
       if(String(key).startsWith('chncak_') || DATA_KEYS.includes(key)) scheduleCloudPush();
       return out;
     };
     Storage.prototype.removeItem = function(key){
       const out = nativeRemove.apply(this, arguments);
+      if(String(key) === LOCAL_DIRTY_KEY || String(key) === LOCAL_META_KEY || String(key) === CLOUD_ERROR_KEY) return out;
       if(String(key).startsWith('chncak_') || DATA_KEYS.includes(key)) scheduleCloudPush();
       return out;
     };
@@ -468,6 +530,7 @@
   async function cloudPush(silent){
     await saveCloudSnapshot(collectLocalData());
     localDirty = false;
+    localStorage.removeItem(LOCAL_DIRTY_KEY);
     if(!silent) notify('Donnees locales envoyees vers Supabase.', 'success');
   }
 
@@ -513,6 +576,7 @@
       const merged = snap?.data ? applyCloudData(snap.data) : collectLocalData();
       await saveCloudSnapshot(merged);
       localDirty = false;
+      localStorage.removeItem(LOCAL_DIRTY_KEY);
       if(!silent) notify('Synchronisation cloud terminee. Modifications envoyees.', 'success');
       return;
     }
@@ -573,7 +637,6 @@
       await signIn(email, password);
       window.chimioproCloudReady = true;
       patchLocalStorage();
-      await cloudPull(true);
       startAutoSync();
       await cloudSync(true);
     } catch(e){
@@ -588,7 +651,7 @@
       patchLocalStorage();
       updateCloudUi(current.user.email || '');
       await setupRealtime();
-      await cloudPull(true);
+      await cloudSync(true);
       startAutoSync();
       return current;
     }
