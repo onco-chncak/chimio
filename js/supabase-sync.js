@@ -11,7 +11,8 @@
   const LOCAL_PULL_BACKUP_KEY = 'chncak_local_backup_before_cloud_pull';
   const CLOUD_ERROR_KEY = 'chncak_cloud_last_error';
   const LOCAL_DIRTY_KEY = 'chncak_cloud_local_dirty';
-  const AUTO_SYNC_INTERVAL_MS = 30 * 1000;
+  const DIRTY_KEYS_KEY = 'chncak_cloud_dirty_keys';
+  const AUTO_SYNC_INTERVAL_MS = 10 * 1000;
   let autoSyncTimer = null;
   let localDirty = localStorage.getItem(LOCAL_DIRTY_KEY) === '1';
   let suppressLocalTracking = false;
@@ -123,6 +124,7 @@
     LOCAL_META_KEY,
     LOCAL_PULL_BACKUP_KEY,
     LOCAL_DIRTY_KEY,
+    DIRTY_KEYS_KEY,
     'chncak_currentUser',
     'chncak_dark'
   ]);
@@ -223,15 +225,30 @@
     return out;
   }
 
-  function mergeArrays(cloudValue, localValue){
+  function itemTimestamp(item){
+    const value = item && typeof item === 'object' ? (item._syncUpdatedAt || item._stockUpdatedAt || item.updatedAt || item.updated_at || item.savedAt || item.dateTs || item.createdAt || '') : '';
+    return Date.parse(value || '') || 0;
+  }
+
+  function mergeArrays(key, cloudValue, localValue){
     const map = new Map();
     (Array.isArray(cloudValue) ? cloudValue : []).forEach((item, index) => {
       map.set(identity(item, index), item);
     });
     (Array.isArray(localValue) ? localValue : []).forEach((item, index) => {
-      const key = identity(item, index);
-      const old = map.get(key);
-      map.set(key, old && typeof old === 'object' && typeof item === 'object' ? {...old, ...item} : item);
+      const itemKey = identity(item, index);
+      const old = map.get(itemKey);
+      if(old && typeof old === 'object' && typeof item === 'object'){
+        const cloudTime = itemTimestamp(old);
+        const localTime = itemTimestamp(item);
+        if((key === 'chncak_catalog' || key === 'chncak_medecins') && cloudTime > localTime){
+          map.set(itemKey, {...item, ...old});
+        } else {
+          map.set(itemKey, {...old, ...item});
+        }
+      } else {
+        map.set(itemKey, item);
+      }
     });
     return Array.from(map.values());
   }
@@ -251,7 +268,7 @@
       });
     }
     if(ARRAY_KEYS.has(key) && Array.isArray(cloud) && Array.isArray(local)){
-      return JSON.stringify(mergeArrays(cloud, local));
+      return JSON.stringify(mergeArrays(key, cloud, local));
     }
     if(cloud && local && typeof cloud === 'object' && typeof local === 'object' && !Array.isArray(cloud) && !Array.isArray(local)){
       return JSON.stringify({...cloud, ...local});
@@ -273,6 +290,33 @@
       }
     }
     return data;
+  }
+
+  function dirtyKeys(){
+    const keys = readJsonValue(localStorage.getItem(DIRTY_KEYS_KEY), []);
+    return Array.isArray(keys) ? keys.filter(Boolean) : [];
+  }
+
+  function markDirtyKey(key){
+    if(!key || LOCAL_ONLY_KEYS.has(key)) return;
+    const keys = new Set(dirtyKeys());
+    keys.add(String(key));
+    localStorage.setItem(DIRTY_KEYS_KEY, JSON.stringify(Array.from(keys).slice(-100)));
+  }
+
+  function clearDirtyState(){
+    localDirty = false;
+    localStorage.removeItem(LOCAL_DIRTY_KEY);
+    localStorage.removeItem(DIRTY_KEYS_KEY);
+  }
+
+  function mergeOnlyDirtyKeys(cloudData, localData, keys){
+    const merged = {...(cloudData || {})};
+    const dirty = new Set(keys || []);
+    Object.keys(localData || {}).forEach(key => {
+      if(dirty.has(key) || !merged[key]) merged[key] = mergeValues(key, cloudData?.[key], localData[key]);
+    });
+    return merged;
   }
 
   function backupLocalData(reason){
@@ -318,8 +362,7 @@
       });
       Object.keys(preserved).forEach(key => localStorage.setItem(key, preserved[key]));
       localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());
-      localDirty = false;
-      localStorage.removeItem(LOCAL_DIRTY_KEY);
+      clearDirtyState();
       refreshViews();
       return collectLocalData();
     } finally {
@@ -471,10 +514,11 @@
   }
 
   let autoTimer = null;
-  function scheduleCloudPush(){
+  function scheduleCloudPush(key){
     if(suppressLocalTracking) return;
     localDirty = true;
     localStorage.setItem(LOCAL_DIRTY_KEY, '1');
+    markDirtyKey(key);
     if(!window.chimioproCloudReady) return;
     clearTimeout(autoTimer);
     autoTimer = setTimeout(() => {
@@ -489,14 +533,14 @@
     const nativeRemove = Storage.prototype.removeItem;
     Storage.prototype.setItem = function(key, value){
       const out = nativeSet.apply(this, arguments);
-      if(String(key) === LOCAL_DIRTY_KEY || String(key) === LOCAL_META_KEY || String(key) === CLOUD_ERROR_KEY) return out;
-      if(String(key).startsWith('chncak_') || DATA_KEYS.includes(key)) scheduleCloudPush();
+      if(String(key) === LOCAL_DIRTY_KEY || String(key) === LOCAL_META_KEY || String(key) === CLOUD_ERROR_KEY || String(key) === DIRTY_KEYS_KEY) return out;
+      if(String(key).startsWith('chncak_') || DATA_KEYS.includes(key)) scheduleCloudPush(String(key));
       return out;
     };
     Storage.prototype.removeItem = function(key){
       const out = nativeRemove.apply(this, arguments);
-      if(String(key) === LOCAL_DIRTY_KEY || String(key) === LOCAL_META_KEY || String(key) === CLOUD_ERROR_KEY) return out;
-      if(String(key).startsWith('chncak_') || DATA_KEYS.includes(key)) scheduleCloudPush();
+      if(String(key) === LOCAL_DIRTY_KEY || String(key) === LOCAL_META_KEY || String(key) === CLOUD_ERROR_KEY || String(key) === DIRTY_KEYS_KEY) return out;
+      if(String(key).startsWith('chncak_') || DATA_KEYS.includes(key)) scheduleCloudPush(String(key));
       return out;
     };
   }
@@ -529,8 +573,7 @@
 
   async function cloudPush(silent){
     await saveCloudSnapshot(collectLocalData());
-    localDirty = false;
-    localStorage.removeItem(LOCAL_DIRTY_KEY);
+    clearDirtyState();
     if(!silent) notify('Donnees locales envoyees vers Supabase.', 'success');
   }
 
@@ -573,10 +616,10 @@
   async function cloudSync(silent){
     const snap = await loadCloudSnapshot();
     if(localDirty){
-      const merged = snap?.data ? applyCloudData(snap.data) : collectLocalData();
+      const keys = dirtyKeys();
+      const merged = snap?.data ? mergeOnlyDirtyKeys(pruneDeletedProtocolData(snap.data), collectLocalData(), keys) : collectLocalData();
       await saveCloudSnapshot(merged);
-      localDirty = false;
-      localStorage.removeItem(LOCAL_DIRTY_KEY);
+      clearDirtyState();
       if(!silent) notify('Synchronisation cloud terminee. Modifications envoyees.', 'success');
       return;
     }
@@ -596,7 +639,7 @@
     const last = localStorage.getItem(LOCAL_META_KEY);
     const lastError = localStorage.getItem(CLOUD_ERROR_KEY);
     if(email){
-      status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}<br><small>Synchro automatique toutes les 30 secondes.</small>${lastError ? `<br><small style="color:#C0392B">Derniere erreur: ${esc(lastError)}</small>` : ''}`;
+      status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}<br><small>Synchro automatique toutes les 10 secondes.</small>${lastError ? `<br><small style="color:#C0392B">Derniere erreur: ${esc(lastError)}</small>` : ''}`;
       panel.classList.add('cloud-connected');
     } else {
       status.textContent = 'Non connecte au cloud';

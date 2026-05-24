@@ -4327,10 +4327,12 @@
   };
 
   function syncCatalogGlobal(list){
+    const now = new Date().toISOString();
     list = cleanPharmacyCatalog(list);
+    list = list.map(item => ({...item, _syncUpdatedAt: now, _stockUpdatedAt: now}));
     writeJson(STORAGE.catalog, list);
-    localStorage.setItem('chncak_catalog_last_saved_at', new Date().toISOString());
-    localStorage.setItem('chncak_catalog_safety_backup', JSON.stringify({savedAt:new Date().toISOString(), catalog:list}));
+    localStorage.setItem('chncak_catalog_last_saved_at', now);
+    localStorage.setItem('chncak_catalog_safety_backup', JSON.stringify({savedAt:now, catalog:list}));
     try { if(Array.isArray(window.catalog)) window.catalog = list; } catch(e) {}
     try { if(typeof catalog !== 'undefined') catalog = list; } catch(e) {}
     try {
