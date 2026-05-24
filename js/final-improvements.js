@@ -6473,7 +6473,18 @@
     if(id === 'protocole') setTimeout(bindRestoredProtocolUnlock, 20);
     if(id === 'programme') setTimeout(() => { renderConsultationProgrammePanel(); cleanupLoginAndButtons(); }, 20);
     if(id === 'preparation') setTimeout(ensurePreparationPrintReady, 80);
-    if(id === 'pharmacie') setTimeout(lockPharmacyStockControls, 80);
+    if(id === 'pharmacie') {
+      if(window.chimioproCloudPullCatalog){
+        Promise.resolve(window.chimioproCloudPullCatalog(true))
+          .then(() => {
+            window.renderCatalogTable?.();
+            window.renderPharmacie?.();
+          })
+          .catch(e => showToastSafe(`Catalogue cloud non recupere: ${e.message}`, 'warning'));
+      }
+      setTimeout(lockPharmacyStockControls, 80);
+      setTimeout(lockPharmacyStockControls, 700);
+    }
     if(id === 'dashboard') setTimeout(() => { window.renderDashboard?.(); cleanupLoginAndButtons(); }, 20);
     if(id === 'support') {
       setTimeout(cleanupLoginAndButtons, 20);

@@ -741,13 +741,19 @@
     return role === 'admin' || username === 'admin';
   }
 
+  function canUseCloudActions(){
+    const user = localCurrentUser();
+    const role = String(user.role || '').toLowerCase();
+    return isCloudAdmin() || role === 'pharmacien';
+  }
+
   function refreshCloudRoleUi(){
     const panel = document.getElementById('cloud-sync-panel');
     if(!panel) return;
-    const admin = isCloudAdmin();
-    panel.classList.toggle('cloud-admin', admin);
+    const allowed = canUseCloudActions();
+    panel.classList.toggle('cloud-admin', allowed);
     panel.querySelectorAll('[data-cloud-admin-only]').forEach(btn => {
-      btn.style.display = admin ? '' : 'none';
+      btn.style.display = allowed ? '' : 'none';
     });
   }
 
@@ -844,7 +850,8 @@
           <div id="cloud-sync-status">Non connecte au cloud</div>
           <div class="cloud-actions">
             <button type="button" data-cloud-admin-only onclick="chimioproCloudSync()">Synchroniser</button>
-            <button type="button" data-cloud-admin-only onclick="chimioproCloudPull()">Recuperer</button>
+            <button type="button" data-cloud-admin-only onclick="chimioproCloudPullCatalog()">Recuperer catalogue</button>
+            <button type="button" data-cloud-admin-only onclick="chimioproCloudPull()">Recuperer tout</button>
             <button type="button" data-cloud-admin-only onclick="chimioproCloudPush()">Envoyer</button>
             <button type="button" data-cloud-admin-only onclick="chimioproCloudLogout()">Quitter</button>
             <button type="button" data-cloud-admin-only class="danger" onclick="chimioproOfficialReset()">Initialisation officielle</button>
