@@ -759,9 +759,15 @@
   }
 
   async function cloudPush(silent){
-    await saveCloudSnapshot(pruneDeletedProtocolData(collectLocalData()));
+    const data = pruneDeletedProtocolData(collectLocalData());
+    await saveCloudSnapshot(data);
+    const catalog = readJsonValue(data.chncak_catalog, null);
+    if(Array.isArray(catalog)){
+      await saveCloudSetting(CATALOG_KEY, catalog);
+      localStorage.setItem(CATALOG_PULL_META_KEY, new Date().toISOString());
+    }
     clearDirtyState();
-    if(!silent) notify('Donnees locales envoyees vers Supabase.', 'success');
+    if(!silent) notify('Donnees locales et catalogue envoyes vers Supabase.', 'success');
   }
 
   function localCurrentUser(){
@@ -922,7 +928,7 @@
             <button type="button" data-cloud-admin-only onclick="chimioproCloudSync()">Synchroniser</button>
             <button type="button" data-cloud-admin-only onclick="chimioproCloudPullCatalog()">Recuperer catalogue</button>
             <button type="button" data-cloud-admin-only onclick="chimioproCloudPull()">Recuperer tout</button>
-            <button type="button" data-cloud-admin-only onclick="chimioproCloudPush()">Envoyer</button>
+            <button type="button" data-cloud-admin-only id="cloud-push-btn" onclick="chimioproCloudPushManual()">Envoyer tout</button>
             <button type="button" data-cloud-admin-only onclick="chimioproCloudLogout()">Quitter</button>
             <button type="button" data-cloud-admin-only class="danger" onclick="chimioproOfficialReset()">Initialisation officielle</button>
           </div>
@@ -1006,6 +1012,27 @@
       updateCloudUi((await session().catch(() => null))?.user?.email || '');
       if(!silent) alert('Envoi cloud impossible: ' + e.message);
       else throw e;
+    }
+  };
+
+  window.chimioproCloudPushManual = async function(){
+    const btn = document.getElementById('cloud-push-btn');
+    if(btn){
+      btn.disabled = true;
+      btn.textContent = 'Envoi...';
+    }
+    try{
+      notify('Envoi vers Supabase en cours...', 'info');
+      await window.chimioproCloudPush(false);
+      await forceCloudCatalogRefresh(true).catch(() => null);
+      notify('Envoi cloud termine et verifie.', 'success');
+    } catch(e){
+      alert('Envoi cloud impossible: ' + e.message);
+    } finally {
+      if(btn){
+        btn.disabled = false;
+        btn.textContent = 'Envoyer tout';
+      }
     }
   };
 
