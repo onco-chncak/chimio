@@ -3214,14 +3214,20 @@
   }
 
   window.deleteSuiviEntry = function(id){
-    askAdminCode('supprimer cette ligne de suivi', () => {
+    if(!requireCloudForSensitiveWrite('supprimer une ligne de suivi')) return;
+    askAdminCode('supprimer cette ligne de suivi', async () => {
       [STORAGE.suivi, 'suivi'].forEach(key => {
         const list = readJson(key, []);
         if(Array.isArray(list)) writeJson(key, list.filter(item => String(val(item.id, item.dateTs)) !== String(id)));
       });
       logAudit('Suppression suivi', id, 'Ligne de suivi patient supprimee');
       window.renderSuivi?.();
-      showToastSafe('Ligne de suivi supprimee.', 'success');
+      try{
+        await window.chimioproCloudPush?.(true);
+        showToastSafe('Ligne de suivi supprimee et synchronisee.', 'success');
+      } catch(e){
+        showToastSafe(`Suivi supprime localement. Cloud non synchronise: ${e.message}`, 'warning');
+      }
     });
   };
 
@@ -3461,6 +3467,26 @@
     return true;
   }
 
+  function samePatientLoose(item, target){
+    if(!item || !target) return false;
+    const itemPatient = item.patient || {};
+    const targetPatient = target.patient || {};
+    const itemIds = [
+      norm(val(item.idCubix, item.id_cubix, itemPatient.idCubix, itemPatient.id_cubix)),
+      norm(val(item.dossier, item.numeroDossier, itemPatient.dossier, itemPatient.numeroDossier)),
+      norm(val(item.codegratuite, item.codeGratuite, item.code, itemPatient.codegratuite, itemPatient.codeGratuite, itemPatient.code))
+    ].filter(Boolean);
+    const targetIds = [
+      norm(val(target.idCubix, target.id_cubix, targetPatient.idCubix, targetPatient.id_cubix)),
+      norm(val(target.dossier, target.numeroDossier, targetPatient.dossier, targetPatient.numeroDossier)),
+      norm(val(target.codegratuite, target.codeGratuite, target.code, targetPatient.codegratuite, targetPatient.codeGratuite, targetPatient.code))
+    ].filter(Boolean);
+    if(itemIds.length && targetIds.length && itemIds.some(id => targetIds.includes(id))) return true;
+    const itemName = norm(patientName(item) || patientName(itemPatient) || item.patient);
+    const targetName = norm(patientName(target) || patientName(targetPatient) || target.patient);
+    return Boolean(itemName && targetName && itemName === targetName);
+  }
+
   function removeOneFromStorage(key, predicate){
     const list = readJson(key, []);
     if(!Array.isArray(list)) return false;
@@ -3480,7 +3506,7 @@
     [STORAGE.historique, 'historique', STORAGE.okchimio, 'chncak_okchimio', 'chncak_okchimio_refuses', STORAGE.rdv, STORAGE.biologie, STORAGE.suivi, STORAGE.patients, 'patients'].forEach(key => {
       const list = readJson(key, []);
       if(!Array.isArray(list)) return;
-      const next = list.filter(item => !sameSavedProtocol(item, entry));
+      const next = list.filter(item => !sameSavedProtocol(item, entry) && !samePatientLoose(item, entry));
       if(next.length !== list.length){
         writeJson(key, next);
         removed = true;
@@ -3497,9 +3523,11 @@
   }
 
   window.deletePatientEverywhere = function(id){
+    if(!requireCloudForSensitiveWrite('supprimer un patient')) return;
     const patient = readJson(STORAGE.patients, []).find(p => String(p.id) === String(id));
     if(!patient) return alert('Patient introuvable.');
-    askAdminCode(`supprimer uniquement cette ligne patient: ${patientName(patient)}`, () => {
+    askAdminCode(`supprimer ce patient dans tous les modules: ${patientName(patient)}`, async () => {
+      deleteSingleSavedProtocol(patient);
       deleteExactPatientRecord(patient);
       logAudit('Suppression patient', patientName(patient), `Dossier ${val(patient.dossier, '-')}, code ${patientCode(patient) || '-'}`);
       window.renderPatientsList?.();
@@ -3508,19 +3536,30 @@
       window.renderOkChimio?.();
       renderPreparationTodayList();
       cleanupLoginAndButtons();
-      showToastSafe('Ligne patient supprimee sans effacer les homonymes.', 'success');
+      try{
+        await window.chimioproCloudPush?.(true);
+        showToastSafe('Patient supprime et synchronise avec le cloud.', 'success');
+      } catch(e){
+        showToastSafe(`Patient supprime localement. Cloud non synchronise: ${e.message}`, 'warning');
+      }
     });
   };
 
   window.deleteBiologieEntry = function(id){
-    askAdminCode('supprimer ce bilan biologique', () => {
+    if(!requireCloudForSensitiveWrite('supprimer un bilan biologique')) return;
+    askAdminCode('supprimer ce bilan biologique', async () => {
       [STORAGE.biologie, 'biologie'].forEach(key => {
         const list = readJson(key, []);
         if(Array.isArray(list)) writeJson(key, list.filter(item => String(val(item.id, item.dateTs)) !== String(id)));
       });
       logAudit('Suppression biologie', id, 'Bilan biologique supprime');
       window.renderBiologie?.();
-      showToastSafe('Bilan biologique supprime.', 'success');
+      try{
+        await window.chimioproCloudPush?.(true);
+        showToastSafe('Bilan biologique supprime et synchronise.', 'success');
+      } catch(e){
+        showToastSafe(`Bilan supprime localement. Cloud non synchronise: ${e.message}`, 'warning');
+      }
     });
   };
 
