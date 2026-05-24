@@ -8,6 +8,7 @@
   const SNAPSHOT_KEY = 'cloud_snapshot_v1';
   const CATALOG_KEY = 'catalog_v1';
   const LOCAL_META_KEY = 'chncak_cloud_last_sync';
+  const CATALOG_PULL_META_KEY = 'chncak_catalog_cloud_last_pull';
   const DEVICE_ID_KEY = 'chncak_cloud_device_id';
   const LOCAL_PULL_BACKUP_KEY = 'chncak_local_backup_before_cloud_pull';
   const CLOUD_ERROR_KEY = 'chncak_cloud_last_error';
@@ -564,10 +565,25 @@
     const saved = await loadCloudSetting(CATALOG_KEY);
     if(saved?.data && Array.isArray(saved.data)){
       applyCloudCatalog(saved.data);
+      localStorage.setItem(CATALOG_PULL_META_KEY, new Date().toISOString());
+      localStorage.removeItem(CLOUD_ERROR_KEY);
+      updateCloudUi((await session())?.user?.email || '');
       if(!silent) notify('Catalogue pharmacie recupere depuis Supabase.', 'success');
       return saved.data;
     }
     return null;
+  }
+
+  async function forceCloudCatalogRefresh(silent){
+    const current = await session();
+    if(!current) throw new Error('Connexion cloud requise.');
+    window.chimioproCloudReady = true;
+    await setupRealtime();
+    const data = await pullCloudCatalog(true);
+    localStorage.removeItem(CLOUD_ERROR_KEY);
+    updateCloudUi(current.user.email || '');
+    if(data && !silent) notify('Catalogue pharmacie actualise depuis Supabase.', 'success');
+    return data;
   }
 
   function catalogItemSummaryFromData(data, wanted){
@@ -633,7 +649,7 @@
     if(!sb || !current || window.chimioproRealtimeReady) return;
     window.chimioproRealtimeReady = true;
     sb.channel('app_settings_snapshot')
-      .on('postgres_changes', {event:'UPDATE', schema:'public', table:'app_settings', filter:`key=eq.${SNAPSHOT_KEY}`}, payload => {
+      .on('postgres_changes', {event:'*', schema:'public', table:'app_settings', filter:`key=eq.${SNAPSHOT_KEY}`}, payload => {
         const value = payload.new?.value;
         if(!value || value.deviceId === getDeviceId()) return;
         if(localDirty) cloudSync(true).catch(err => console.warn('Fusion cloud apres modification locale echouee:', err.message));
@@ -642,7 +658,7 @@
       })
       .subscribe();
     sb.channel('app_settings_catalog')
-      .on('postgres_changes', {event:'UPDATE', schema:'public', table:'app_settings', filter:`key=eq.${CATALOG_KEY}`}, payload => {
+      .on('postgres_changes', {event:'*', schema:'public', table:'app_settings', filter:`key=eq.${CATALOG_KEY}`}, payload => {
         const value = payload.new?.value;
         if(!value || value.deviceId === getDeviceId()) return;
         if(Array.isArray(value.data)){
@@ -699,10 +715,16 @@
   function startAutoSync(){
     stopAutoSync();
     autoSyncTimer = setInterval(async () => {
-      if(!window.chimioproCloudReady) return;
+      const current = await session();
+      if(!current) {
+        window.chimioproCloudReady = false;
+        updateCloudUi('');
+        return;
+      }
+      window.chimioproCloudReady = true;
       try{
         await cloudSync(true);
-        if(!localDirty) await pullCloudCatalog(true).catch(() => null);
+        await pullCloudCatalog(true).catch(() => null);
       }
       catch(e){ console.warn('Synchronisation automatique echouee:', e.message); }
     }, AUTO_SYNC_INTERVAL_MS);
@@ -739,6 +761,7 @@
     const status = document.getElementById('cloud-sync-status');
     if(!panel || !status) return;
     const last = localStorage.getItem(LOCAL_META_KEY);
+    const catalogPull = localStorage.getItem(CATALOG_PULL_META_KEY);
     const lastError = localStorage.getItem(CLOUD_ERROR_KEY);
     const needsReconnect = /connexion cloud requise/i.test(lastError || '');
     if(email){
@@ -755,10 +778,10 @@
         }
       }).catch(() => {});
       if(needsReconnect){
-        status.innerHTML = `Session cloud a verifier: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync reussie: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}<br><small style="color:#C0392B">Reconnectez-vous si ce message persiste apres quelques secondes.</small>`;
+        status.innerHTML = `Session cloud a verifier: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync reussie: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}${catalogPull ? `<br><small>Catalogue recu: ${new Date(catalogPull).toLocaleString('fr-FR')}</small>` : ''}<br><small style="color:#C0392B">Reconnectez-vous si ce message persiste apres quelques secondes.</small>`;
         panel.classList.remove('cloud-connected');
       } else {
-        status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}<br><small>Synchro automatique toutes les 30 secondes.</small>${lastError ? `<br><small style="color:#C0392B">Derniere erreur: ${esc(lastError)}</small>` : ''}`;
+        status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}${catalogPull ? `<br><small>Catalogue recu: ${new Date(catalogPull).toLocaleString('fr-FR')}</small>` : ''}<br><small>Synchro automatique toutes les 30 secondes.</small>${lastError ? `<br><small style="color:#C0392B">Derniere erreur: ${esc(lastError)}</small>` : ''}`;
         panel.classList.add('cloud-connected');
       }
     } else {
@@ -814,7 +837,7 @@
       patchLocalStorage();
       await setupRealtime();
       await cloudSync(true);
-      await pullCloudCatalog(true).catch(() => null);
+      await forceCloudCatalogRefresh(true).catch(() => null);
       localStorage.removeItem(CLOUD_ERROR_KEY);
       updateCloudUi(current.user.email || '');
       startAutoSync();
@@ -897,7 +920,7 @@
 
   window.chimioproCloudPullCatalog = async function(silent){
     try{
-      return await pullCloudCatalog(Boolean(silent));
+      return await forceCloudCatalogRefresh(Boolean(silent));
     } catch(e){
       if(!silent) alert('Recuperation cloud catalogue impossible: ' + e.message);
       throw e;
@@ -944,9 +967,11 @@
     installCloudUi();
     patchLocalStorage();
     window.addEventListener('focus', () => {
+      forceCloudCatalogRefresh(true).catch(() => null);
       if(window.chimioproCloudReady) cloudSync(true).catch(err => console.warn('Synchronisation au focus echouee:', err.message));
     });
     document.addEventListener('visibilitychange', () => {
+      if(!document.hidden) forceCloudCatalogRefresh(true).catch(() => null);
       if(!document.hidden && window.chimioproCloudReady) cloudSync(true).catch(err => console.warn('Synchronisation au retour onglet echouee:', err.message));
     });
     try{
