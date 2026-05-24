@@ -54,6 +54,16 @@
   const todayIso = () => new Date().toISOString().slice(0, 10);
   const CODE_GRATUITE_COUNTER_KEY = 'chncak_code_gratuite_counter';
   const LAST_PROTOCOL_PATIENT_KEY = 'chncak_last_protocol_patient';
+  const nativeWindowAlert = window.alert ? window.alert.bind(window) : null;
+
+  window.alert = function(message){
+    const text = String(message || '');
+    if(text.includes('Cloud confirme Supabase') || text.includes('Catalogue envoye a Supabase') || text.includes('Catalogue sauvegarde localement seulement')){
+      showToastSafe(text.replace(/\n+/g, ' '), text.includes('localement seulement') ? 'warning' : 'success');
+      return;
+    }
+    return nativeWindowAlert ? nativeWindowAlert(message) : undefined;
+  };
 
   function codeYearFromDate(value){
     const d = value ? new Date(value) : new Date();
@@ -4357,7 +4367,6 @@
         pushed
           .then(info => {
             if(info){
-              const msg = `Cloud confirme Supabase:\n${info.name}\nStock service: ${info.service}\nStock pharmacie centrale: ${info.central}`;
               showToastSafe(`Cloud verifie: ${info.name} service ${info.service}, centrale ${info.central}.`, 'success');
             } else {
               showToastSafe('Catalogue envoye au cloud dedie.', 'success');
