@@ -4560,30 +4560,36 @@
   };
 
   window.downloadCatalogTemplate = function(){
-    const template = [
-      {
-        'Medicament': 'OXALIPLATINE',
-        'DCI': 'Oxaliplatine',
-        'Dosage (mg)': 50,
-        'Forme': 'Injectable',
-        'Conditionnement': 'B1',
-        'Statut': 'Payant',
-        'Prix/flacon (FCFA)': 45000,
-        'Stock service (flacons)': 0,
-        'Stock pharmacie centrale (flacons)': 50
-      },
-      {
-        'Medicament': '[Votre medicament ici]',
-        'DCI': '[DCI / generique]',
-        'Dosage (mg)': 500,
-        'Forme': 'Injectable',
-        'Conditionnement': 'B1',
-        'Statut': 'Payant ou Gratuit',
-        'Prix/flacon (FCFA)': 0,
-        'Stock service (flacons)': 0,
-        'Stock pharmacie centrale (flacons)': 0
-      }
-    ];
+    const list = readJson(STORAGE.catalog, Array.isArray(window.catalog) ? window.catalog : []);
+    const template = [];
+    list.forEach(d => {
+      const dosages = (d.dosages || d.flacons || []).map(Number).filter(Boolean);
+      const rows = dosages.length ? dosages : [''];
+      rows.forEach(dosage => {
+        template.push({
+          'Medicament': d.name || '',
+          'DCI': d.dci || '',
+          'Dosage (mg)': dosage || '',
+          'Forme': d.forme || 'Injectable',
+          'Conditionnement': d.cond || 'B1',
+          'Statut': d.statutTarif || d.statut || 'Payant',
+          'Prix/flacon (FCFA)': d.prixUnit || d.prix || 0,
+          'Stock service (flacons)': stockForDosage(d, dosage, 'service'),
+          'Stock pharmacie centrale (flacons)': stockForDosage(d, dosage, 'central')
+        });
+      });
+    });
+    template.push({
+      'Medicament': '[NOUVEAU MEDICAMENT]',
+      'DCI': '[DCI]',
+      'Dosage (mg)': '',
+      'Forme': 'Injectable',
+      'Conditionnement': 'B1',
+      'Statut': 'Payant',
+      'Prix/flacon (FCFA)': 0,
+      'Stock service (flacons)': 0,
+      'Stock pharmacie centrale (flacons)': 0
+    });
     const ws = XLSX.utils.json_to_sheet(template);
     ws['!cols'] = [28,22,14,16,18,14,18,22,28].map(w => ({wch:w}));
     const wb = XLSX.utils.book_new();
