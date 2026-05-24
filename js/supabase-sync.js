@@ -13,7 +13,7 @@
   const CLOUD_ERROR_KEY = 'chncak_cloud_last_error';
   const LOCAL_DIRTY_KEY = 'chncak_cloud_local_dirty';
   const DIRTY_KEYS_KEY = 'chncak_cloud_dirty_keys';
-  const AUTO_SYNC_INTERVAL_MS = 10 * 1000;
+  const AUTO_SYNC_INTERVAL_MS = 30 * 1000;
   let autoSyncTimer = null;
   let localDirty = localStorage.getItem(LOCAL_DIRTY_KEY) === '1';
   let suppressLocalTracking = false;
@@ -524,6 +524,7 @@
       .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict:'key' });
     if(error) throw error;
     localStorage.setItem(LOCAL_META_KEY, value.updatedAt);
+    localStorage.removeItem(CLOUD_ERROR_KEY);
     updateCloudUi(current.user.email || '');
     return value;
   }
@@ -713,16 +714,22 @@
       const merged = snap?.data ? mergeOnlyDirtyKeys(pruneDeletedProtocolData(snap.data), collectLocalData(), keys) : collectLocalData();
       await saveCloudSnapshot(merged);
       clearDirtyState();
+      localStorage.removeItem(CLOUD_ERROR_KEY);
+      updateCloudUi((await session())?.user?.email || '');
       if(!silent) notify('Synchronisation cloud terminee. Modifications envoyees.', 'success');
       return;
     }
     if(snap?.data){
       applyCloudAuthoritativeData(snap.data);
       await pullCloudCatalog(true).catch(() => null);
+      localStorage.removeItem(CLOUD_ERROR_KEY);
+      updateCloudUi((await session())?.user?.email || '');
       if(!silent) notify('Donnees cloud recuperees.', 'success');
       return;
     }
     await saveCloudSnapshot(collectLocalData());
+    localStorage.removeItem(CLOUD_ERROR_KEY);
+    updateCloudUi((await session())?.user?.email || '');
     if(!silent) notify('Premier snapshot cloud cree.', 'success');
   }
 
@@ -733,7 +740,14 @@
     const last = localStorage.getItem(LOCAL_META_KEY);
     const lastError = localStorage.getItem(CLOUD_ERROR_KEY);
     if(email){
-      status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}<br><small>Synchro automatique toutes les 10 secondes.</small>${lastError ? `<br><small style="color:#C0392B">Derniere erreur: ${esc(lastError)}</small>` : ''}`;
+      session().then(current => {
+        if(!current){
+          window.chimioproCloudReady = false;
+          stopAutoSync();
+          updateCloudUi('');
+        }
+      }).catch(() => {});
+      status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}<br><small>Synchro automatique toutes les 30 secondes.</small>${lastError ? `<br><small style="color:#C0392B">Derniere erreur: ${esc(lastError)}</small>` : ''}`;
       panel.classList.add('cloud-connected');
     } else {
       status.textContent = 'Non connecte au cloud';
@@ -856,6 +870,7 @@
       await ensureInteractiveCloudSession();
       await saveCloudCatalog(catalog);
       localStorage.removeItem(CLOUD_ERROR_KEY);
+      updateCloudUi((await session())?.user?.email || '');
       const info = await verifyCloudCatalogSaved('taxol').catch(() => null);
       if(!silent) notify('Catalogue pharmacie envoye vers Supabase.', 'success');
       return info;
