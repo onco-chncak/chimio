@@ -911,6 +911,7 @@
       alert('Action reservee au compte administrateur.');
       return;
     }
+    if(!requireCloudForSensitiveWrite(actionLabel)) return;
     askAdminCode(actionLabel, onOk);
   }
 
@@ -948,9 +949,21 @@
       alert('Action reservee au compte pharmacien.');
       return false;
     }
+    if(!requireCloudForSensitiveWrite(actionLabel)) return false;
     if(typeof onOk === 'function') onOk();
     return true;
   }
+
+  function requireCloudForSensitiveWrite(actionLabel){
+    const user = currentUser();
+    if(!user || user.authProvider !== 'supabase') return true;
+    if(window.chimioproCloudCanWrite?.() || window.chimioproCloudReady === true) return true;
+    window.chimioproUpdateCloudGuard?.(false);
+    alert(`Cloud non connecte.\n\nAction bloquee pour eviter une perte de donnees: ${actionLabel || 'modification'}.\n\nDeconnectez-vous puis reconnectez-vous avec votre email et mot de passe Supabase.`);
+    return false;
+  }
+
+  window.chimioproRequireCloudForWrite = requireCloudForSensitiveWrite;
 
   function showToastSafe(message, type){
     if(typeof showToast === 'function') showToast(message, type || 'info');
@@ -3515,6 +3528,7 @@
   };
 
   window.saveBiologie = function(){
+    if(!requireCloudForSensitiveWrite('sauvegarder une biologie')) return;
     const select = document.getElementById('bio-patient-select');
     const selected = select?.value || '';
     const typedPatient = document.getElementById('bio-patient')?.value || '';
@@ -3823,6 +3837,7 @@
   };
 
   window.savePatient = function(){
+    if(!requireCloudForSensitiveWrite('enregistrer un patient')) return;
     const modal = document.getElementById('patient-modal');
     const editId = modal?.dataset.editId || '';
     const prenom = document.getElementById('pm-prenom')?.value.trim();
@@ -4085,6 +4100,7 @@
   };
 
   window.saveProtocol = function(){
+    if(!requireCloudForSensitiveWrite('sauvegarder un protocole')) return;
     const saveBtn = document.getElementById('btn-save');
     if(saveBtn?.dataset.saving === '1') return;
     if(saveBtn?.dataset.restoredLocked === '1'){
@@ -4161,6 +4177,7 @@
   };
 
   window.validerOkChimio = function(id){
+    if(!requireCloudForSensitiveWrite('valider OK Chimio')) return;
     const list = getOkChimioList();
     const idx = findOkChimioEntry(list, id);
     if(idx < 0) return alert('Protocole introuvable dans OK Chimio.');
@@ -4196,6 +4213,7 @@
   };
 
   window.refuserOkChimio = function(id){
+    if(!requireCloudForSensitiveWrite('refuser OK Chimio')) return;
     const motifInput = prompt('Motif du refus :', 'A verifier');
     if(motifInput === null) return;
     const motif = String(motifInput || '').trim() || 'A verifier';
@@ -6062,6 +6080,7 @@
   };
 
   window.saveHematologiePatient = function(){
+    if(!requireCloudForSensitiveWrite('enregistrer un patient hematologie')) return;
     const get = id => document.getElementById(id)?.value?.trim() || '';
     if(!get('hema-code')) setHematologieAutoCode(false);
     const patient = {
@@ -6108,6 +6127,7 @@
   };
 
   window.validateHematologieSortie = function(){
+    if(!requireCloudForSensitiveWrite('valider une sortie hematologie')) return;
     const get = id => document.getElementById(id)?.value?.trim() || '';
     const medicament = get('hema-med-name');
     const dci = get('hema-med-dci');
@@ -6546,6 +6566,7 @@
 
   const nativeValidateStockFromRdv = window.validateStockFromRdv;
   window.validateStockFromRdv = function(id){
+    if(!requireCloudForSensitiveWrite('traiter un rendez-vous et deduire le stock')) return;
     const list = readJson(STORAGE.rdv, []);
     const rdv = list.find(r => String(r.id) === String(id));
     const patient = rdv ? readJson(STORAGE.patients, []).find(p => (p.dossier && p.dossier === rdv.dossier) || norm(patientName(p)) === norm(patientName(rdv))) || rdv : null;
@@ -6749,6 +6770,7 @@
       #page-programme > div[style*="max-width"] > div[style*="justify-content:space-between"] h2{font-size:13px!important}
       .dark-toggle{right:16px!important;bottom:76px!important}
       .cloud-sync-panel{position:fixed;right:12px;bottom:12px;z-index:9998;font-family:var(--font);color:#17324d}
+      .cloud-guard-banner{position:sticky;top:0;z-index:10000;background:#fff3cd;color:#7A4B00;border-bottom:1px solid #F0C36A;padding:9px 18px;font:700 13px/1.35 var(--font);box-shadow:0 6px 16px rgba(122,75,0,.12)}
       #cloud-sync-toggle{background:#0A3D7A;color:#fff;border:none;border-radius:20px;padding:8px 14px;font-size:12px;font-weight:700;box-shadow:0 8px 20px rgba(10,61,122,.22);cursor:pointer}
       .cloud-sync-panel.cloud-connected #cloud-sync-toggle{background:#0B5E3C}
       #cloud-sync-body{display:none;width:280px;background:#fff;border:1px solid #dbe5f2;border-radius:8px;box-shadow:0 14px 34px rgba(10,61,122,.18);padding:12px;margin-bottom:8px}

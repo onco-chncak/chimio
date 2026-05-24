@@ -757,6 +757,35 @@
     });
   }
 
+  function currentCloudUserEmail(){
+    try{
+      const user = JSON.parse(localStorage.getItem('chncak_currentUser') || '{}') || {};
+      return user.email || user.username || '';
+    } catch(e){
+      return '';
+    }
+  }
+
+  function updateCloudGuardBanner(connected){
+    const banner = document.getElementById('cloud-guard-banner');
+    if(!banner) return;
+    const hasAppUser = !!localStorage.getItem('chncak_currentUser');
+    const isConnected = connected === true || window.chimioproCloudReady === true;
+    if(!hasAppUser || isConnected){
+      banner.style.display = 'none';
+      return;
+    }
+    const email = currentCloudUserEmail();
+    banner.innerHTML = `<b>Cloud non connecte.</b> Les modifications sensibles sont bloquees pour eviter une perte de donnees.${email ? ` Compte attendu : ${esc(email)}.` : ''} Deconnectez-vous puis reconnectez-vous avec email et mot de passe Supabase.`;
+    banner.style.display = 'block';
+  }
+
+  window.chimioproCloudCanWrite = function(){
+    return window.chimioproCloudReady === true;
+  };
+
+  window.chimioproUpdateCloudGuard = updateCloudGuardBanner;
+
   function stopAutoSync(){
     if(autoSyncTimer) clearInterval(autoSyncTimer);
     autoSyncTimer = null;
@@ -819,9 +848,12 @@
         if(!current){
           window.chimioproCloudReady = false;
           stopAutoSync();
+          updateCloudGuardBanner(false);
           updateCloudUi('');
           return;
         }
+        window.chimioproCloudReady = true;
+        updateCloudGuardBanner(true);
         if(needsReconnect){
           localStorage.removeItem(CLOUD_ERROR_KEY);
           updateCloudUi(current.user?.email || email);
@@ -834,15 +866,18 @@
         status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}${catalogPull ? `<br><small>Catalogue recu: ${new Date(catalogPull).toLocaleString('fr-FR')}</small>` : ''}<br><small>Synchro automatique toutes les 30 secondes.</small>${lastError ? `<br><small style="color:#C0392B">Derniere erreur: ${esc(lastError)}</small>` : ''}`;
         panel.classList.add('cloud-connected');
       }
+      updateCloudGuardBanner(!needsReconnect);
     } else {
       status.textContent = 'Non connecte au cloud';
       panel.classList.remove('cloud-connected');
+      updateCloudGuardBanner(false);
     }
     refreshCloudRoleUi();
   }
 
   function installCloudUi(){
     if(document.getElementById('cloud-sync-panel')) return;
+    document.body.insertAdjacentHTML('afterbegin', '<div id="cloud-guard-banner" class="cloud-guard-banner no-print" style="display:none"></div>');
     document.body.insertAdjacentHTML('beforeend', `
       <div id="cloud-sync-panel" class="cloud-sync-panel no-print">
         <button id="cloud-sync-toggle" type="button" onclick="toggleCloudSyncPanel()">Cloud</button>
@@ -885,6 +920,7 @@
     const current = await session();
     if(current){
       window.chimioproCloudReady = true;
+      updateCloudGuardBanner(true);
       patchLocalStorage();
       await setupRealtime();
       await cloudSync(true);
@@ -895,6 +931,7 @@
       return current;
     }
     window.chimioproCloudReady = false;
+    updateCloudGuardBanner(false);
     updateCloudUi('');
     stopAutoSync();
     return null;
@@ -904,6 +941,7 @@
     if(!isCloudAdmin()) return alert('Deconnexion cloud reservee au compte admin.');
     await signOut();
     window.chimioproCloudReady = false;
+    updateCloudGuardBanner(false);
     stopAutoSync();
     notify('Deconnecte du cloud.', 'info');
   };
