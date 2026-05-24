@@ -3403,6 +3403,39 @@
     return [strongId ? `id:${strongId}` : '', identifiers ? `ids:${identifiers}` : '', proto ? `p:${proto}` : '', date ? `d:${date}` : '', cure ? `c:${cure}` : ''].filter(Boolean).join('::');
   }
 
+  function signatureParts(signature){
+    const out = {};
+    String(signature || '').split('::').forEach(part => {
+      const idx = part.indexOf(':');
+      if(idx > 0) out[part.slice(0, idx)] = part.slice(idx + 1);
+    });
+    return out;
+  }
+
+  function compatibleProtocolSignature(a, b){
+    if(!a || !b) return false;
+    if(a === b) return true;
+    const pa = signatureParts(a);
+    const pb = signatureParts(b);
+    if(pa.id && pb.id && pa.id === pb.id) return true;
+    if(pa.ids && pb.ids){
+      const idsA = pa.ids.split('|').filter(Boolean);
+      const idsB = pb.ids.split('|').filter(Boolean);
+      if(!idsA.some(id => idsB.includes(id))) return false;
+      if(pa.p && pb.p && pa.p !== pb.p) return false;
+      if(pa.d && pb.d && pa.d !== pb.d) return false;
+      if(pa.c && pb.c && pa.c !== pb.c) return false;
+      return true;
+    }
+    return false;
+  }
+
+  function isDeletedSavedProtocol(item){
+    const own = protocolEntrySignature(item);
+    const patientSig = protocolEntrySignature(item?.patient);
+    return readJson(DELETED_SAVED_PROTOCOLS_KEY, []).some(sig => compatibleProtocolSignature(own, sig) || compatibleProtocolSignature(patientSig, sig));
+  }
+
   function sameSavedProtocol(item, target){
     if(exactRecordMatch(item, target) || exactRecordMatch(item?.patient, target) || exactRecordMatch(item, target?.patient)) return true;
     const itemPatient = item?.patient || {};
@@ -5832,10 +5865,9 @@
   function savedProtocolEntries(){
     const hist = readJson(STORAGE.historique, []);
     const ok = getOkChimioList().map(item => ({...(item.patient || {}), ...item}));
-    const deleted = new Set(readJson(DELETED_SAVED_PROTOCOLS_KEY, []));
     return dedupeByPatientTreatment([...hist, ...ok])
       .filter(item => patientName(item) || val(item.dossier))
-      .filter(item => !deleted.has(protocolEntrySignature(item)));
+      .filter(item => !isDeletedSavedProtocol(item));
   }
 
   function installApercuSearch(){
@@ -5891,6 +5923,7 @@
   };
 
   window.deleteSelectedApercuPatient = function(){
+    if(!requireCloudForSensitiveWrite('supprimer un protocole sauvegarde')) return;
     const idx = Number(document.getElementById('apercu-patient-select')?.value);
     const entry = savedProtocolEntries()[idx];
     if(!entry) return alert('Selectionner un patient a supprimer.');
@@ -5904,7 +5937,11 @@
       renderPreparationTodayList();
       try {
         const pushed = window.chimioproCloudPush?.(true);
-        if(pushed && typeof pushed.catch === 'function') pushed.catch(e => showToastSafe(`Suppression gardee localement. Cloud non synchronise: ${e.message}`, 'warning'));
+        if(pushed && typeof pushed.then === 'function') {
+          pushed
+            .then(() => showToastSafe('Suppression synchronisee avec le cloud.', 'success'))
+            .catch(e => showToastSafe(`Suppression gardee localement. Cloud non synchronise: ${e.message}`, 'warning'));
+        }
       } catch(e) {}
       showToastSafe(removed ? 'Ligne/protocole supprime sans effacer les autres lignes similaires.' : 'Aucune ligne exacte trouvee a supprimer.', removed ? 'success' : 'warning');
     });

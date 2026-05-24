@@ -207,19 +207,54 @@
     return [strongId ? `id:${strongId}` : '', identifiers ? `ids:${identifiers}` : '', proto ? `p:${proto}` : '', date ? `d:${date}` : '', cure ? `c:${cure}` : ''].filter(Boolean).join('::');
   }
 
+  function signatureParts(signature){
+    const out = {};
+    String(signature || '').split('::').forEach(part => {
+      const idx = part.indexOf(':');
+      if(idx > 0) out[part.slice(0, idx)] = part.slice(idx + 1);
+    });
+    return out;
+  }
+
+  function compatibleProtocolSignature(a, b){
+    if(!a || !b) return false;
+    if(a === b) return true;
+    const pa = signatureParts(a);
+    const pb = signatureParts(b);
+    if(pa.id && pb.id && pa.id === pb.id) return true;
+    if(pa.ids && pb.ids){
+      const idsA = pa.ids.split('|').filter(Boolean);
+      const idsB = pb.ids.split('|').filter(Boolean);
+      const hasSameIdentifier = idsA.some(id => idsB.includes(id));
+      if(!hasSameIdentifier) return false;
+      if(pa.p && pb.p && pa.p !== pb.p) return false;
+      if(pa.d && pb.d && pa.d !== pb.d) return false;
+      if(pa.c && pb.c && pa.c !== pb.c) return false;
+      return true;
+    }
+    return false;
+  }
+
   function sameProtocolRecord(item, signature){
     if(!signature) return false;
     const own = protocolSignature(item);
-    if(own && own === signature) return true;
+    if(own && compatibleProtocolSignature(own, signature)) return true;
     const patientSig = protocolSignature(item?.patient);
-    return Boolean(patientSig && patientSig === signature);
+    return Boolean(patientSig && compatibleProtocolSignature(patientSig, signature));
+  }
+
+  function deletedProtocolSignatures(data){
+    const fromCloud = readJsonValue(data?.chncak_deleted_saved_protocols, []);
+    const fromLocal = readJsonValue(localStorage.getItem('chncak_deleted_saved_protocols'), []);
+    return Array.from(new Set([...(Array.isArray(fromCloud) ? fromCloud : []), ...(Array.isArray(fromLocal) ? fromLocal : [])].filter(Boolean)));
   }
 
   function pruneDeletedProtocolData(data){
-    const deleted = readJsonValue(data?.chncak_deleted_saved_protocols, []);
+    const deleted = deletedProtocolSignatures(data);
     if(!Array.isArray(deleted) || !deleted.length) return data;
     const keys = ['chncak_historique','historique','chncak_protocols','chncak_okchimio','chncak_okchimio_refuses','chncak_rdv','rdv','chncak_biologie','biologie','chncak_suivi','suivi','chncak_patients','patients'];
     const out = {...data};
+    out.chncak_deleted_saved_protocols = JSON.stringify(deleted);
     keys.forEach(key => {
       const list = readJsonValue(out[key], null);
       if(!Array.isArray(list)) return;
