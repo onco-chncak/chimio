@@ -759,7 +759,7 @@
   }
 
   async function cloudPush(silent){
-    await saveCloudSnapshot(collectLocalData());
+    await saveCloudSnapshot(pruneDeletedProtocolData(collectLocalData()));
     clearDirtyState();
     if(!silent) notify('Donnees locales envoyees vers Supabase.', 'success');
   }

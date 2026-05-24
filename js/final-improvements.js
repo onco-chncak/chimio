@@ -5927,7 +5927,7 @@
     const idx = Number(document.getElementById('apercu-patient-select')?.value);
     const entry = savedProtocolEntries()[idx];
     if(!entry) return alert('Selectionner un patient a supprimer.');
-    askAdminCode(`supprimer uniquement cette ligne: ${patientName(entry) || 'ce patient'}`, () => {
+    askAdminCode(`supprimer uniquement cette ligne: ${patientName(entry) || 'ce patient'}`, async () => {
       const removed = deleteSingleSavedProtocol(entry);
       installApercuSearch();
       window.renderPatientsList?.();
@@ -5936,14 +5936,12 @@
       window.renderOkChimio?.();
       renderPreparationTodayList();
       try {
-        const pushed = window.chimioproCloudPush?.(true);
-        if(pushed && typeof pushed.then === 'function') {
-          pushed
-            .then(() => showToastSafe('Suppression synchronisee avec le cloud.', 'success'))
-            .catch(e => showToastSafe(`Suppression gardee localement. Cloud non synchronise: ${e.message}`, 'warning'));
-        }
-      } catch(e) {}
-      showToastSafe(removed ? 'Ligne/protocole supprime sans effacer les autres lignes similaires.' : 'Aucune ligne exacte trouvee a supprimer.', removed ? 'success' : 'warning');
+        if(window.chimioproCloudPush) await window.chimioproCloudPush(true);
+        else if(window.chimioproCloudSync) await window.chimioproCloudSync(true);
+        showToastSafe(removed ? 'Suppression synchronisee avec le cloud.' : 'Trace de suppression envoyee au cloud.', removed ? 'success' : 'warning');
+      } catch(e) {
+        showToastSafe(`Suppression gardee localement. Cloud non synchronise: ${e.message}`, 'warning');
+      }
     });
   };
 
