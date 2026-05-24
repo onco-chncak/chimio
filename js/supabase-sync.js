@@ -527,13 +527,16 @@
   }
 
   function applyCloudCatalog(catalogData){
-    const catalog = Array.isArray(catalogData) ? catalogData : [];
-    if(!catalog.length) return;
+    const list = Array.isArray(catalogData) ? catalogData : [];
+    if(!list.length) return;
     suppressLocalTracking = true;
     try{
-      localStorage.setItem('chncak_catalog', JSON.stringify(catalog));
+      localStorage.setItem('chncak_catalog', JSON.stringify(list));
       localStorage.setItem('chncak_catalog_last_saved_at', new Date().toISOString());
-      try { if(Array.isArray(window.catalog)) window.catalog = catalog; } catch(e) {}
+      try { if(Array.isArray(window.catalog)) window.catalog = list; } catch(e) {}
+      try { if(typeof catalog !== 'undefined') catalog = list; } catch(e) {}
+      try { window.renderCatalogTable?.(); } catch(e) {}
+      try { window.renderPharmacie?.(); } catch(e) {}
       refreshViews();
     } finally {
       suppressLocalTracking = false;
@@ -689,7 +692,10 @@
     stopAutoSync();
     autoSyncTimer = setInterval(async () => {
       if(!window.chimioproCloudReady) return;
-      try{ await cloudSync(true); }
+      try{
+        await cloudSync(true);
+        if(!localDirty) await pullCloudCatalog(true).catch(() => null);
+      }
       catch(e){ console.warn('Synchronisation automatique echouee:', e.message); }
     }, AUTO_SYNC_INTERVAL_MS);
   }
