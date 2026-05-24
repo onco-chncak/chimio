@@ -4336,14 +4336,32 @@
     try { if(Array.isArray(window.catalog)) window.catalog = list; } catch(e) {}
     try { if(typeof catalog !== 'undefined') catalog = list; } catch(e) {}
     try {
+      const user = currentUser();
+      if(user?.role === 'pharmacien' && user?.authProvider !== 'supabase'){
+        alert('Attention: catalogue sauvegarde seulement sur cet ordinateur.\n\nLe compte pharmacien n est pas connecte a Supabase, donc Chrome et les collegues ne verront pas ces stocks.\nReconnectez-vous avec le compte Supabase du pharmacien.');
+        return;
+      }
+      if(!window.chimioproCloudSaveCatalog && !window.chimioproCloudPush){
+        alert('Attention: module cloud non charge. Catalogue garde localement seulement.');
+        return;
+      }
       const pushed = window.chimioproCloudSaveCatalog ? window.chimioproCloudSaveCatalog(list, true) : window.chimioproCloudPush?.(true);
       if(pushed && typeof pushed.then === 'function'){
         pushed
           .then(info => {
-            if(info) showToastSafe(`Cloud verifie: ${info.name} service ${info.service}, centrale ${info.central}.`, 'success');
-            else showToastSafe('Catalogue envoye au cloud dedie.', 'success');
+            if(info){
+              const msg = `Cloud confirme Supabase:\n${info.name}\nStock service: ${info.service}\nStock pharmacie centrale: ${info.central}`;
+              showToastSafe(`Cloud verifie: ${info.name} service ${info.service}, centrale ${info.central}.`, 'success');
+              alert(msg);
+            } else {
+              showToastSafe('Catalogue envoye au cloud dedie.', 'success');
+              alert('Catalogue envoye a Supabase, mais verification TAXOL indisponible.');
+            }
           })
-          .catch(e => showToastSafe(`Catalogue garde localement. Cloud non synchronise: ${e.message}`, 'warning'));
+          .catch(e => {
+            showToastSafe(`Catalogue garde localement. Cloud non synchronise: ${e.message}`, 'warning');
+            alert('Catalogue sauvegarde localement seulement.\n\nSupabase n a pas confirme la sauvegarde cloud.\nErreur: ' + e.message);
+          });
       }
     } catch(e) {}
   }

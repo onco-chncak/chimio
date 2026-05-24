@@ -155,12 +155,21 @@ async function handleLogin(event) {
     cloudError = err;
   }
 
-  if (!user && USERS[username]?.password && USERS[username].password === password) {
+  const localUser = USERS[username];
+  const localApproved = approvedUserFor(username, username);
+  if (!user && localUser?.password && localUser.password === password) {
+    if ((localUser.role === 'pharmacien' || localUser.role === 'admin') && localApproved?.email) {
+      const errorDiv = document.getElementById('login-error');
+      errorDiv.textContent = 'Connexion Supabase obligatoire pour ce compte. Utilisez le meme email Supabase que dans Maintenance. Detail: ' + (cloudError?.message || 'session cloud absente');
+      errorDiv.style.display = 'block';
+      document.getElementById('login-password').value = '';
+      return false;
+    }
     user = {
       username,
-      name: USERS[username].name,
-      role: USERS[username].role,
-      allowedTabs: USERS[username].allowedTabs,
+      name: localUser.name,
+      role: localUser.role,
+      allowedTabs: localUser.allowedTabs,
       authProvider: 'local'
     };
   }
