@@ -85,7 +85,8 @@ function profileFromSupabaseUser(user, identifier) {
 async function loginWithSupabase(identifier, password) {
   const sb = supabaseAuthClient();
   if (!sb) throw new Error('Supabase non charge. Verifiez la connexion internet.');
-  const email = String(identifier || '').trim();
+  const approved = approvedUserFor(identifier, identifier);
+  const email = String(String(identifier || '').includes('@') ? identifier : (approved?.email || identifier) || '').trim();
   if (!email.includes('@')) throw new Error('Utilisez votre email Supabase pour la connexion securisee.');
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if (error) throw error;
@@ -128,6 +129,10 @@ function checkAuth() {
     console.log('Appel applyUserPermissions (session)...');
     applyUserPermissions();
     applyReadOnlyMode();
+    setTimeout(() => {
+      Promise.resolve(window.chimioproCloudRefreshSession?.())
+        .catch(err => console.warn('Synchronisation session restauree impossible', err));
+    }, 500);
   } else {
     document.getElementById('login-screen').style.display = 'flex';
     console.log('Aucune session - affichage login');
@@ -190,13 +195,10 @@ async function handleLogin(event) {
   applyUserPermissions();
   applyReadOnlyMode();
 
-  if (currentUser.authProvider === 'supabase') {
-    setTimeout(() => {
-      Promise.resolve(window.chimioproCloudRefreshSession?.())
-        .then(() => window.chimioproCloudPull?.(true))
-        .catch(err => console.warn('Synchronisation initiale impossible', err));
-    }, 300);
-  }
+  setTimeout(() => {
+    Promise.resolve(window.chimioproCloudRefreshSession?.())
+      .catch(err => console.warn('Synchronisation initiale impossible', err));
+  }, 300);
 
   return false;
 }

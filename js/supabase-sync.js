@@ -509,6 +509,24 @@
     return value;
   }
 
+  function catalogItemSummaryFromData(data, wanted){
+    const catalog = readJsonValue(data?.chncak_catalog, []);
+    const n = norm(wanted || 'taxol');
+    const item = Array.isArray(catalog) ? catalog.find(row => norm(row?.name).includes(n) || norm(row?.dci).includes(n) || norm(row?.name).includes('paclitaxel') || norm(row?.dci).includes('paclitaxel')) : null;
+    if(!item) return null;
+    return {
+      name:item.name || item.dci || wanted,
+      service:Number(item.qteService ?? item.qteStock ?? item.stockService ?? item.stock ?? 0),
+      central:Number(item.qteCentral ?? item.stockCentral ?? 0),
+      updatedAt:item._stockUpdatedAt || item._syncUpdatedAt || item.updatedAt || ''
+    };
+  }
+
+  async function verifyCloudCatalogSaved(wanted){
+    const snap = await loadCloudSnapshot();
+    return catalogItemSummaryFromData(snap?.data, wanted);
+  }
+
   async function resetCloudSnapshot(){
     await saveCloudSnapshot(collectOfficialEmptyData());
   }
@@ -738,6 +756,22 @@
       if(!silent) alert('Envoi cloud impossible: ' + e.message);
       else throw e;
     }
+  };
+
+  window.chimioproVerifyCloudCatalog = async function(name){
+    try{
+      const info = await verifyCloudCatalogSaved(name || 'taxol');
+      if(!info) return alert('Verification cloud: medicament introuvable dans Supabase.');
+      alert(`Verification cloud Supabase\n${info.name}\nStock service: ${info.service}\nStock pharmacie centrale: ${info.central}\nDerniere modification: ${info.updatedAt || '-'}`);
+      return info;
+    } catch(e){
+      alert('Verification cloud impossible: ' + e.message);
+      return null;
+    }
+  };
+
+  window.chimioproReadCloudCatalogInfo = async function(name){
+    return verifyCloudCatalogSaved(name || 'taxol');
   };
 
   window.chimioproCloudSync = async function(silent){
