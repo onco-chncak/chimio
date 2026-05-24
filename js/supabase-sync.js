@@ -452,7 +452,8 @@
   async function session(){
     const sb = client();
     if(!sb) return null;
-    const { data } = await sb.auth.getSession();
+    const { data, error } = await sb.auth.getSession();
+    if(error) return null;
     return data?.session || null;
   }
 
@@ -739,16 +740,27 @@
     if(!panel || !status) return;
     const last = localStorage.getItem(LOCAL_META_KEY);
     const lastError = localStorage.getItem(CLOUD_ERROR_KEY);
+    const needsReconnect = /connexion cloud requise/i.test(lastError || '');
     if(email){
       session().then(current => {
         if(!current){
           window.chimioproCloudReady = false;
           stopAutoSync();
           updateCloudUi('');
+          return;
+        }
+        if(needsReconnect){
+          localStorage.removeItem(CLOUD_ERROR_KEY);
+          updateCloudUi(current.user?.email || email);
         }
       }).catch(() => {});
-      status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}<br><small>Synchro automatique toutes les 30 secondes.</small>${lastError ? `<br><small style="color:#C0392B">Derniere erreur: ${esc(lastError)}</small>` : ''}`;
-      panel.classList.add('cloud-connected');
+      if(needsReconnect){
+        status.innerHTML = `Session cloud a verifier: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync reussie: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}<br><small style="color:#C0392B">Reconnectez-vous si ce message persiste apres quelques secondes.</small>`;
+        panel.classList.remove('cloud-connected');
+      } else {
+        status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}<br><small>Synchro automatique toutes les 30 secondes.</small>${lastError ? `<br><small style="color:#C0392B">Derniere erreur: ${esc(lastError)}</small>` : ''}`;
+        panel.classList.add('cloud-connected');
+      }
     } else {
       status.textContent = 'Non connecte au cloud';
       panel.classList.remove('cloud-connected');
@@ -800,10 +812,11 @@
     if(current){
       window.chimioproCloudReady = true;
       patchLocalStorage();
-      updateCloudUi(current.user.email || '');
       await setupRealtime();
       await cloudSync(true);
       await pullCloudCatalog(true).catch(() => null);
+      localStorage.removeItem(CLOUD_ERROR_KEY);
+      updateCloudUi(current.user.email || '');
       startAutoSync();
       return current;
     }
