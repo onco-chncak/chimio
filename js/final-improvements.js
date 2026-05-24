@@ -569,6 +569,28 @@
     return allAppUsers().filter(u => wanted.includes(norm(u.role)));
   }
 
+  function medecinRecipientFromName(name){
+    const wanted = norm(name);
+    if(!wanted) return null;
+    const med = readJson('chncak_medecins', []).find(m => {
+      const full = `Dr ${val(m.prenom)} ${val(m.nom)}`.replace(/\s+/g, ' ').trim();
+      return norm(full) === wanted || norm(`${val(m.prenom)} ${val(m.nom)}`) === wanted || norm(val(m.email)) === wanted;
+    });
+    if(!med) return null;
+    const email = val(med.email, '').trim().toLowerCase();
+    return {
+      username: email || `medecin:${norm(`${med.prenom} ${med.nom}`)}`,
+      email,
+      name: `Dr ${val(med.prenom)} ${val(med.nom)}`.replace(/\s+/g, ' ').trim(),
+      role:'medecin'
+    };
+  }
+
+  function notifyAllUsers(title, body, options = {}){
+    const users = allAppUsers().filter(u => userKey(u) !== currentUserKey());
+    notifyUsers(users, title, body, {...options, skipSelf:true});
+  }
+
   function readNotifications(){
     return readJson(NOTIFICATIONS_KEY, []);
   }
@@ -801,6 +823,40 @@
     logAudit('Demande changement type compte', displayUserName(user), `${user.role} -> ${role}`);
     alert('Demande envoyee a l administrateur.');
     closeCommunicationCenter();
+  };
+
+  window.openBroadcastModal = function(){
+    if(!isAdminUser()) return alert('Action reservee au compte administrateur.');
+    document.getElementById('broadcast-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'broadcast-modal';
+    modal.className = 'secure-code-modal';
+    modal.innerHTML = `
+      <div class="secure-code-backdrop" onclick="closeBroadcastModal()"></div>
+      <div class="secure-code-card communication-card">
+        <div class="comm-head"><h3>Message a tous les utilisateurs</h3><button onclick="closeBroadcastModal()">×</button></div>
+        <label style="display:block;font-size:12px;font-weight:800;color:#17324d;margin-bottom:8px">Titre<input id="broadcast-title" style="width:100%;box-sizing:border-box;border:1px solid #c7d4e4;border-radius:7px;padding:9px;margin-top:4px" placeholder="ex: Information importante"></label>
+        <label style="display:block;font-size:12px;font-weight:800;color:#17324d">Message<textarea id="broadcast-body" style="width:100%;box-sizing:border-box;border:1px solid #c7d4e4;border-radius:7px;padding:9px;margin-top:4px;min-height:110px" placeholder="Ecrire le message interne..."></textarea></label>
+        <p class="comm-note">Tous les comptes connus dans ChimioPro recevront cette annonce comme notification.</p>
+        <div class="secure-code-actions"><button onclick="closeBroadcastModal()">Annuler</button><button onclick="sendBroadcastNotification()">Envoyer a tous</button></div>
+      </div>`;
+    document.body.appendChild(modal);
+  };
+
+  window.closeBroadcastModal = function(){
+    document.getElementById('broadcast-modal')?.remove();
+  };
+
+  window.sendBroadcastNotification = function(){
+    requireAdminAction('envoyer un message a tous les utilisateurs', () => {
+      const title = document.getElementById('broadcast-title')?.value?.trim() || 'Message administrateur';
+      const body = document.getElementById('broadcast-body')?.value?.trim();
+      if(!body) return alert('Veuillez ecrire le message.');
+      notifyAllUsers(title, body, {kind:'broadcast'});
+      logAudit('Message general envoye', 'Tous les utilisateurs', title);
+      closeBroadcastModal();
+      showToastSafe('Message envoye a tous les utilisateurs.', 'success');
+    });
   };
 
   function isAdminUser(){
@@ -2692,6 +2748,7 @@
               <div class="maintenance-tile"><h3>Statistiques</h3><p>Remettre a zero les compteurs herites des tests sans supprimer le catalogue.</p>${admin ? '<button class="btn-secondary" onclick="resetAllStatCounters()">Remettre compteurs a zero</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
               <div class="maintenance-tile"><h3>Controle avant usage</h3><p>Verifier impression, stock pharmacie, synchronisation Supabase, comptes utilisateurs et catalogue.</p><button class="btn-secondary" onclick="showPage('stats', document.querySelector('.tab-btn[onclick*=stats]'))">Voir statistiques</button></div>
               <div class="maintenance-tile"><h3>Gestion comptes</h3><p>Voir les inscriptions, valider les demandes et controler les comptes crees localement.</p><button class="btn-secondary" onclick="renderRegistrationsPanel()">Voir inscriptions</button></div>
+              <div class="maintenance-tile"><h3>Message general</h3><p>Envoyer une annonce interne a tous les utilisateurs sous forme de notification.</p>${admin ? '<button class="btn-secondary" onclick="openBroadcastModal()">Ecrire un message</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
               <div class="maintenance-tile"><h3>Journal audit</h3><p>Trace les actions sensibles: sauvegarde, restauration, suppression, validation, traitement, stock et modifications critiques.</p><button class="btn-secondary" onclick="renderAuditLogPanel()">Actualiser journal</button></div>
             </div>
           </div>
@@ -4010,7 +4067,12 @@
     reserveCodeGratuite(patient.codegratuite);
     writeJson(LAST_PROTOCOL_PATIENT_KEY, entry);
     logAudit('Protocole sauvegarde', patientName(entry), `Dossier ${val(entry.dossier, '-')}, code ${val(entry.codegratuite, '-')}, protocole ${val(entry.protocole, '-')}`);
-    notifyUsers(usersByRoles(['admin','medecin']), 'Nouveau protocole a valider', `${actorLabel()} a sauvegarde le protocole ${val(entry.protocole, entry.proto, '-')} pour ${patientName(entry)}.`, {kind:'protocol_saved', patientName:patientName(entry), patientId:entry.id, skipSelf:true});
+    const protocolDoctor = medecinRecipientFromName(entry.medecin);
+    if(protocolDoctor){
+      notifyUsers([protocolDoctor], 'Protocole sauvegarde a votre nom', `${actorLabel()} a sauvegarde le protocole ${val(entry.protocole, entry.proto, '-')} pour ${patientName(entry)}.`, {kind:'protocol_saved', patientName:patientName(entry), patientId:entry.id, skipSelf:false});
+    } else {
+      notifyUsers(usersByRoles(['admin']), 'Protocole sauvegarde sans destinataire medecin', `${actorLabel()} a sauvegarde le protocole ${val(entry.protocole, entry.proto, '-')} pour ${patientName(entry)}, mais l email du medecin prescripteur n est pas retrouve.`, {kind:'protocol_saved', patientName:patientName(entry), patientId:entry.id, skipSelf:true});
+    }
     clearProtocolFormForNextPatient();
     clearRestoredProtocolMode();
     try { openValidationEmail(patient); } catch(e){}
@@ -4069,7 +4131,7 @@
     const authorKey = val(refused.createdByUser, refused.patient?.createdByUser);
     const recipients = authorKey
       ? allAppUsers().filter(u => userKey(u) === authorKey)
-      : usersByRoles(['admin','medecin']).filter(u => userKey(u) !== currentUserKey());
+      : [medecinRecipientFromName(val(refused.medecin, refused.patient?.medecin))].filter(Boolean);
     notifyUsers(recipients, 'Protocole envoye pour verification', `${actorLabel()} a refuse le protocole de ${patientName(refused)}. Motif : ${motif}`, {kind:'protocol_refused', patientName:patientName(refused), patientId:refused.id});
     if(authorKey && authorKey !== currentUserKey()){
       window.sendInternalMessage?.(authorKey, `Protocole de ${patientName(refused)} envoye pour verification. Motif : ${motif}`);
@@ -4534,7 +4596,7 @@
         <th style="padding:8px 10px;text-align:left;font-size:11px;color:#4A2A80;border-bottom:2px solid #D0C0F0">Prix</th>
         <th style="padding:8px 10px;text-align:left;font-size:11px;color:#4A2A80;border-bottom:2px solid #D0C0F0">Stock service</th>
         <th style="padding:8px 10px;text-align:left;font-size:11px;color:#4A2A80;border-bottom:2px solid #D0C0F0">Stock pharmacie centrale</th>
-        <th style="padding:8px 10px;text-align:left;font-size:11px;color:#4A2A80;border-bottom:2px solid #D0C0F0">Transfert</th>`;
+        <th style="padding:8px 10px;text-align:left;font-size:11px;color:#4A2A80;border-bottom:2px solid #D0C0F0">Actions</th>`;
     }
     const list = readJson(STORAGE.catalog, Array.isArray(window.catalog) ? window.catalog : []);
     tbody.innerHTML = list.map((d, i) => {
@@ -4571,6 +4633,7 @@
           </td>
           <td style="padding:4px 6px">
             <button class="btn-sm" onclick="transferCentralToService(${i},'${esc(dosageKey(dosage))}')">Approvisionner service</button>
+            <button class="btn-sm danger" onclick="deleteCatalogDosageOrDrug(${i},'${esc(dosageKey(dosage))}')" style="margin-left:6px">Supprimer</button>
           </td>
         </tr>
       `;
@@ -4614,9 +4677,42 @@
       moves.unshift({id:`MOV-${Date.now()}`, dateTs:new Date().toISOString(), date:new Date().toLocaleString('fr-FR'), type:'transfert_central_service', medicament:item.name, dosage:key, quantite:qty, centralAvant:central, centralApres:item.qteCentralByDosage[key], serviceAvant:service, serviceApres:item.qteServiceByDosage[key], actor:actorLabel()});
       writeJson('chncak_stock_mouvements', moves.slice(0, 1000));
       logAudit('Transfert stock', item.name, `${qty} flacon(s) ${key === 'global' ? '' : key + ' mg '}pharmacie centrale -> stock service`);
+      notifyAllUsers('Stock pharmacie approvisionne', `${actorLabel()} a approvisionne le stock service : ${label}, ${qty} flacon(s).`, {kind:'stock_transfer'});
       window.renderCatalogTable?.();
       window.renderPharmacie?.();
       showToastSafe('Stock service approvisionne.', 'success');
+    });
+  };
+
+  window.deleteCatalogDosageOrDrug = function(index, dosage){
+    return requirePharmacienAction('supprimer une ligne du catalogue', () => {
+      askAdminCode('supprimer cette ligne du catalogue', () => {
+        const list = readJson(STORAGE.catalog, Array.isArray(window.catalog) ? window.catalog : []);
+        const item = list[index];
+        if(!item) return alert('Medicament introuvable.');
+        const key = dosageKey(dosage);
+        const dosages = (item.dosages || item.flacons || []).map(Number).filter(Boolean);
+        const label = key === 'global' ? item.name : `${item.name} ${key} mg`;
+        if(!confirm(`Confirmer la suppression de ${label} du catalogue ?`)) return;
+        if(dosages.length > 1 && key !== 'global'){
+          const nextDosages = dosages.filter(size => dosageKey(size) !== key);
+          item.dosages = nextDosages;
+          if(Array.isArray(item.flacons)) item.flacons = nextDosages;
+          ensureDosageStockMaps(item);
+          delete item.qteServiceByDosage[key];
+          delete item.qteCentralByDosage[key];
+          recomputeCatalogTotals(item);
+          list[index] = item;
+        } else {
+          list.splice(index, 1);
+        }
+        syncCatalogGlobal(list);
+        logAudit('Catalogue medicament supprime', label, `Suppression par ${actorLabel()}`);
+        notifyAllUsers('Catalogue pharmacie modifie', `${actorLabel()} a supprime ${label} du catalogue.`, {kind:'catalog_delete'});
+        window.renderCatalogTable?.();
+        window.renderPharmacie?.();
+        showToastSafe('Ligne catalogue supprimee.', 'success');
+      });
     });
   };
 
@@ -6340,7 +6436,9 @@
       #page-apercu > div,#page-preparation > div,#page-support > div,#page-stats > div,#page-programme > div[style*="max-width"],#page-patients > div,#patients-rdv-list,#page-rdv > div{max-width:1460px!important}
       body:not(.pharmacien-session) #page-pharmacie button[onclick*="saveCatalog"],
       body:not(.pharmacien-session) #page-pharmacie button[onclick*="scrollToCatalog"],
-      body:not(.pharmacien-session) #page-pharmacie button[onclick*="addMissingDrugToCatalog"]{display:none!important}
+      body:not(.pharmacien-session) #page-pharmacie button[onclick*="addMissingDrugToCatalog"],
+      body:not(.pharmacien-session) #page-pharmacie button[onclick*="transferCentralToService"],
+      body:not(.pharmacien-session) #page-pharmacie button[onclick*="deleteCatalogDosageOrDrug"]{display:none!important}
       .official-github-mini{width:auto!important;margin:6px 0 8px!important;padding:4px 8px!important;font-size:10px!important;line-height:1.1!important;border-radius:6px!important;box-shadow:none!important;display:inline-flex!important;align-items:center!important;gap:4px!important}
       .hematologie-shell{max-width:1460px;margin:0 auto}
       .hematologie-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px}
