@@ -11,6 +11,8 @@
   const LOCAL_PULL_BACKUP_KEY = 'chncak_local_backup_before_cloud_pull';
   const AUTO_SYNC_INTERVAL_MS = 30 * 1000;
   let autoSyncTimer = null;
+  let localDirty = false;
+  let suppressLocalTracking = false;
   const ADMIN_CODE = '2026';
 
   const DATA_KEYS = [
@@ -228,36 +230,42 @@
   }
 
   function applyCloudAuthoritativeData(cloudData){
+    suppressLocalTracking = true;
     backupLocalData('before_authoritative_cloud_pull');
     const preserved = {};
-    LOCAL_ONLY_KEYS.forEach(key => {
-      const value = localStorage.getItem(key);
-      if(value !== null) preserved[key] = value;
-    });
-    const cloud = {...(cloudData || {})};
-    const cloudResetAt = Date.parse(cloud.chncak_official_reset_at || '') || 0;
-    const localResetAt = Date.parse(localStorage.getItem('chncak_official_reset_at') || '') || 0;
-    if(cloudResetAt > localResetAt){
-      RESET_REMOVE_KEYS.forEach(key => {
-        cloud[key] = key === 'chncak_programme' ? '{}' : '[]';
+    try{
+      LOCAL_ONLY_KEYS.forEach(key => {
+        const value = localStorage.getItem(key);
+        if(value !== null) preserved[key] = value;
       });
-    }
-    DATA_KEYS.forEach(key => localStorage.removeItem(key));
-    for(let i = localStorage.length - 1; i >= 0; i--){
-      const key = localStorage.key(i);
-      if(key && key.startsWith('chncak_') && !LOCAL_ONLY_KEYS.has(key)){
-        localStorage.removeItem(key);
+      const cloud = {...(cloudData || {})};
+      const cloudResetAt = Date.parse(cloud.chncak_official_reset_at || '') || 0;
+      const localResetAt = Date.parse(localStorage.getItem('chncak_official_reset_at') || '') || 0;
+      if(cloudResetAt > localResetAt){
+        RESET_REMOVE_KEYS.forEach(key => {
+          cloud[key] = key === 'chncak_programme' ? '{}' : '[]';
+        });
       }
-    }
-    Object.keys(cloud).forEach(key => {
-      if(!LOCAL_ONLY_KEYS.has(key) && cloud[key] !== undefined && cloud[key] !== null){
-        localStorage.setItem(key, cloud[key]);
+      DATA_KEYS.forEach(key => localStorage.removeItem(key));
+      for(let i = localStorage.length - 1; i >= 0; i--){
+        const key = localStorage.key(i);
+        if(key && key.startsWith('chncak_') && !LOCAL_ONLY_KEYS.has(key)){
+          localStorage.removeItem(key);
+        }
       }
-    });
-    Object.keys(preserved).forEach(key => localStorage.setItem(key, preserved[key]));
-    localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());
-    refreshViews();
-    return collectLocalData();
+      Object.keys(cloud).forEach(key => {
+        if(!LOCAL_ONLY_KEYS.has(key) && cloud[key] !== undefined && cloud[key] !== null){
+          localStorage.setItem(key, cloud[key]);
+        }
+      });
+      Object.keys(preserved).forEach(key => localStorage.setItem(key, preserved[key]));
+      localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());
+      localDirty = false;
+      refreshViews();
+      return collectLocalData();
+    } finally {
+      suppressLocalTracking = false;
+    }
   }
 
   function collectOfficialEmptyData(){
@@ -279,26 +287,31 @@
   }
 
   function applyCloudData(cloudData){
+    suppressLocalTracking = true;
     const cloudResetAt = Date.parse(cloudData?.chncak_official_reset_at || '') || 0;
     const localResetAt = Date.parse(localStorage.getItem('chncak_official_reset_at') || '') || 0;
-    if(cloudResetAt > localResetAt) {
-      resetLocalOfficialData();
-      cloudData = {...cloudData};
-      RESET_REMOVE_KEYS.forEach(key => {
-        cloudData[key] = key === 'chncak_programme' ? '{}' : '[]';
+    try{
+      if(cloudResetAt > localResetAt) {
+        resetLocalOfficialData();
+        cloudData = {...cloudData};
+        RESET_REMOVE_KEYS.forEach(key => {
+          cloudData[key] = key === 'chncak_programme' ? '{}' : '[]';
+        });
+      }
+      const localData = collectLocalData();
+      const merged = {...cloudData};
+      Object.keys(localData).forEach(key => {
+        merged[key] = mergeValues(key, cloudData?.[key], localData[key]);
       });
+      Object.keys(merged).forEach(key => {
+        if(merged[key] !== undefined && merged[key] !== null) localStorage.setItem(key, merged[key]);
+      });
+      localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());
+      refreshViews();
+      return merged;
+    } finally {
+      suppressLocalTracking = false;
     }
-    const localData = collectLocalData();
-    const merged = {...cloudData};
-    Object.keys(localData).forEach(key => {
-      merged[key] = mergeValues(key, cloudData?.[key], localData[key]);
-    });
-    Object.keys(merged).forEach(key => {
-      if(merged[key] !== undefined && merged[key] !== null) localStorage.setItem(key, merged[key]);
-    });
-    localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());
-    refreshViews();
-    return merged;
   }
 
   function refreshViews(){
@@ -399,10 +412,12 @@
 
   let autoTimer = null;
   function scheduleCloudPush(){
+    if(suppressLocalTracking) return;
+    localDirty = true;
     if(!window.chimioproCloudReady) return;
     clearTimeout(autoTimer);
     autoTimer = setTimeout(() => {
-      window.chimioproCloudPush(true).catch(err => notify('Sync cloud echouee: ' + err.message, 'error'));
+      window.chimioproCloudSync(true).catch(err => notify('Sync cloud echouee: ' + err.message, 'error'));
     }, 2500);
   }
 
@@ -432,7 +447,8 @@
       .on('postgres_changes', {event:'UPDATE', schema:'public', table:'app_settings', filter:`key=eq.${SNAPSHOT_KEY}`}, payload => {
         const value = payload.new?.value;
         if(!value || value.deviceId === getDeviceId()) return;
-        applyCloudData(value.data || {});
+        if(localDirty) cloudSync(true).catch(err => console.warn('Fusion cloud apres modification locale echouee:', err.message));
+        else applyCloudAuthoritativeData(value.data || {});
         notify('Donnees cloud synchronisees.', 'success');
       })
       .subscribe();
@@ -450,6 +466,7 @@
 
   async function cloudPush(silent){
     await saveCloudSnapshot(collectLocalData());
+    localDirty = false;
     if(!silent) notify('Donnees locales envoyees vers Supabase.', 'success');
   }
 
@@ -483,7 +500,7 @@
   function startAutoSync(){
     stopAutoSync();
     autoSyncTimer = setInterval(async () => {
-      if(!window.chimioproCloudReady || document.hidden) return;
+      if(!window.chimioproCloudReady) return;
       try{ await cloudSync(true); }
       catch(e){ console.warn('Synchronisation automatique echouee:', e.message); }
     }, AUTO_SYNC_INTERVAL_MS);
@@ -491,9 +508,20 @@
 
   async function cloudSync(silent){
     const snap = await loadCloudSnapshot();
-    const merged = snap?.data ? applyCloudData(snap.data) : collectLocalData();
-    await saveCloudSnapshot(merged);
-    if(!silent) notify('Synchronisation cloud terminee.', 'success');
+    if(localDirty){
+      const merged = snap?.data ? applyCloudData(snap.data) : collectLocalData();
+      await saveCloudSnapshot(merged);
+      localDirty = false;
+      if(!silent) notify('Synchronisation cloud terminee. Modifications envoyees.', 'success');
+      return;
+    }
+    if(snap?.data){
+      applyCloudAuthoritativeData(snap.data);
+      if(!silent) notify('Donnees cloud recuperees.', 'success');
+      return;
+    }
+    await saveCloudSnapshot(collectLocalData());
+    if(!silent) notify('Premier snapshot cloud cree.', 'success');
   }
 
   function updateCloudUi(email){
@@ -616,6 +644,12 @@
   document.addEventListener('DOMContentLoaded', async () => {
     installCloudUi();
     patchLocalStorage();
+    window.addEventListener('focus', () => {
+      if(window.chimioproCloudReady) cloudSync(true).catch(err => console.warn('Synchronisation au focus echouee:', err.message));
+    });
+    document.addEventListener('visibilitychange', () => {
+      if(!document.hidden && window.chimioproCloudReady) cloudSync(true).catch(err => console.warn('Synchronisation au retour onglet echouee:', err.message));
+    });
     try{
       await window.chimioproCloudRefreshSession();
     } catch(e){

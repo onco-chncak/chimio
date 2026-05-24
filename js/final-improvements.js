@@ -709,7 +709,7 @@
           <div><b>${esc(n.title)}</b><span>${esc(new Date(n.createdAt).toLocaleString('fr-FR'))}</span></div>
           <p>${esc(n.body)}</p>
           <small>De : ${esc(n.fromName || '-')} ${n.patientName ? ' · Patient : ' + esc(n.patientName) : ''}</small>
-          ${n.read ? '' : `<button onclick="markNotificationRead('${esc(n.id)}')">Marquer lu</button>`}
+          <div class="comm-item-actions">${n.read ? '' : `<button onclick="markNotificationRead('${esc(n.id)}')">Marquer lu</button>`}<button class="danger" onclick="deleteNotification('${esc(n.id)}')">Supprimer</button></div>
         </div>`).join('') || '<div class="dash-empty">Aucune notification.</div>'}</div>`;
   }
 
@@ -728,6 +728,11 @@
     renderCommunicationTab('notifications');
   };
 
+  window.deleteNotification = function(id){
+    writeNotifications(readNotifications().filter(n => n.id !== id));
+    renderCommunicationTab('notifications');
+  };
+
   function renderMessagesPanel(host){
     const users = allAppUsers().filter(u => userKey(u) !== currentUserKey());
     const selected = document.getElementById('comm-recipient')?.value || userKey(users[0]);
@@ -742,7 +747,7 @@
         <label>Collegue
           <select id="comm-recipient" onchange="renderCommunicationTab('messages')">${users.map(u => `<option value="${esc(userKey(u))}" ${userKey(u) === selected ? 'selected' : ''}>${esc(displayUserName(u))} - ${esc(u.role || '')}</option>`).join('')}</select>
         </label>
-        <div class="comm-thread">${messages.map(m => `<div class="comm-msg ${m.from === currentUserKey() ? 'mine' : ''}"><b>${esc(m.fromName)}</b><p>${esc(m.body)}</p><span>${esc(new Date(m.createdAt).toLocaleString('fr-FR'))}</span></div>`).join('') || '<div class="dash-empty">Aucun message avec ce collegue.</div>'}</div>
+        <div class="comm-thread">${messages.map(m => `<div class="comm-msg ${m.from === currentUserKey() ? 'mine' : ''}"><b>${esc(m.fromName)}</b><button class="comm-msg-delete" onclick="deleteInternalMessage('${esc(m.id)}')">Supprimer</button><p>${esc(m.body)}</p><span>${esc(new Date(m.createdAt).toLocaleString('fr-FR'))}</span></div>`).join('') || '<div class="dash-empty">Aucun message avec ce collegue.</div>'}</div>
         <div class="comm-send"><textarea id="comm-message-body" placeholder="Ecrire un message interne..."></textarea><button onclick="sendInternalMessage()">Envoyer</button></div>
       </div>`;
     updateCommunicationBadges();
@@ -766,6 +771,11 @@
     });
     writeMessages(list);
     notifyUsers([recipient], 'Nouveau message interne', `${actorLabel()} vous a envoye un message.`, {kind:'message'});
+    renderCommunicationTab('messages');
+  };
+
+  window.deleteInternalMessage = function(id){
+    writeMessages(readMessages().filter(m => m.id !== id));
     renderCommunicationTab('messages');
   };
 
@@ -6398,8 +6408,8 @@
       .dashboard-photo-btn{display:none!important}
       .page{max-width:1580px}
       .secure-code-modal{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;font-family:var(--font,Arial,sans-serif)}
-      .comm-bar{position:fixed!important;top:14px!important;bottom:auto!important;right:124px!important;z-index:100001;display:flex;gap:6px;align-items:center}
-      .comm-bar button{width:38px;height:38px;border-radius:999px;border:1px solid #b9cbe3;background:#fff;color:#12395b;box-shadow:0 6px 18px rgba(10,61,122,.14);cursor:pointer;font-size:17px;position:relative;display:flex;align-items:center;justify-content:center}
+      .comm-bar{position:fixed!important;top:12px!important;bottom:auto!important;right:212px!important;z-index:100001;display:flex;gap:7px;align-items:center}
+      .comm-bar button{width:38px;height:38px;border-radius:999px;border:2px solid #12395b;background:#fff;color:#12395b;box-shadow:0 6px 18px rgba(10,61,122,.18);cursor:pointer;font-size:17px;position:relative;display:flex;align-items:center;justify-content:center}
       .comm-bar button:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(10,61,122,.2)}
       .comm-badge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;border-radius:999px;background:#E74C3C;color:#fff;font-size:10px;font-weight:900;display:none;align-items:center;justify-content:center;padding:0 4px;border:2px solid #fff}
       .communication-modal{align-items:flex-start!important;justify-content:flex-end!important;padding:58px 18px 0 0;box-sizing:border-box}
@@ -6407,9 +6417,9 @@
       .communication-card{width:min(780px,calc(100vw - 28px));max-height:calc(100vh - 78px);overflow:auto}
       .comm-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}.comm-head h3{margin:0}.comm-head button{border:0;background:transparent;font-size:24px;cursor:pointer;color:#607080}
       .comm-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}.comm-tabs button{border:1px solid #c7d4e4;background:#f8fbff;color:#17324d;border-radius:8px;padding:8px 12px;font-weight:800;cursor:pointer}.comm-tabs button.active{background:#0A3D7A;color:#fff;border-color:#0A3D7A}
-      .comm-toolbar{display:flex;justify-content:flex-end;margin-bottom:8px}.comm-list{display:grid;gap:8px}.comm-item{border:1px solid #dbe5f2;border-radius:8px;background:#fff;padding:10px 12px}.comm-item.unread{border-left:4px solid #0A3D7A;background:#f8fbff}.comm-item div{display:flex;justify-content:space-between;gap:10px}.comm-item b{color:#17324d}.comm-item span,.comm-item small{color:#607080;font-size:11px}.comm-item p{margin:7px 0;color:#24384b;font-size:13px;line-height:1.45}.comm-item button{margin-top:7px;border:1px solid #0A3D7A;background:#fff;color:#0A3D7A;border-radius:6px;padding:5px 8px;font-size:11px;font-weight:800;cursor:pointer}
+      .comm-toolbar{display:flex;justify-content:flex-end;margin-bottom:8px}.comm-list{display:grid;gap:8px}.comm-item{border:1px solid #dbe5f2;border-radius:8px;background:#fff;padding:10px 12px}.comm-item.unread{border-left:4px solid #0A3D7A;background:#f8fbff}.comm-item div{display:flex;justify-content:space-between;gap:10px}.comm-item b{color:#17324d}.comm-item span,.comm-item small{color:#607080;font-size:11px}.comm-item p{margin:7px 0;color:#24384b;font-size:13px;line-height:1.45}.comm-item button{margin-top:7px;border:1px solid #0A3D7A;background:#fff;color:#0A3D7A;border-radius:6px;padding:5px 8px;font-size:11px;font-weight:800;cursor:pointer}.comm-item-actions{justify-content:flex-start!important;gap:6px!important}.comm-item-actions .danger,.comm-msg-delete{border-color:#f1b0b0!important;background:#fff5f5!important;color:#9d1c1c!important}
       .comm-message-layout{display:grid;gap:10px}.comm-message-layout label{font-size:12px;font-weight:800;color:#17324d}.comm-message-layout select,.profile-grid input,.profile-grid select{width:100%;box-sizing:border-box;border:1px solid #c7d4e4;border-radius:7px;padding:10px 11px!important;background:#fff;font-size:14px!important;line-height:1.25!important;margin-top:4px;text-align:left!important;letter-spacing:0!important;min-height:40px}
-      .comm-thread{border:1px solid #dbe5f2;border-radius:8px;background:#f8fbff;padding:10px;min-height:260px;max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:8px}.comm-msg{max-width:78%;align-self:flex-start;background:#fff;border:1px solid #dbe5f2;border-radius:8px;padding:8px 10px}.comm-msg.mine{align-self:flex-end;background:#eaf5ef;border-color:#9fd0b6}.comm-msg b{font-size:11px;color:#17324d}.comm-msg p{margin:4px 0;font-size:13px;color:#24384b;line-height:1.35}.comm-msg span{font-size:10px;color:#607080}
+      .comm-thread{border:1px solid #dbe5f2;border-radius:8px;background:#f8fbff;padding:10px;min-height:260px;max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:8px}.comm-msg{max-width:78%;align-self:flex-start;background:#fff;border:1px solid #dbe5f2;border-radius:8px;padding:8px 10px;position:relative}.comm-msg.mine{align-self:flex-end;background:#eaf5ef;border-color:#9fd0b6}.comm-msg b{font-size:11px;color:#17324d}.comm-msg p{margin:4px 0;font-size:13px;color:#24384b;line-height:1.35}.comm-msg span{font-size:10px;color:#607080}.comm-msg-delete{float:right;border:1px solid #f1b0b0;border-radius:5px;font-size:10px;font-weight:800;padding:2px 5px;cursor:pointer}
       .comm-send{display:grid;grid-template-columns:1fr auto;gap:8px}.comm-send textarea{min-height:70px;border:1px solid #c7d4e4;border-radius:8px;padding:9px;font-size:13px;resize:vertical}.comm-send button{border:0;border-radius:8px;background:#0B5E3C;color:#fff;font-weight:900;padding:0 16px;cursor:pointer}
       .profile-grid{display:grid;grid-template-columns:repeat(2,minmax(260px,1fr));gap:12px}.profile-grid label{font-size:12px;font-weight:800;color:#17324d}.comm-note{font-size:12px;color:#607080;line-height:1.45;margin:10px 0}
       body:not(.admin-session) .tab-btn[onclick*="maintenance"],
@@ -6502,6 +6512,9 @@
       .cloud-actions button:first-child,.cloud-actions button:nth-child(2){background:#0A3D7A;color:#fff;border-color:#0A3D7A}
       .cloud-actions button.danger{grid-column:1/-1;background:#FDEAEA;color:#C0392B;border-color:#F5AAAA}
       #logout-btn-forced{top:10px!important;right:10px!important;padding:8px 12px!important;font-size:12px!important}
+      #logout-button{top:8px!important;right:8px!important;padding:6px 9px!important}
+      #logout-button button{padding:7px 10px!important;font-size:12px!important}
+      #pharma-order-btn{margin-left:auto!important;margin-right:260px!important;position:relative;z-index:1}
       .proto-editor-final input,.proto-editor-final select{width:100%;box-sizing:border-box;border:1px solid #ccd8e6;border-radius:6px;padding:8px 9px;font-size:12px;background:#fff}
       .proto-editor-final label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#17324d}
       .proto-editor-grid{display:grid;grid-template-columns:1.2fr 1.2fr 140px 1fr;gap:10px}
