@@ -4336,12 +4336,12 @@
     try { if(Array.isArray(window.catalog)) window.catalog = list; } catch(e) {}
     try { if(typeof catalog !== 'undefined') catalog = list; } catch(e) {}
     try {
-      const pushed = window.chimioproCloudPush?.(true);
+      const pushed = window.chimioproCloudSaveCatalog ? window.chimioproCloudSaveCatalog(list, true) : window.chimioproCloudPush?.(true);
       if(pushed && typeof pushed.then === 'function'){
         pushed
-          .then(() => window.chimioproReadCloudCatalogInfo?.('taxol'))
           .then(info => {
             if(info) showToastSafe(`Cloud verifie: ${info.name} service ${info.service}, centrale ${info.central}.`, 'success');
+            else showToastSafe('Catalogue envoye au cloud dedie.', 'success');
           })
           .catch(e => showToastSafe(`Catalogue garde localement. Cloud non synchronise: ${e.message}`, 'warning'));
       }

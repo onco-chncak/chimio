@@ -6,6 +6,7 @@
   const SUPABASE_URL = 'https://frfungcoqagpcyaaglox.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_LWC2vokbGnSWFA1Vg6DAsA_JFaCNbei';
   const SNAPSHOT_KEY = 'cloud_snapshot_v1';
+  const CATALOG_KEY = 'catalog_v1';
   const LOCAL_META_KEY = 'chncak_cloud_last_sync';
   const DEVICE_ID_KEY = 'chncak_cloud_device_id';
   const LOCAL_PULL_BACKUP_KEY = 'chncak_local_backup_before_cloud_pull';
@@ -490,7 +491,19 @@
     return data?.value || null;
   }
 
-  async function saveCloudSnapshot(data){
+  async function loadCloudSetting(key){
+    const sb = client();
+    await requireSession();
+    const { data, error } = await sb
+      .from('app_settings')
+      .select('value, updated_at')
+      .eq('key', key)
+      .maybeSingle();
+    if(error) throw error;
+    return data?.value || null;
+  }
+
+  async function saveCloudSetting(key, data){
     const sb = client();
     const current = await requireSession();
     const value = {
@@ -502,11 +515,48 @@
     };
     const { error } = await sb
       .from('app_settings')
-      .upsert({ key: SNAPSHOT_KEY, value, updated_at: new Date().toISOString() }, { onConflict:'key' });
+      .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict:'key' });
     if(error) throw error;
     localStorage.setItem(LOCAL_META_KEY, value.updatedAt);
     updateCloudUi(current.user.email || '');
     return value;
+  }
+
+  async function saveCloudSnapshot(data){
+    return saveCloudSetting(SNAPSHOT_KEY, data);
+  }
+
+  function applyCloudCatalog(catalogData){
+    const catalog = Array.isArray(catalogData) ? catalogData : [];
+    if(!catalog.length) return;
+    suppressLocalTracking = true;
+    try{
+      localStorage.setItem('chncak_catalog', JSON.stringify(catalog));
+      localStorage.setItem('chncak_catalog_last_saved_at', new Date().toISOString());
+      try { if(Array.isArray(window.catalog)) window.catalog = catalog; } catch(e) {}
+      refreshViews();
+    } finally {
+      suppressLocalTracking = false;
+    }
+  }
+
+  async function saveCloudCatalog(catalog){
+    if(!Array.isArray(catalog)) throw new Error('Catalogue invalide.');
+    const saved = await saveCloudSetting(CATALOG_KEY, catalog);
+    const snap = await loadCloudSnapshot().catch(() => null);
+    const data = {...(snap?.data || collectLocalData()), chncak_catalog: JSON.stringify(catalog)};
+    await saveCloudSnapshot(data);
+    return saved;
+  }
+
+  async function pullCloudCatalog(silent){
+    const saved = await loadCloudSetting(CATALOG_KEY);
+    if(saved?.data && Array.isArray(saved.data)){
+      applyCloudCatalog(saved.data);
+      if(!silent) notify('Catalogue pharmacie recupere depuis Supabase.', 'success');
+      return saved.data;
+    }
+    return null;
   }
 
   function catalogItemSummaryFromData(data, wanted){
@@ -523,6 +573,9 @@
   }
 
   async function verifyCloudCatalogSaved(wanted){
+    const direct = await loadCloudSetting(CATALOG_KEY).catch(() => null);
+    const fromDirect = direct?.data ? catalogItemSummaryFromData({chncak_catalog: JSON.stringify(direct.data)}, wanted) : null;
+    if(fromDirect) return fromDirect;
     const snap = await loadCloudSnapshot();
     return catalogItemSummaryFromData(snap?.data, wanted);
   }
@@ -575,6 +628,16 @@
         if(localDirty) cloudSync(true).catch(err => console.warn('Fusion cloud apres modification locale echouee:', err.message));
         else applyCloudAuthoritativeData(value.data || {});
         notify('Donnees cloud synchronisees.', 'success');
+      })
+      .subscribe();
+    sb.channel('app_settings_catalog')
+      .on('postgres_changes', {event:'UPDATE', schema:'public', table:'app_settings', filter:`key=eq.${CATALOG_KEY}`}, payload => {
+        const value = payload.new?.value;
+        if(!value || value.deviceId === getDeviceId()) return;
+        if(Array.isArray(value.data)){
+          applyCloudCatalog(value.data);
+          notify('Catalogue pharmacie synchronise.', 'success');
+        }
       })
       .subscribe();
   }
@@ -643,6 +706,7 @@
     }
     if(snap?.data){
       applyCloudAuthoritativeData(snap.data);
+      await pullCloudCatalog(true).catch(() => null);
       if(!silent) notify('Donnees cloud recuperees.', 'success');
       return;
     }
@@ -713,6 +777,7 @@
       updateCloudUi(current.user.email || '');
       await setupRealtime();
       await cloudSync(true);
+      await pullCloudCatalog(true).catch(() => null);
       startAutoSync();
       return current;
     }
@@ -772,6 +837,30 @@
 
   window.chimioproReadCloudCatalogInfo = async function(name){
     return verifyCloudCatalogSaved(name || 'taxol');
+  };
+
+  window.chimioproCloudSaveCatalog = async function(catalog, silent){
+    try{
+      await saveCloudCatalog(catalog);
+      localStorage.removeItem(CLOUD_ERROR_KEY);
+      const info = await verifyCloudCatalogSaved('taxol').catch(() => null);
+      if(!silent) notify('Catalogue pharmacie envoye vers Supabase.', 'success');
+      return info;
+    } catch(e){
+      localStorage.setItem(CLOUD_ERROR_KEY, e.message || String(e));
+      updateCloudUi((await session().catch(() => null))?.user?.email || '');
+      if(!silent) alert('Sauvegarde cloud catalogue impossible: ' + e.message);
+      throw e;
+    }
+  };
+
+  window.chimioproCloudPullCatalog = async function(silent){
+    try{
+      return await pullCloudCatalog(Boolean(silent));
+    } catch(e){
+      if(!silent) alert('Recuperation cloud catalogue impossible: ' + e.message);
+      throw e;
+    }
   };
 
   window.chimioproCloudSync = async function(silent){
