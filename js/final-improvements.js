@@ -10,6 +10,7 @@
   const STAT_BLOCK_RESET_KEY = 'chncak_stats_blocs_reset_after';
   const RESTORED_PROTOCOL_KEY = 'chncak_restored_protocol_lock';
   const CATALOG_IMPORT_BACKUP_KEY = 'chncak_catalog_backup_before_import';
+  const CATALOG_DIRTY_KEY = 'chncak_catalog_local_dirty_at';
   const NOTIFICATIONS_KEY = 'chncak_notifications';
   const MESSAGES_KEY = 'chncak_messages';
   const ROLE_REQUESTS_KEY = 'chncak_role_change_requests';
@@ -4347,6 +4348,7 @@
     list = list.map(item => ({...item, _syncUpdatedAt: now, _stockUpdatedAt: now}));
     writeJson(STORAGE.catalog, list);
     localStorage.setItem('chncak_catalog_last_saved_at', now);
+    localStorage.setItem(CATALOG_DIRTY_KEY, now);
     localStorage.setItem('chncak_catalog_safety_backup', JSON.stringify({savedAt:now, catalog:list}));
     try { if(Array.isArray(window.catalog)) window.catalog = list; } catch(e) {}
     try { if(typeof catalog !== 'undefined') catalog = list; } catch(e) {}
@@ -4366,6 +4368,7 @@
       if(pushed && typeof pushed.then === 'function'){
         pushed
           .then(info => {
+            localStorage.removeItem(CATALOG_DIRTY_KEY);
             if(info){
               showToastSafe(`Cloud verifie: ${info.name} service ${info.service}, centrale ${info.central}.`, 'success');
             } else {

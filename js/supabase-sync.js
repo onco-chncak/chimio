@@ -9,6 +9,8 @@
   const CATALOG_KEY = 'catalog_v1';
   const LOCAL_META_KEY = 'chncak_cloud_last_sync';
   const CATALOG_PULL_META_KEY = 'chncak_catalog_cloud_last_pull';
+  const CATALOG_PULL_BACKUP_KEY = 'chncak_catalog_backup_before_cloud_pull';
+  const CATALOG_DIRTY_KEY = 'chncak_catalog_local_dirty_at';
   const DEVICE_ID_KEY = 'chncak_cloud_device_id';
   const LOCAL_PULL_BACKUP_KEY = 'chncak_local_backup_before_cloud_pull';
   const CLOUD_ERROR_KEY = 'chncak_cloud_last_error';
@@ -333,6 +335,33 @@
     }
   }
 
+  function catalogTimestamp(list, fallback){
+    const times = [Date.parse(fallback || '') || 0];
+    (Array.isArray(list) ? list : []).forEach(item => {
+      times.push(
+        Date.parse(item?._stockUpdatedAt || '') || 0,
+        Date.parse(item?._syncUpdatedAt || '') || 0,
+        Date.parse(item?.updatedAt || '') || 0,
+        Date.parse(item?.updated_at || '') || 0
+      );
+    });
+    return Math.max(...times);
+  }
+
+  function backupLocalCatalog(reason){
+    try{
+      const raw = localStorage.getItem('chncak_catalog');
+      if(!raw) return;
+      localStorage.setItem(CATALOG_PULL_BACKUP_KEY, JSON.stringify({
+        reason: reason || 'before_catalog_cloud_pull',
+        createdAt: new Date().toISOString(),
+        catalog: JSON.parse(raw)
+      }));
+    } catch(e){
+      console.warn('Sauvegarde catalogue avant cloud impossible:', e.message);
+    }
+  }
+
   function applyCloudAuthoritativeData(cloudData){
     suppressLocalTracking = true;
     backupLocalData('before_authoritative_cloud_pull');
@@ -535,13 +564,15 @@
     return saveCloudSetting(SNAPSHOT_KEY, data);
   }
 
-  function applyCloudCatalog(catalogData){
+  function applyCloudCatalog(catalogData, cloudUpdatedAt){
     const list = Array.isArray(catalogData) ? catalogData : [];
     if(!list.length) return;
     suppressLocalTracking = true;
+    backupLocalCatalog('before_catalog_cloud_apply');
     try{
       localStorage.setItem('chncak_catalog', JSON.stringify(list));
-      localStorage.setItem('chncak_catalog_last_saved_at', new Date().toISOString());
+      localStorage.setItem('chncak_catalog_last_saved_at', cloudUpdatedAt || new Date().toISOString());
+      localStorage.removeItem(CATALOG_DIRTY_KEY);
       try { if(Array.isArray(window.catalog)) window.catalog = list; } catch(e) {}
       try { if(typeof catalog !== 'undefined') catalog = list; } catch(e) {}
       try { window.renderCatalogTable?.(); } catch(e) {}
@@ -558,13 +589,26 @@
     const snap = await loadCloudSnapshot().catch(() => null);
     const data = {...(snap?.data || collectLocalData()), chncak_catalog: JSON.stringify(catalog)};
     await saveCloudSnapshot(data);
+    localStorage.removeItem(CATALOG_DIRTY_KEY);
     return saved;
   }
 
   async function pullCloudCatalog(silent){
     const saved = await loadCloudSetting(CATALOG_KEY);
     if(saved?.data && Array.isArray(saved.data)){
-      applyCloudCatalog(saved.data);
+      const localCatalog = readJsonValue(localStorage.getItem('chncak_catalog'), []);
+      const localDirtyAt = localStorage.getItem(CATALOG_DIRTY_KEY);
+      const cloudMs = Date.parse(saved.updatedAt || '') || catalogTimestamp(saved.data, '');
+      const dirtyMs = Date.parse(localDirtyAt || '') || 0;
+      if(localDirtyAt && Array.isArray(localCatalog) && localCatalog.length && dirtyMs > cloudMs + 1000){
+        await saveCloudCatalog(localCatalog);
+        localStorage.setItem(CATALOG_PULL_META_KEY, new Date().toISOString());
+        localStorage.removeItem(CLOUD_ERROR_KEY);
+        updateCloudUi((await session())?.user?.email || '');
+        if(!silent) notify('Catalogue local plus recent conserve et envoye vers Supabase.', 'success');
+        return localCatalog;
+      }
+      applyCloudCatalog(saved.data, saved.updatedAt);
       localStorage.setItem(CATALOG_PULL_META_KEY, new Date().toISOString());
       localStorage.removeItem(CLOUD_ERROR_KEY);
       updateCloudUi((await session())?.user?.email || '');
