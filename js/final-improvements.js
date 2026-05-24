@@ -4338,12 +4338,10 @@
     try {
       const user = currentUser();
       if(user?.role === 'pharmacien' && user?.authProvider !== 'supabase'){
-        alert('Attention: catalogue sauvegarde seulement sur cet ordinateur.\n\nLe compte pharmacien n est pas connecte a Supabase, donc Chrome et les collegues ne verront pas ces stocks.\nReconnectez-vous avec le compte Supabase du pharmacien.');
-        return;
+        showToastSafe('Connexion Supabase necessaire pour synchroniser le stock.', 'warning');
       }
       if(user?.role === 'pharmacien' && !window.chimioproCloudReady){
-        alert('Catalogue sauvegarde localement seulement.\n\nLa session Supabase n est pas active. Deconnectez-vous puis reconnectez-vous avec l email Supabase du pharmacien.');
-        return;
+        showToastSafe('Session Supabase absente: une connexion cloud va etre demandee.', 'warning');
       }
       if(!window.chimioproCloudSaveCatalog && !window.chimioproCloudPush){
         alert('Attention: module cloud non charge. Catalogue garde localement seulement.');

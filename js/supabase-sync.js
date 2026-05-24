@@ -472,6 +472,24 @@
     return data.session;
   }
 
+  async function ensureInteractiveCloudSession(){
+    const current = await session();
+    if(current) return current;
+    const user = (() => {
+      try{ return JSON.parse(localStorage.getItem('chncak_currentUser') || '{}') || {}; }
+      catch(_){ return {}; }
+    })();
+    const email = prompt('Email Supabase du compte pharmacien :', user.email || user.username || '');
+    if(!email) throw new Error('Connexion Supabase annulee.');
+    const password = prompt('Mot de passe Supabase :');
+    if(!password) throw new Error('Mot de passe Supabase non renseigne.');
+    const signed = await signIn(email.trim(), password);
+    window.chimioproCloudReady = true;
+    patchLocalStorage();
+    startAutoSync();
+    return signed;
+  }
+
   async function signOut(){
     const sb = client();
     if(!sb) return;
@@ -847,6 +865,7 @@
 
   window.chimioproCloudSaveCatalog = async function(catalog, silent){
     try{
+      await ensureInteractiveCloudSession();
       await saveCloudCatalog(catalog);
       localStorage.removeItem(CLOUD_ERROR_KEY);
       const info = await verifyCloudCatalogSaved('taxol').catch(() => null);
