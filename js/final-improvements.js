@@ -13,6 +13,7 @@
   const NOTIFICATIONS_KEY = 'chncak_notifications';
   const MESSAGES_KEY = 'chncak_messages';
   const ROLE_REQUESTS_KEY = 'chncak_role_change_requests';
+  const DELETED_SAVED_PROTOCOLS_KEY = 'chncak_deleted_saved_protocols';
   const STORAGE = {
     patients: 'chncak_patients',
     rdv: 'chncak_rdv',
@@ -3338,6 +3339,46 @@
     return false;
   }
 
+  function protocolEntrySignature(entry){
+    if(!entry) return '';
+    const patient = entry.patient || {};
+    const strongId = val(entry.id, entry.dateTs, entry.createdAt, entry.dateCreation, patient.id, patient.dateTs, patient.createdAt);
+    const identifiers = [
+      norm(val(entry.idCubix, entry.id_cubix, patient.idCubix, patient.id_cubix)),
+      norm(val(entry.dossier, entry.numeroDossier, patient.dossier, patient.numeroDossier)),
+      norm(val(entry.codegratuite, entry.codeGratuite, entry.code, patient.codegratuite, patient.codeGratuite, patient.code))
+    ].filter(Boolean).join('|');
+    const proto = norm(protocolNameFor(entry) || protocolNameFor(patient));
+    const date = norm(val(entry.dateRdv, entry.rdv, entry.prochainRdv, entry.date, entry.formSnapshot?.['date-rdv'], patient.dateRdv, patient.rdv));
+    const cure = norm(val(entry.cure, patient.cure));
+    return [strongId ? `id:${strongId}` : '', identifiers ? `ids:${identifiers}` : '', proto ? `p:${proto}` : '', date ? `d:${date}` : '', cure ? `c:${cure}` : ''].filter(Boolean).join('::');
+  }
+
+  function sameSavedProtocol(item, target){
+    if(exactRecordMatch(item, target) || exactRecordMatch(item?.patient, target) || exactRecordMatch(item, target?.patient)) return true;
+    const itemPatient = item?.patient || {};
+    const targetPatient = target?.patient || {};
+    const itemIdentifiers = [
+      norm(val(item?.idCubix, item?.id_cubix, itemPatient.idCubix, itemPatient.id_cubix)),
+      norm(val(item?.dossier, item?.numeroDossier, itemPatient.dossier, itemPatient.numeroDossier)),
+      norm(val(item?.codegratuite, item?.codeGratuite, item?.code, itemPatient.codegratuite, itemPatient.codeGratuite, itemPatient.code))
+    ].filter(Boolean);
+    const targetIdentifiers = [
+      norm(val(target?.idCubix, target?.id_cubix, targetPatient.idCubix, targetPatient.id_cubix)),
+      norm(val(target?.dossier, target?.numeroDossier, targetPatient.dossier, targetPatient.numeroDossier)),
+      norm(val(target?.codegratuite, target?.codeGratuite, target?.code, targetPatient.codegratuite, targetPatient.codeGratuite, targetPatient.code))
+    ].filter(Boolean);
+    const hasSameIdentifier = itemIdentifiers.some(id => targetIdentifiers.includes(id));
+    if(!hasSameIdentifier) return false;
+    const itemProto = norm(protocolNameFor(item) || protocolNameFor(itemPatient));
+    const targetProto = norm(protocolNameFor(target) || protocolNameFor(targetPatient));
+    if(itemProto && targetProto && itemProto !== targetProto) return false;
+    const itemDate = norm(val(item?.dateRdv, item?.rdv, item?.prochainRdv, item?.date, item?.formSnapshot?.['date-rdv'], itemPatient.dateRdv, itemPatient.rdv));
+    const targetDate = norm(val(target?.dateRdv, target?.rdv, target?.prochainRdv, target?.date, target?.formSnapshot?.['date-rdv'], targetPatient.dateRdv, targetPatient.rdv));
+    if(itemDate && targetDate && itemDate !== targetDate) return false;
+    return true;
+  }
+
   function removeOneFromStorage(key, predicate){
     const list = readJson(key, []);
     if(!Array.isArray(list)) return false;
@@ -3350,10 +3391,19 @@
 
   function deleteSingleSavedProtocol(entry){
     let removed = false;
-    removed = removeOneFromStorage(STORAGE.historique, item => exactRecordMatch(item, entry)) || removed;
-    removed = removeOneFromStorage('historique', item => exactRecordMatch(item, entry)) || removed;
-    removed = removeOneFromStorage(STORAGE.okchimio, item => exactRecordMatch(item, entry) || exactRecordMatch(item.patient, entry)) || removed;
-    removed = removeOneFromStorage('chncak_okchimio', item => exactRecordMatch(item, entry) || exactRecordMatch(item.patient, entry)) || removed;
+    const signature = protocolEntrySignature(entry);
+    if(signature){
+      writeJson(DELETED_SAVED_PROTOCOLS_KEY, Array.from(new Set([...readJson(DELETED_SAVED_PROTOCOLS_KEY, []), signature])));
+    }
+    [STORAGE.historique, 'historique', STORAGE.okchimio, 'chncak_okchimio', 'chncak_okchimio_refuses', STORAGE.rdv, STORAGE.biologie, STORAGE.suivi, STORAGE.patients, 'patients'].forEach(key => {
+      const list = readJson(key, []);
+      if(!Array.isArray(list)) return;
+      const next = list.filter(item => !sameSavedProtocol(item, entry));
+      if(next.length !== list.length){
+        writeJson(key, next);
+        removed = true;
+      }
+    });
     return removed;
   }
 
@@ -4127,9 +4177,10 @@
     const recipients = authorKey
       ? allAppUsers().filter(u => userKey(u) === authorKey)
       : [medecinRecipientFromName(val(refused.medecin, refused.patient?.medecin))].filter(Boolean);
-    notifyUsers(recipients, 'Protocole envoye pour verification', `${actorLabel()} a refuse le protocole de ${patientName(refused)}. Motif : ${motif}`, {kind:'protocol_refused', patientName:patientName(refused), patientId:refused.id});
+    const refusalText = `OK Chimio - protocole refuse. Patient: ${patientName(refused)}. Dossier: ${val(refused.dossier, refused.patient?.dossier, '-')}. Code gratuite: ${val(refused.codegratuite, refused.codeGratuite, refused.patient?.codegratuite, '-')}. Protocole: ${protocolNameFor(refused)}. Motif: ${motif}. Action demandee: verifier/corriger puis renvoyer.`;
+    notifyUsers(recipients, 'OK Chimio: protocole refuse', refusalText, {kind:'protocol_refused', patientName:patientName(refused), patientId:refused.id});
     if(authorKey && authorKey !== currentUserKey()){
-      window.sendInternalMessage?.(authorKey, `Protocole de ${patientName(refused)} envoye pour verification. Motif : ${motif}`);
+      window.sendInternalMessage?.(authorKey, refusalText);
     }
     window.renderOkChimio?.();
     window.renderBiologie?.();
@@ -5584,7 +5635,10 @@
   function savedProtocolEntries(){
     const hist = readJson(STORAGE.historique, []);
     const ok = getOkChimioList().map(item => ({...(item.patient || {}), ...item}));
-    return dedupeByPatientTreatment([...hist, ...ok]).filter(item => patientName(item) || val(item.dossier));
+    const deleted = new Set(readJson(DELETED_SAVED_PROTOCOLS_KEY, []));
+    return dedupeByPatientTreatment([...hist, ...ok])
+      .filter(item => patientName(item) || val(item.dossier))
+      .filter(item => !deleted.has(protocolEntrySignature(item)));
   }
 
   function installApercuSearch(){

@@ -9,6 +9,7 @@
   const LOCAL_META_KEY = 'chncak_cloud_last_sync';
   const DEVICE_ID_KEY = 'chncak_cloud_device_id';
   const LOCAL_PULL_BACKUP_KEY = 'chncak_local_backup_before_cloud_pull';
+  const CLOUD_ERROR_KEY = 'chncak_cloud_last_error';
   const AUTO_SYNC_INTERVAL_MS = 30 * 1000;
   let autoSyncTimer = null;
   let localDirty = false;
@@ -529,8 +530,9 @@
     const status = document.getElementById('cloud-sync-status');
     if(!panel || !status) return;
     const last = localStorage.getItem(LOCAL_META_KEY);
+    const lastError = localStorage.getItem(CLOUD_ERROR_KEY);
     if(email){
-      status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}<br><small>Synchro automatique toutes les 30 secondes.</small>`;
+      status.innerHTML = `Connecte: <b>${esc(email)}</b>${last ? `<br><small>Derniere sync: ${new Date(last).toLocaleString('fr-FR')}</small>` : ''}<br><small>Synchro automatique toutes les 30 secondes.</small>${lastError ? `<br><small style="color:#C0392B">Derniere erreur: ${esc(lastError)}</small>` : ''}`;
       panel.classList.add('cloud-connected');
     } else {
       status.textContent = 'Non connecte au cloud';
@@ -605,18 +607,45 @@
   };
 
   window.chimioproCloudPull = async function(silent){
-    try{ await cloudPull(Boolean(silent)); }
-    catch(e){ alert('Recuperation cloud impossible: ' + e.message); }
+    try{
+      await cloudPull(Boolean(silent));
+      localStorage.removeItem(CLOUD_ERROR_KEY);
+      updateCloudUi((await session())?.user?.email || '');
+    }
+    catch(e){
+      localStorage.setItem(CLOUD_ERROR_KEY, e.message || String(e));
+      updateCloudUi((await session().catch(() => null))?.user?.email || '');
+      if(!silent) alert('Recuperation cloud impossible: ' + e.message);
+      else throw e;
+    }
   };
 
   window.chimioproCloudPush = async function(silent){
-    try{ await cloudPush(Boolean(silent)); }
-    catch(e){ if(!silent) alert('Envoi cloud impossible: ' + e.message); else throw e; }
+    try{
+      await cloudPush(Boolean(silent));
+      localStorage.removeItem(CLOUD_ERROR_KEY);
+      updateCloudUi((await session())?.user?.email || '');
+    }
+    catch(e){
+      localStorage.setItem(CLOUD_ERROR_KEY, e.message || String(e));
+      updateCloudUi((await session().catch(() => null))?.user?.email || '');
+      if(!silent) alert('Envoi cloud impossible: ' + e.message);
+      else throw e;
+    }
   };
 
-  window.chimioproCloudSync = async function(){
-    try{ await cloudSync(); }
-    catch(e){ alert('Synchronisation cloud impossible: ' + e.message); }
+  window.chimioproCloudSync = async function(silent){
+    try{
+      await cloudSync(Boolean(silent));
+      localStorage.removeItem(CLOUD_ERROR_KEY);
+      updateCloudUi((await session())?.user?.email || '');
+    }
+    catch(e){
+      localStorage.setItem(CLOUD_ERROR_KEY, e.message || String(e));
+      updateCloudUi((await session().catch(() => null))?.user?.email || '');
+      if(!silent) alert('Synchronisation cloud impossible: ' + e.message);
+      else throw e;
+    }
   };
 
   window.chimioproOfficialReset = async function(){
