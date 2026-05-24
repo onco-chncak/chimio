@@ -8,6 +8,7 @@
   const SNAPSHOT_KEY = 'cloud_snapshot_v1';
   const LOCAL_META_KEY = 'chncak_cloud_last_sync';
   const DEVICE_ID_KEY = 'chncak_cloud_device_id';
+  const LOCAL_PULL_BACKUP_KEY = 'chncak_local_backup_before_cloud_pull';
   const AUTO_SYNC_INTERVAL_MS = 10 * 60 * 1000;
   let autoSyncTimer = null;
   const ADMIN_CODE = '2026';
@@ -107,6 +108,14 @@
     'rdv'
   ];
 
+  const LOCAL_ONLY_KEYS = new Set([
+    DEVICE_ID_KEY,
+    LOCAL_META_KEY,
+    LOCAL_PULL_BACKUP_KEY,
+    'chncak_currentUser',
+    'chncak_dark'
+  ]);
+
   function esc(value){
     return String(value ?? '').replace(/[&<>"']/g, ch => ({
       '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
@@ -193,16 +202,62 @@
   function collectLocalData(){
     const data = {};
     DATA_KEYS.forEach(key => {
+      if(LOCAL_ONLY_KEYS.has(key)) return;
       const value = localStorage.getItem(key);
       if(value !== null) data[key] = value;
     });
     for(let i = 0; i < localStorage.length; i++){
       const key = localStorage.key(i);
-      if(key && key.startsWith('chncak_') && !(key in data)){
+      if(key && key.startsWith('chncak_') && !LOCAL_ONLY_KEYS.has(key) && !(key in data)){
         data[key] = localStorage.getItem(key);
       }
     }
     return data;
+  }
+
+  function backupLocalData(reason){
+    try{
+      localStorage.setItem(LOCAL_PULL_BACKUP_KEY, JSON.stringify({
+        reason: reason || 'cloud_pull',
+        createdAt: new Date().toISOString(),
+        data: collectLocalData()
+      }));
+    } catch(e){
+      console.warn('Sauvegarde locale avant cloud impossible:', e.message);
+    }
+  }
+
+  function applyCloudAuthoritativeData(cloudData){
+    backupLocalData('before_authoritative_cloud_pull');
+    const preserved = {};
+    LOCAL_ONLY_KEYS.forEach(key => {
+      const value = localStorage.getItem(key);
+      if(value !== null) preserved[key] = value;
+    });
+    const cloud = {...(cloudData || {})};
+    const cloudResetAt = Date.parse(cloud.chncak_official_reset_at || '') || 0;
+    const localResetAt = Date.parse(localStorage.getItem('chncak_official_reset_at') || '') || 0;
+    if(cloudResetAt > localResetAt){
+      RESET_REMOVE_KEYS.forEach(key => {
+        cloud[key] = key === 'chncak_programme' ? '{}' : '[]';
+      });
+    }
+    DATA_KEYS.forEach(key => localStorage.removeItem(key));
+    for(let i = localStorage.length - 1; i >= 0; i--){
+      const key = localStorage.key(i);
+      if(key && key.startsWith('chncak_') && !LOCAL_ONLY_KEYS.has(key)){
+        localStorage.removeItem(key);
+      }
+    }
+    Object.keys(cloud).forEach(key => {
+      if(!LOCAL_ONLY_KEYS.has(key) && cloud[key] !== undefined && cloud[key] !== null){
+        localStorage.setItem(key, cloud[key]);
+      }
+    });
+    Object.keys(preserved).forEach(key => localStorage.setItem(key, preserved[key]));
+    localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());
+    refreshViews();
+    return collectLocalData();
   }
 
   function collectOfficialEmptyData(){
@@ -389,9 +444,8 @@
       if(!silent) notify('Aucune sauvegarde cloud pour le moment.', 'info');
       return;
     }
-    const merged = applyCloudData(snap.data);
-    await saveCloudSnapshot(merged);
-    if(!silent) notify('Donnees cloud recuperees et fusionnees.', 'success');
+    applyCloudAuthoritativeData(snap.data);
+    if(!silent) notify('Donnees cloud recuperees. Les anciennes donnees locales ont ete sauvegardees puis remplacees par Supabase.', 'success');
   }
 
   async function cloudPush(silent){
