@@ -764,10 +764,11 @@
     const snap = await loadCloudSnapshot();
     if(!snap?.data){
       if(!silent) notify('Aucune sauvegarde cloud pour le moment.', 'info');
-      return;
+    } else {
+      applyCloudAuthoritativeData(snap.data);
     }
-    applyCloudAuthoritativeData(snap.data);
-    if(!silent) notify('Donnees cloud recuperees. Les anciennes donnees locales ont ete sauvegardees puis remplacees par Supabase.', 'success');
+    await pullCloudCatalog(true).catch(err => console.warn('Recuperation catalogue pendant recuperation totale echouee:', err.message));
+    if(!silent) notify('Donnees cloud et catalogue recuperees depuis Supabase.', 'success');
   }
 
   async function cloudPush(silent){

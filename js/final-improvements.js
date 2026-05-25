@@ -2792,6 +2792,7 @@
               <div class="maintenance-tile"><h3>GitHub officiel</h3><p>Fixe les medecins, photos et catalogue dans les fichiers publics du site.</p>${admin ? '<button class="btn-secondary official-github-mini" onclick="exportOfficialGitHubData()">Export GitHub</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
               <div class="maintenance-tile"><h3>Code gratuite</h3><p>Regler le prochain numero officiel avant le demarrage ou apres une initialisation.</p>${admin ? '<button class="btn-secondary" onclick="setCodeGratuiteStart()">Depart Code Gratuite</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
               <div class="maintenance-tile"><h3>Statistiques</h3><p>Remettre a zero les compteurs herites des tests sans supprimer le catalogue.</p>${admin ? '<button class="btn-secondary" onclick="resetAllStatCounters()">Remettre compteurs a zero</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
+              <div class="maintenance-tile"><h3>Stockage local</h3><p>Effacer definitivement les donnees de ce navigateur apres sauvegarde. Ne supprime pas Supabase.</p>${admin ? '<button class="btn-secondary" style="color:#C0392B;border-color:#F5AAAA;background:#fff5f5" onclick="clearLocalBrowserStorage()">Effacer stockage local</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
               <div class="maintenance-tile"><h3>Controle avant usage</h3><p>Verifier impression, stock pharmacie, synchronisation Supabase, comptes utilisateurs et catalogue.</p><button class="btn-secondary" onclick="showPage('stats', document.querySelector('.tab-btn[onclick*=stats]'))">Voir statistiques</button></div>
               <div class="maintenance-tile"><h3>Gestion comptes</h3><p>Voir les inscriptions, valider les demandes et controler les comptes crees localement.</p><button class="btn-secondary" onclick="renderRegistrationsPanel()">Voir inscriptions</button></div>
               <div class="maintenance-tile"><h3>Message general</h3><p>Envoyer une annonce interne a tous les utilisateurs sous forme de notification.</p>${admin ? '<button class="btn-secondary" onclick="openBroadcastModal()">Ecrire un message</button>' : '<span class="clinical-pill warn">Reserve admin</span>'}</div>
@@ -3018,6 +3019,33 @@
       <style>@page{size:A4;margin:9mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:9px;color:#111}.print-head{display:grid;grid-template-columns:52px 1fr 135px;gap:8px;align-items:start;border-bottom:2px solid #0A3D7A;padding-bottom:5px;margin-bottom:8px}.print-head img{width:48px;height:48px;object-fit:contain}.ministry{font-size:7px;line-height:1.08}.right{text-align:right;font-size:8px;line-height:1.2}.stats-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}.stats-box{border:1px solid #b7c7dd;padding:6px;border-radius:4px}.stats-box h3{font-size:8px;margin:0;color:#0A3D7A}.stats-box p{font-size:18px;margin:2px 0 0;font-weight:bold}.card{border:1px solid #d6dce5;margin-top:8px;border-radius:4px}.card-header{background:#eef4fd;padding:5px 7px}.card-header h2{font-size:10px;margin:0}.card-body{padding:6px}.dash-table{width:100%;border-collapse:collapse}.dash-table th{background:#0A3D7A;color:#fff}.dash-table th,.dash-table td{border:1px solid #cad3df;padding:3px 4px;font-size:7.5px}.clinical-report-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.stats-bar-row{display:grid;grid-template-columns:1.4fr 3fr 28px;gap:6px;align-items:center;margin:4px 0;font-size:7.5px}.stats-bar-row div{height:8px;background:#e9eef5;border-radius:2px}.stats-bar-row i{display:block;height:100%;background:#0A3D7A}.no-print,button,input,select{display:none!important}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
     </head><body><div class="print-head"><img src="${logo}"><div class="ministry">Republique du Senegal - Un peuple, un but, une foi<br>Ministere de la Sante et de l'Action Sociale<br><b>Centre Hospitalier National Cheikh Ahmadoul Khadim - Touba</b><br><b>Service d'Oncologie-Radiotherapie</b></div><div class="right">Statistiques ChimioPro<br>${new Date().toLocaleDateString('fr-FR')}</div></div>${content}</body></html>`;
     printHtml(html);
+  };
+
+  window.clearLocalBrowserStorage = function(){
+    if(!isAdminUser()) return alert('Action reservee au compte administrateur.');
+    askAdminCode('effacer definitivement le stockage local de ce navigateur', () => {
+      if(!confirm('Confirmer l effacement du stockage local de CE navigateur ?\n\nCette action ne supprime pas Supabase, mais deconnecte ce navigateur et efface les donnees locales/cachees.')) return;
+      const phrase = prompt('Tapez EFFACER LOCAL pour confirmer :', '');
+      if(phrase !== 'EFFACER LOCAL') return alert('Confirmation annulee.');
+      try{
+        const backup = {};
+        for(let i = 0; i < localStorage.length; i++){
+          const key = localStorage.key(i);
+          backup[key] = localStorage.getItem(key);
+        }
+        const blob = new Blob([JSON.stringify({createdAt:new Date().toISOString(), origin:location.href, localStorage:backup}, null, 2)], {type:'application/json'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `Sauvegarde_locale_avant_effacement_${todayIso()}.json`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+      } catch(e){}
+      try { window.chimioproCloudLogout?.(); } catch(e){}
+      localStorage.clear();
+      sessionStorage.clear();
+      alert('Stockage local efface. La page va se recharger.');
+      location.reload();
+    });
   };
 
   function suiviPatientKey(item){
