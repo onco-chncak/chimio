@@ -3,6 +3,8 @@
 ============================================================ */
 (function(){
   const DATA_PREFIX = 'chncak_';
+  const DEFAULT_ADMIN_CODE = '2026';
+  const ADMIN_CODE_KEY = 'chncak_admin_code';
 
   function readJson(key, fallback){
     try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
@@ -17,6 +19,10 @@
 
   function normalize(value){
     return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  function adminCode(){
+    return localStorage.getItem(ADMIN_CODE_KEY) || DEFAULT_ADMIN_CODE;
   }
 
   function download(name, content, mime){
@@ -58,7 +64,7 @@
     if(!file) return;
     const code = prompt('Code a 4 chiffres requis pour restaurer une sauvegarde :');
     if(code === null) return;
-    if(code !== '2026'){
+    if(code !== adminCode()){
       alert('Code incorrect. Restauration annulee.');
       return;
     }

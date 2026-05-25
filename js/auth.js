@@ -5,6 +5,8 @@
 const SUPABASE_URL = 'https://frfungcoqagpcyaaglox.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_LWC2vokbGnSWFA1Vg6DAsA_JFaCNbei';
 const CLOUD_ADMIN_EMAILS = ['onco.chn.cak@gmail.com'];
+const SESSION_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+const SESSION_ACTIVITY_KEY = 'chncak_session_last_activity';
 
 const ROLE_TABS = {
   medecin: ['dashboard', 'protocole', 'okchimio', 'medecins', 'historique', 'apercu', 'preparation', 'support', 'suivi', 'biologie', 'hematologie', 'transfusion', 'stats', 'programme', 'patients', 'rdv'],
@@ -18,6 +20,7 @@ const ROLE_TABS = {
 let USERS = {};
 
 let currentUser = null;
+let lastActivityWrite = 0;
 
 function allowedTabsForRole(role) {
   return ROLE_TABS[role] || ROLE_TABS.medecin;
@@ -26,10 +29,33 @@ function allowedTabsForRole(role) {
 function refreshDynamicUsers() {
   let approved = [];
   try { approved = JSON.parse(localStorage.getItem('chncak_approved_users') || '[]'); } catch(e) { approved = []; }
+  let cleaned = false;
+  approved = approved.map(u => {
+    if (u && typeof u === 'object' && Object.prototype.hasOwnProperty.call(u, 'password')) {
+      const { password, ...safeUser } = u;
+      cleaned = true;
+      return safeUser;
+    }
+    return u;
+  });
+  if (cleaned) localStorage.setItem('chncak_approved_users', JSON.stringify(approved));
+  try {
+    const registrations = JSON.parse(localStorage.getItem('chncak_user_registrations') || '[]');
+    let regCleaned = false;
+    const safeRegistrations = registrations.map(u => {
+      if (u && typeof u === 'object' && Object.prototype.hasOwnProperty.call(u, 'password')) {
+        const { password, ...safeUser } = u;
+        regCleaned = true;
+        return safeUser;
+      }
+      return u;
+    });
+    if (regCleaned) localStorage.setItem('chncak_user_registrations', JSON.stringify(safeRegistrations));
+  } catch(e) {}
+  USERS = {};
   approved.forEach(u => {
-    if (!u || !u.username || !u.password) return;
+    if (!u || !u.username) return;
     USERS[u.username] = {
-      password: u.password,
       role: u.role || 'medecin',
       name: (String(u.prenom || '') + ' ' + String(u.nom || '')).trim() || u.username,
       allowedTabs: allowedTabsForRole(u.role || 'medecin'),
@@ -93,6 +119,54 @@ async function loginWithSupabase(identifier, password) {
   return profileFromSupabaseUser(data.session?.user || data.user, email);
 }
 
+function markSessionActivity() {
+  if (Date.now() - lastActivityWrite < 30 * 1000) return;
+  lastActivityWrite = Date.now();
+  localStorage.setItem(SESSION_ACTIVITY_KEY, String(Date.now()));
+}
+
+function sessionExpired() {
+  const last = Number(localStorage.getItem(SESSION_ACTIVITY_KEY) || '0');
+  return !!last && (Date.now() - last > SESSION_TIMEOUT_MS);
+}
+
+async function forceLogout(message) {
+  try { await supabaseAuthClient()?.auth.signOut(); } catch(e) {}
+  localStorage.removeItem('chncak_currentUser');
+  localStorage.removeItem(SESSION_ACTIVITY_KEY);
+  currentUser = null;
+  const login = document.getElementById('login-screen');
+  if (login) login.style.display = 'flex';
+  const errorDiv = document.getElementById('login-error');
+  if (message && errorDiv) {
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+  }
+}
+
+function installSessionActivityTracking() {
+  ['click', 'keydown', 'mousemove', 'touchstart'].forEach(evt => {
+    window.addEventListener(evt, markSessionActivity, { passive: true });
+  });
+  setInterval(() => {
+    if (currentUser && sessionExpired()) {
+      forceLogout('Session expiree apres inactivite. Reconnectez-vous avec votre compte Supabase.');
+    }
+  }, 60 * 1000);
+}
+
+function showLoginError(message) {
+  const errorDiv = document.getElementById('login-error');
+  if (errorDiv) {
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+  }
+}
+
+function toastAuth(message, type = 'info') {
+  if (typeof window.showToastSafe === 'function') window.showToastSafe(message, type);
+  else if (typeof window.notify === 'function') window.notify(message, type);
+}
 
 function checkAuth() {
   refreshDynamicUsers();
@@ -100,22 +174,16 @@ function checkAuth() {
   
   if (savedUser) {
     currentUser = JSON.parse(savedUser);
+    if (sessionExpired()) {
+      forceLogout('Session expiree apres inactivite. Reconnectez-vous avec votre compte Supabase.');
+      return;
+    }
     if (currentUser.authProvider !== 'supabase') {
       localStorage.removeItem('chncak_currentUser');
       currentUser = null;
       const login = document.getElementById('login-screen');
       if (login) login.style.display = 'flex';
-      const errorDiv = document.getElementById('login-error');
-      if (errorDiv) {
-        errorDiv.textContent = 'Session locale refusee. Pour utiliser ChimioPro en reseau, chaque utilisateur doit se connecter avec son compte Supabase.';
-        errorDiv.style.display = 'block';
-      }
-      return;
-    }
-    if (currentUser.authProvider !== 'supabase' && !USERS[currentUser.username]?.password) {
-      localStorage.removeItem('chncak_currentUser');
-      currentUser = null;
-      document.getElementById('login-screen').style.display = 'flex';
+      showLoginError('Session locale refusee. Chaque utilisateur doit se connecter avec son compte Supabase.');
       return;
     }
     if (USERS[currentUser.username]) {
@@ -124,7 +192,7 @@ function checkAuth() {
       currentUser.name = USERS[currentUser.username].name;
       localStorage.setItem('chncak_currentUser', JSON.stringify(currentUser));
     }
-    console.log('Session restaurée:', currentUser);
+    markSessionActivity();
     
     // Cacher login
     document.getElementById('login-screen').style.display = 'none';
@@ -133,12 +201,10 @@ function checkAuth() {
     const logoutBtn = document.getElementById('logout-button');
     if (logoutBtn) {
       logoutBtn.style.display = 'block';
-      console.log('✓ Bouton déconnexion affiché (session)');
       createLogoutButton();
     }
     
     // Appliquer permissions
-    console.log('Appel applyUserPermissions (session)...');
     applyUserPermissions();
     applyReadOnlyMode();
     setTimeout(() => {
@@ -147,7 +213,6 @@ function checkAuth() {
     }, 500);
   } else {
     document.getElementById('login-screen').style.display = 'flex';
-    console.log('Aucune session - affichage login');
   }
 }
 
@@ -167,22 +232,12 @@ async function handleLogin(event) {
     cloudError = err;
   }
 
-  const localUser = USERS[username];
   const localApproved = approvedUserFor(username, username);
-  if (!user && localUser?.password && localUser.password === password) {
-    const errorDiv = document.getElementById('login-error');
-    errorDiv.textContent = localApproved?.email
-      ? 'Connexion locale desactivee. Connectez-vous avec le compte Supabase associe : ' + localApproved.email + '. Detail: ' + (cloudError?.message || 'session cloud absente')
-      : 'Connexion locale desactivee. Ce compte doit d abord etre cree dans Supabase avec email et mot de passe.';
-    errorDiv.style.display = 'block';
-    document.getElementById('login-password').value = '';
-    return false;
-  }
 
   if (!user) {
-    const errorDiv = document.getElementById('login-error');
-    errorDiv.textContent = 'Connexion impossible : ' + (cloudError?.message || 'identifiant ou mot de passe incorrect');
-    errorDiv.style.display = 'block';
+    showLoginError(localApproved?.email
+      ? 'Connexion Supabase requise avec : ' + localApproved.email + '. Detail: ' + (cloudError?.message || 'session cloud absente')
+      : 'Connexion impossible : ' + (cloudError?.message || 'identifiant ou mot de passe incorrect'));
     document.getElementById('login-password').value = '';
     return false;
   }
@@ -196,11 +251,11 @@ async function handleLogin(event) {
     authProvider: user.authProvider || 'supabase'
   };
 
-  console.log('Connexion reussie:', currentUser);
   localStorage.setItem('chncak_currentUser', JSON.stringify(currentUser));
+  markSessionActivity();
   document.getElementById('login-screen').style.display = 'none';
 
-  logoutBtn = document.getElementById('logout-button');
+  const logoutBtn = document.getElementById('logout-button');
   if (logoutBtn) {
     logoutBtn.style.display = 'block';
     createLogoutButton();
@@ -218,15 +273,9 @@ async function handleLogin(event) {
 }
 
 function applyUserPermissions() {
-  console.log('=== applyUserPermissions appelé ===');
-  console.log('currentUser:', currentUser);
-  
   if (!currentUser) {
-    console.log('currentUser est null - abandon');
     return;
   }
-  
-  console.log('allowedTabs:', currentUser.allowedTabs);
   
   // Masquer/afficher les onglets selon les permissions
   const allTabs = document.querySelectorAll('.tab-btn');
@@ -245,14 +294,13 @@ function applyUserPermissions() {
       tab.style.display = '';
     } else {
       tab.style.display = 'none';
-      console.log('Onglet masqué:', tabId);
     }
   });
   
   // Message de bienvenue
   if (currentUser.role === 'pharmacien') {
     setTimeout(() => {
-      alert('👋 Bienvenue ' + currentUser.name + '\n\nVous avez accès uniquement à l\'onglet Pharmacie Centrale.');
+      toastAuth('Bienvenue ' + currentUser.name + ' - acces pharmacien active.', 'success');
     }, 500);
   }
 }
@@ -356,10 +404,14 @@ async function logout() {
   if (confirm('Voulez-vous vraiment vous deconnecter ?')) {
     try { await supabaseAuthClient()?.auth.signOut(); } catch(e) {}
     localStorage.removeItem('chncak_currentUser');
+    localStorage.removeItem(SESSION_ACTIVITY_KEY);
     currentUser = null;
     location.reload();
   }
 }
 
 // Vérifier l'authentification au chargement
-window.addEventListener('DOMContentLoaded', checkAuth);
+window.addEventListener('DOMContentLoaded', () => {
+  installSessionActivityTracking();
+  checkAuth();
+});

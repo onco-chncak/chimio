@@ -2486,19 +2486,37 @@
   }
 
   function readRegistrations(){
-    return readJson('chncak_user_registrations', []);
+    return readJson('chncak_user_registrations', []).map(user => {
+      if(!user || typeof user !== 'object') return user;
+      const { password, ...safeUser } = user;
+      return safeUser;
+    });
   }
 
   function writeRegistrations(list){
-    writeJson('chncak_user_registrations', list);
+    const sanitized = (list || []).map(user => {
+      if(!user || typeof user !== 'object') return user;
+      const { password, ...safeUser } = user;
+      return safeUser;
+    });
+    writeJson('chncak_user_registrations', sanitized);
   }
 
   function readApprovedUsers(){
-    return readJson('chncak_approved_users', []);
+    return readJson('chncak_approved_users', []).map(user => {
+      if(!user || typeof user !== 'object') return user;
+      const { password, ...safeUser } = user;
+      return safeUser;
+    });
   }
 
   function writeApprovedUsers(list){
-    writeJson('chncak_approved_users', list);
+    const sanitized = (list || []).map(user => {
+      if(!user || typeof user !== 'object') return user;
+      const { password, ...safeUser } = user;
+      return safeUser;
+    });
+    writeJson('chncak_approved_users', sanitized);
     try { window.refreshDynamicUsers?.(); } catch(e) {}
   }
 
@@ -2575,7 +2593,7 @@
           <label>Specialite<input id="signup-specialite" placeholder="ex: Soins infirmiers"></label>
           <label>Type de compte<select id="signup-role">${roleOptions}</select></label>
           <label>Identifiant<input id="signup-username" placeholder="ex: awa.ndiaye"></label>
-          <label>Mot de passe souhaite<input id="signup-password" type="password" placeholder="Temporaire Supabase"></label>
+          <label class="signup-wide">Mot de passe Supabase <input disabled placeholder="Cree uniquement dans Supabase Authentication par l admin"></label>
           <label class="signup-wide">Autorisation admin<select id="signup-auth-mode"><option value="pending">Demande a valider par admin</option><option value="code">J'ai le code admin</option></select></label>
           <label class="signup-wide" id="signup-code-row" style="display:none">Code admin<input id="signup-admin-code" type="password" inputmode="numeric" maxlength="4" placeholder="****"></label>
         </div>
@@ -2596,7 +2614,6 @@
     const nom = get('signup-nom');
     const prenom = get('signup-prenom');
     const username = get('signup-username');
-    const password = get('signup-password');
     const email = get('signup-email');
     const role = get('signup-role') || 'medecin';
     const error = document.getElementById('signup-error');
@@ -2604,8 +2621,8 @@
       if(error) error.textContent = 'Inscription Admin non autorisee pour le moment. Activez-la dans Maintenance si necessaire.';
       return;
     }
-    if(!nom || !prenom || !email || !password){
-      if(error) error.textContent = 'Nom, prenom, email Supabase et mot de passe temporaire sont obligatoires.';
+    if(!nom || !prenom || !email){
+      if(error) error.textContent = 'Nom, prenom et email Supabase sont obligatoires.';
       return;
     }
     if(!email.includes('@')){
@@ -2622,7 +2639,7 @@
     }
     const request = {
       id: `USR-${Date.now()}`,
-      nom, prenom, username: loginName, password, role,
+      nom, prenom, username: loginName, role,
       contact: get('signup-contact'),
       email,
       specialite: get('signup-specialite'),

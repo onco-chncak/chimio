@@ -22,7 +22,8 @@
   let suppressLocalTracking = false;
   let lastSessionOkAt = 0;
   let authListenerInstalled = false;
-  const ADMIN_CODE = '2026';
+  const DEFAULT_ADMIN_CODE = '2026';
+  const ADMIN_CODE_KEY = 'chncak_admin_code';
 
   const DATA_KEYS = [
     'chncak_patients',
@@ -54,6 +55,10 @@
     'historique',
     'rdv'
   ];
+
+  function adminCode(){
+    return localStorage.getItem(ADMIN_CODE_KEY) || DEFAULT_ADMIN_CODE;
+  }
 
   const ARRAY_KEYS = new Set([
     'chncak_patients',
@@ -1137,7 +1142,7 @@
     if(!isCloudAdmin()) return alert('Initialisation reservee au compte admin.');
     const code = prompt('Code admin 4 chiffres pour initialisation officielle :');
     if(code === null) return;
-    if(code !== ADMIN_CODE) return alert('Code incorrect.');
+    if(code !== adminCode()) return alert('Code incorrect.');
     if(!confirm('Cette action efface les donnees de test locales et cloud, mais garde le catalogue pharmacie. Continuer ?')) return;
     const phrase = prompt('Tapez INITIALISER pour confirmer definitivement :');
     if(phrase !== 'INITIALISER') return alert('Confirmation annulee.');
