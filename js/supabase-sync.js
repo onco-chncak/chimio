@@ -140,9 +140,26 @@
     DIRTY_KEYS_KEY,
     DIRTY_AT_KEY,
     CLOUD_HYDRATED_KEY,
+    CATALOG_PULL_BACKUP_KEY,
+    CATALOG_PULL_META_KEY,
+    CATALOG_DIRTY_KEY,
+    'chncak_catalog_backup_before_import',
+    'chncak_catalog_safety_backup',
+    'chncak_cloud_last_error',
+    'chncak_last_backup',
+    'chncak_last_restore',
     'chncak_currentUser',
     'chncak_dark'
   ]);
+
+  const QUOTA_CLEANUP_KEYS = [
+    LOCAL_PULL_BACKUP_KEY,
+    CATALOG_PULL_BACKUP_KEY,
+    'chncak_catalog_backup_before_import',
+    'chncak_catalog_safety_backup',
+    'chncak_last_backup_payload',
+    'chncak_last_backup'
+  ];
 
   function esc(value){
     return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -161,6 +178,35 @@
     else console.log(message);
   }
 
+  function isQuotaError(error){
+    return /quota|exceeded|storage/i.test(String(error?.name || '') + ' ' + String(error?.message || error || ''));
+  }
+
+  function cleanupStorageForQuota(){
+    QUOTA_CLEANUP_KEYS.forEach(key => {
+      try { localStorage.removeItem(key); } catch(e) {}
+    });
+  }
+
+  function safeSetItem(key, value){
+    try{
+      localStorage.setItem(key, value);
+      return true;
+    } catch(error){
+      if(!isQuotaError(error)) throw error;
+      cleanupStorageForQuota();
+      try{
+        localStorage.setItem(key, value);
+        return true;
+      } catch(secondError){
+        if(isQuotaError(secondError)){
+          throw new Error('Stockage du navigateur insuffisant. Les anciennes sauvegardes temporaires ont ete nettoyees, mais les donnees restent trop volumineuses pour ce telephone.');
+        }
+        throw secondError;
+      }
+    }
+  }
+
   function readJsonValue(raw, fallback){
     try { return JSON.parse(raw); }
     catch(e){ return fallback; }
@@ -170,7 +216,7 @@
     let id = localStorage.getItem(DEVICE_ID_KEY);
     if(!id){
       id = 'device_' + Date.now() + '_' + Math.random().toString(16).slice(2);
-      localStorage.setItem(DEVICE_ID_KEY, id);
+      safeSetItem(DEVICE_ID_KEY, id);
     }
     return id;
   }
@@ -351,7 +397,7 @@
     if(!key || LOCAL_ONLY_KEYS.has(key)) return;
     const keys = new Set(dirtyKeys());
     keys.add(String(key));
-    localStorage.setItem(DIRTY_KEYS_KEY, JSON.stringify(Array.from(keys).slice(-100)));
+    safeSetItem(DIRTY_KEYS_KEY, JSON.stringify(Array.from(keys).slice(-100)));
   }
 
   function clearDirtyState(){
@@ -372,11 +418,22 @@
 
   function backupLocalData(reason){
     try{
-      localStorage.setItem(LOCAL_PULL_BACKUP_KEY, JSON.stringify({
+      const data = collectLocalData();
+      const payload = JSON.stringify({
         reason: reason || 'cloud_pull',
         createdAt: new Date().toISOString(),
-        data: collectLocalData()
-      }));
+        data
+      });
+      if(payload.length > 1000000){
+        safeSetItem(LOCAL_PULL_BACKUP_KEY, JSON.stringify({
+          reason: reason || 'cloud_pull',
+          createdAt: new Date().toISOString(),
+          skipped: true,
+          note: 'Sauvegarde locale trop volumineuse pour navigateur mobile.'
+        }));
+        return;
+      }
+      safeSetItem(LOCAL_PULL_BACKUP_KEY, payload);
     } catch(e){
       console.warn('Sauvegarde locale avant cloud impossible:', e.message);
     }
@@ -399,7 +456,8 @@
     try{
       const raw = localStorage.getItem('chncak_catalog');
       if(!raw) return;
-      localStorage.setItem(CATALOG_PULL_BACKUP_KEY, JSON.stringify({
+      if(raw.length > 750000) return;
+      safeSetItem(CATALOG_PULL_BACKUP_KEY, JSON.stringify({
         reason: reason || 'before_catalog_cloud_pull',
         createdAt: new Date().toISOString(),
         catalog: JSON.parse(raw)
@@ -411,6 +469,7 @@
 
   function applyCloudAuthoritativeData(cloudData){
     suppressLocalTracking = true;
+    cleanupStorageForQuota();
     backupLocalData('before_authoritative_cloud_pull');
     const preserved = {};
     try{
@@ -435,11 +494,11 @@
       }
       Object.keys(cloud).forEach(key => {
         if(!LOCAL_ONLY_KEYS.has(key) && cloud[key] !== undefined && cloud[key] !== null){
-          localStorage.setItem(key, cloud[key]);
+          safeSetItem(key, cloud[key]);
         }
       });
-      Object.keys(preserved).forEach(key => localStorage.setItem(key, preserved[key]));
-      localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());
+      Object.keys(preserved).forEach(key => safeSetItem(key, preserved[key]));
+      safeSetItem(LOCAL_META_KEY, new Date().toISOString());
       clearDirtyState();
       refreshViews();
       return collectLocalData();
@@ -485,9 +544,9 @@
       });
       const pruned = pruneDeletedProtocolData(merged);
       Object.keys(pruned).forEach(key => {
-        if(pruned[key] !== undefined && pruned[key] !== null) localStorage.setItem(key, pruned[key]);
+        if(pruned[key] !== undefined && pruned[key] !== null) safeSetItem(key, pruned[key]);
       });
-      localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());
+      safeSetItem(LOCAL_META_KEY, new Date().toISOString());
       refreshViews();
       return pruned;
     } finally {
@@ -611,7 +670,7 @@
       .from('app_settings')
       .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict:'key' });
     if(error) throw error;
-    localStorage.setItem(LOCAL_META_KEY, value.updatedAt);
+    safeSetItem(LOCAL_META_KEY, value.updatedAt);
     localStorage.removeItem(CLOUD_ERROR_KEY);
     updateCloudUi(current.user.email || '');
     return value;
@@ -627,8 +686,8 @@
     suppressLocalTracking = true;
     backupLocalCatalog('before_catalog_cloud_apply');
     try{
-      localStorage.setItem('chncak_catalog', JSON.stringify(list));
-      localStorage.setItem('chncak_catalog_last_saved_at', cloudUpdatedAt || new Date().toISOString());
+      safeSetItem('chncak_catalog', JSON.stringify(list));
+      safeSetItem('chncak_catalog_last_saved_at', cloudUpdatedAt || new Date().toISOString());
       localStorage.removeItem(CATALOG_DIRTY_KEY);
       try { if(Array.isArray(window.catalog)) window.catalog = list; } catch(e) {}
       try { if(typeof catalog !== 'undefined') catalog = list; } catch(e) {}
@@ -659,14 +718,14 @@
       const dirtyMs = Date.parse(localDirtyAt || '') || 0;
       if(localDirtyAt && Array.isArray(localCatalog) && localCatalog.length && dirtyMs > cloudMs + 1000){
         await saveCloudCatalog(localCatalog);
-        localStorage.setItem(CATALOG_PULL_META_KEY, new Date().toISOString());
+        safeSetItem(CATALOG_PULL_META_KEY, new Date().toISOString());
         localStorage.removeItem(CLOUD_ERROR_KEY);
         updateCloudUi((await session())?.user?.email || '');
         if(!silent) notify('Catalogue local plus recent conserve et envoye vers Supabase.', 'success');
         return localCatalog;
       }
       applyCloudCatalog(saved.data, saved.updatedAt);
-      localStorage.setItem(CATALOG_PULL_META_KEY, new Date().toISOString());
+      safeSetItem(CATALOG_PULL_META_KEY, new Date().toISOString());
       localStorage.removeItem(CLOUD_ERROR_KEY);
       updateCloudUi((await session())?.user?.email || '');
       if(!silent) notify('Catalogue pharmacie recupere depuis Supabase.', 'success');
@@ -716,8 +775,8 @@
   function scheduleCloudPush(key){
     if(suppressLocalTracking) return;
     localDirty = true;
-    localStorage.setItem(LOCAL_DIRTY_KEY, '1');
-    localStorage.setItem(DIRTY_AT_KEY, new Date().toISOString());
+    safeSetItem(LOCAL_DIRTY_KEY, '1');
+    safeSetItem(DIRTY_AT_KEY, new Date().toISOString());
     markDirtyKey(key);
     if(!window.chimioproCloudReady) return;
     clearTimeout(autoTimer);
@@ -793,7 +852,7 @@
       clearDirtyState();
       await cloudPull(true);
     }
-    localStorage.setItem(CLOUD_HYDRATED_KEY, new Date().toISOString());
+    safeSetItem(CLOUD_HYDRATED_KEY, new Date().toISOString());
     localStorage.removeItem(CLOUD_ERROR_KEY);
     updateCloudUi(current.user?.email || '');
     if(!silent) notify('Connexion cloud verifiee et donnees recuperees.', 'success');
@@ -806,7 +865,7 @@
     const catalog = readJsonValue(data.chncak_catalog, null);
     if(Array.isArray(catalog)){
       await saveCloudSetting(CATALOG_KEY, catalog);
-      localStorage.setItem(CATALOG_PULL_META_KEY, new Date().toISOString());
+      safeSetItem(CATALOG_PULL_META_KEY, new Date().toISOString());
     }
     clearDirtyState();
     if(!silent) notify('Donnees locales et catalogue envoyes vers Supabase.', 'success');
@@ -1063,7 +1122,7 @@
       updateCloudUi((await session())?.user?.email || '');
     }
     catch(e){
-      localStorage.setItem(CLOUD_ERROR_KEY, e.message || String(e));
+      safeSetItem(CLOUD_ERROR_KEY, e.message || String(e));
       updateCloudUi((await session().catch(() => null))?.user?.email || '');
       if(!silent) alert('Recuperation cloud impossible: ' + e.message);
       else throw e;
@@ -1077,7 +1136,7 @@
       updateCloudUi((await session())?.user?.email || '');
     }
     catch(e){
-      localStorage.setItem(CLOUD_ERROR_KEY, e.message || String(e));
+      safeSetItem(CLOUD_ERROR_KEY, e.message || String(e));
       updateCloudUi((await session().catch(() => null))?.user?.email || '');
       if(!silent) alert('Envoi cloud impossible: ' + e.message);
       else throw e;
@@ -1131,7 +1190,7 @@
       if(!silent) notify('Catalogue pharmacie envoye vers Supabase.', 'success');
       return info;
     } catch(e){
-      localStorage.setItem(CLOUD_ERROR_KEY, e.message || String(e));
+      safeSetItem(CLOUD_ERROR_KEY, e.message || String(e));
       updateCloudUi((await session().catch(() => null))?.user?.email || '');
       if(!silent) alert('Sauvegarde cloud catalogue impossible: ' + e.message);
       throw e;
@@ -1154,7 +1213,7 @@
       updateCloudUi((await session())?.user?.email || '');
     }
     catch(e){
-      localStorage.setItem(CLOUD_ERROR_KEY, e.message || String(e));
+      safeSetItem(CLOUD_ERROR_KEY, e.message || String(e));
       updateCloudUi((await session().catch(() => null))?.user?.email || '');
       if(!silent) alert('Synchronisation cloud impossible: ' + e.message);
       else throw e;
@@ -1171,10 +1230,10 @@
     if(phrase !== 'INITIALISER') return alert('Confirmation annulee.');
     try{
       await requireSession();
-      localStorage.setItem('chncak_official_reset_at', new Date().toISOString());
+      safeSetItem('chncak_official_reset_at', new Date().toISOString());
       resetLocalOfficialData();
       await resetCloudSnapshot();
-      localStorage.setItem(LOCAL_META_KEY, new Date().toISOString());
+      safeSetItem(LOCAL_META_KEY, new Date().toISOString());
       notify('Initialisation officielle terminee. Catalogue conserve.', 'success');
       alert('Initialisation officielle terminee. Le catalogue pharmacie est conserve.');
     } catch(e){
