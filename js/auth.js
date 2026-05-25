@@ -119,6 +119,15 @@ async function loginWithSupabase(identifier, password) {
   return profileFromSupabaseUser(data.session?.user || data.user, email);
 }
 
+async function activeSupabaseSession() {
+  const sb = supabaseAuthClient();
+  if (!sb) return null;
+  const { data } = await sb.auth.getSession().catch(() => ({ data: null }));
+  if (data?.session?.user) return data.session;
+  const refreshed = await sb.auth.refreshSession().catch(() => null);
+  return refreshed?.data?.session?.user ? refreshed.data.session : null;
+}
+
 function markSessionActivity() {
   if (Date.now() - lastActivityWrite < 30 * 1000) return;
   lastActivityWrite = Date.now();
@@ -168,7 +177,7 @@ function toastAuth(message, type = 'info') {
   else if (typeof window.notify === 'function') window.notify(message, type);
 }
 
-function checkAuth() {
+async function checkAuth() {
   refreshDynamicUsers();
   const savedUser = localStorage.getItem('chncak_currentUser');
   
@@ -186,6 +195,16 @@ function checkAuth() {
       showLoginError('Session locale refusee. Chaque utilisateur doit se connecter avec son compte Supabase.');
       return;
     }
+    const cloudSession = await activeSupabaseSession();
+    if (!cloudSession) {
+      await forceLogout('Session Supabase absente ou expiree. Reconnectez-vous pour garantir la synchronisation cloud.');
+      return;
+    }
+    currentUser = {
+      ...currentUser,
+      ...profileFromSupabaseUser(cloudSession.user, currentUser.email || currentUser.username),
+      authProvider: 'supabase'
+    };
     if (USERS[currentUser.username]) {
       currentUser.allowedTabs = USERS[currentUser.username].allowedTabs;
       currentUser.role = USERS[currentUser.username].role;

@@ -16,6 +16,8 @@
   const CLOUD_ERROR_KEY = 'chncak_cloud_last_error';
   const LOCAL_DIRTY_KEY = 'chncak_cloud_local_dirty';
   const DIRTY_KEYS_KEY = 'chncak_cloud_dirty_keys';
+  const DIRTY_AT_KEY = 'chncak_cloud_dirty_at';
+  const CLOUD_HYDRATED_KEY = 'chncak_cloud_hydrated_at';
   const AUTO_SYNC_INTERVAL_MS = 30 * 1000;
   let autoSyncTimer = null;
   let localDirty = localStorage.getItem(LOCAL_DIRTY_KEY) === '1';
@@ -136,6 +138,8 @@
     LOCAL_PULL_BACKUP_KEY,
     LOCAL_DIRTY_KEY,
     DIRTY_KEYS_KEY,
+    DIRTY_AT_KEY,
+    CLOUD_HYDRATED_KEY,
     'chncak_currentUser',
     'chncak_dark'
   ]);
@@ -354,6 +358,7 @@
     localDirty = false;
     localStorage.removeItem(LOCAL_DIRTY_KEY);
     localStorage.removeItem(DIRTY_KEYS_KEY);
+    localStorage.removeItem(DIRTY_AT_KEY);
   }
 
   function mergeOnlyDirtyKeys(cloudData, localData, keys){
@@ -712,6 +717,7 @@
     if(suppressLocalTracking) return;
     localDirty = true;
     localStorage.setItem(LOCAL_DIRTY_KEY, '1');
+    localStorage.setItem(DIRTY_AT_KEY, new Date().toISOString());
     markDirtyKey(key);
     if(!window.chimioproCloudReady) return;
     clearTimeout(autoTimer);
@@ -727,13 +733,13 @@
     const nativeRemove = Storage.prototype.removeItem;
     Storage.prototype.setItem = function(key, value){
       const out = nativeSet.apply(this, arguments);
-      if(String(key) === LOCAL_DIRTY_KEY || String(key) === LOCAL_META_KEY || String(key) === CLOUD_ERROR_KEY || String(key) === DIRTY_KEYS_KEY) return out;
+      if(String(key) === LOCAL_DIRTY_KEY || String(key) === LOCAL_META_KEY || String(key) === CLOUD_ERROR_KEY || String(key) === DIRTY_KEYS_KEY || String(key) === DIRTY_AT_KEY || String(key) === CLOUD_HYDRATED_KEY) return out;
       if(String(key).startsWith('chncak_') || DATA_KEYS.includes(key)) scheduleCloudPush(String(key));
       return out;
     };
     Storage.prototype.removeItem = function(key){
       const out = nativeRemove.apply(this, arguments);
-      if(String(key) === LOCAL_DIRTY_KEY || String(key) === LOCAL_META_KEY || String(key) === CLOUD_ERROR_KEY || String(key) === DIRTY_KEYS_KEY) return out;
+      if(String(key) === LOCAL_DIRTY_KEY || String(key) === LOCAL_META_KEY || String(key) === CLOUD_ERROR_KEY || String(key) === DIRTY_KEYS_KEY || String(key) === DIRTY_AT_KEY || String(key) === CLOUD_HYDRATED_KEY) return out;
       if(String(key).startsWith('chncak_') || DATA_KEYS.includes(key)) scheduleCloudPush(String(key));
       return out;
     };
@@ -774,6 +780,24 @@
     }
     await pullCloudCatalog(true).catch(err => console.warn('Recuperation catalogue pendant recuperation totale echouee:', err.message));
     if(!silent) notify('Donnees cloud et catalogue recuperees depuis Supabase.', 'success');
+  }
+
+  async function hydrateFromCloudBeforeWrites(silent){
+    const current = await requireSession();
+    const dirtyAt = Date.parse(localStorage.getItem(DIRTY_AT_KEY) || '') || 0;
+    const lastSync = Date.parse(localStorage.getItem(LOCAL_META_KEY) || '') || 0;
+    const hasRecentLocalDirty = localDirty && dirtyAt && dirtyAt > lastSync;
+    if(hasRecentLocalDirty){
+      await cloudSync(true);
+    } else {
+      clearDirtyState();
+      await cloudPull(true);
+    }
+    localStorage.setItem(CLOUD_HYDRATED_KEY, new Date().toISOString());
+    localStorage.removeItem(CLOUD_ERROR_KEY);
+    updateCloudUi(current.user?.email || '');
+    if(!silent) notify('Connexion cloud verifiee et donnees recuperees.', 'success');
+    return current;
   }
 
   async function cloudPush(silent){
@@ -997,9 +1021,9 @@
     try{
       await signIn(email, password);
       window.chimioproCloudReady = true;
+      await hydrateFromCloudBeforeWrites(true);
       patchLocalStorage();
       startAutoSync();
-      await cloudSync(true);
     } catch(e){
       alert('Connexion cloud impossible: ' + e.message);
     }
@@ -1010,10 +1034,9 @@
     const current = await session(true);
     if(current){
       setCloudConnected(current);
-      patchLocalStorage();
       await setupRealtime();
-      await cloudSync(true);
-      await forceCloudCatalogRefresh(true).catch(() => null);
+      await hydrateFromCloudBeforeWrites(true);
+      patchLocalStorage();
       localStorage.removeItem(CLOUD_ERROR_KEY);
       updateCloudUi(current.user.email || '');
       startAutoSync();
