@@ -46,7 +46,7 @@ function supabaseAuthClient() {
   if (!window.supabase?.createClient) return null;
   if (!window.chimioproSupabaseClient) {
     window.chimioproSupabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true }
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'chimiopro-supabase-auth' }
     });
   }
   return window.chimioproSupabaseClient;

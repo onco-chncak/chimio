@@ -20,6 +20,8 @@
   let autoSyncTimer = null;
   let localDirty = localStorage.getItem(LOCAL_DIRTY_KEY) === '1';
   let suppressLocalTracking = false;
+  let lastSessionOkAt = 0;
+  let authListenerInstalled = false;
   const ADMIN_CODE = '2026';
 
   const DATA_KEYS = [
@@ -508,22 +510,32 @@
     if(!window.supabase?.createClient) return null;
     if(!window.chimioproSupabaseClient){
       window.chimioproSupabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-        auth: { persistSession:true, autoRefreshToken:true }
+        auth: { persistSession:true, autoRefreshToken:true, detectSessionInUrl:true, storageKey:'chimiopro-supabase-auth' }
       });
     }
     return window.chimioproSupabaseClient;
   }
 
-  async function session(){
+  async function session(forceRefresh){
     const sb = client();
     if(!sb) return null;
     const { data, error } = await sb.auth.getSession();
-    if(error) return null;
-    return data?.session || null;
+    if(!error && data?.session){
+      lastSessionOkAt = Date.now();
+      return data.session;
+    }
+    if(forceRefresh){
+      const refreshed = await sb.auth.refreshSession().catch(() => null);
+      if(refreshed?.data?.session){
+        lastSessionOkAt = Date.now();
+        return refreshed.data.session;
+      }
+    }
+    return null;
   }
 
   async function requireSession(){
-    const current = await session();
+    const current = await session(true);
     if(!current) throw new Error('Connexion cloud requise.');
     return current;
   }
@@ -827,6 +839,38 @@
 
   window.chimioproUpdateCloudGuard = updateCloudGuardBanner;
 
+  function setCloudConnected(current){
+    if(current){
+      window.chimioproCloudReady = true;
+      lastSessionOkAt = Date.now();
+      updateCloudGuardBanner(true);
+      updateCloudUi(current.user?.email || currentCloudUserEmail());
+      return true;
+    }
+    window.chimioproCloudReady = false;
+    updateCloudGuardBanner(false);
+    updateCloudUi('');
+    return false;
+  }
+
+  function installAuthListener(){
+    const sb = client();
+    if(!sb || authListenerInstalled) return;
+    authListenerInstalled = true;
+    sb.auth.onAuthStateChange((event, authSession) => {
+      if(authSession){
+        setCloudConnected(authSession);
+        if(event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED'){
+          setupRealtime().catch(() => null);
+          startAutoSync();
+        }
+      } else if(event === 'SIGNED_OUT'){
+        setCloudConnected(null);
+        stopAutoSync();
+      }
+    });
+  }
+
   function stopAutoSync(){
     if(autoSyncTimer) clearInterval(autoSyncTimer);
     autoSyncTimer = null;
@@ -835,13 +879,12 @@
   function startAutoSync(){
     stopAutoSync();
     autoSyncTimer = setInterval(async () => {
-      const current = await session();
+      const current = await session(true);
       if(!current) {
-        window.chimioproCloudReady = false;
-        updateCloudUi('');
+        setCloudConnected(null);
         return;
       }
-      window.chimioproCloudReady = true;
+      setCloudConnected(current);
       try{
         await cloudSync(true);
         await pullCloudCatalog(true).catch(() => null);
@@ -885,16 +928,15 @@
     const lastError = localStorage.getItem(CLOUD_ERROR_KEY);
     const needsReconnect = /connexion cloud requise/i.test(lastError || '');
     if(email){
-      session().then(current => {
+      session(true).then(current => {
         if(!current){
-          window.chimioproCloudReady = false;
-          stopAutoSync();
-          updateCloudGuardBanner(false);
-          updateCloudUi('');
+          if(Date.now() - lastSessionOkAt > 120000){
+            setCloudConnected(null);
+            stopAutoSync();
+          }
           return;
         }
-        window.chimioproCloudReady = true;
-        updateCloudGuardBanner(true);
+        setCloudConnected(current);
         if(needsReconnect){
           localStorage.removeItem(CLOUD_ERROR_KEY);
           updateCloudUi(current.user?.email || email);
@@ -958,10 +1000,10 @@
   };
 
   window.chimioproCloudRefreshSession = async function(){
-    const current = await session();
+    installAuthListener();
+    const current = await session(true);
     if(current){
-      window.chimioproCloudReady = true;
-      updateCloudGuardBanner(true);
+      setCloudConnected(current);
       patchLocalStorage();
       await setupRealtime();
       await cloudSync(true);
@@ -971,9 +1013,7 @@
       startAutoSync();
       return current;
     }
-    window.chimioproCloudReady = false;
-    updateCloudGuardBanner(false);
-    updateCloudUi('');
+    setCloudConnected(null);
     stopAutoSync();
     return null;
   };
@@ -1116,13 +1156,14 @@
 
   document.addEventListener('DOMContentLoaded', async () => {
     installCloudUi();
+    installAuthListener();
     patchLocalStorage();
     window.addEventListener('focus', () => {
-      forceCloudCatalogRefresh(true).catch(() => null);
+      session(true).then(current => { if(current) forceCloudCatalogRefresh(true).catch(() => null); });
       if(window.chimioproCloudReady) cloudSync(true).catch(err => console.warn('Synchronisation au focus echouee:', err.message));
     });
     document.addEventListener('visibilitychange', () => {
-      if(!document.hidden) forceCloudCatalogRefresh(true).catch(() => null);
+      if(!document.hidden) session(true).then(current => { if(current) forceCloudCatalogRefresh(true).catch(() => null); });
       if(!document.hidden && window.chimioproCloudReady) cloudSync(true).catch(err => console.warn('Synchronisation au retour onglet echouee:', err.message));
     });
     try{
