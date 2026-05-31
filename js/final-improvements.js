@@ -3440,7 +3440,8 @@
       .map(item => ({...(item.patient || {}), ...item, bioSource:'OK Chimio valide'}));
     const saved = savedProtocolEntries().map(item => ({...item, bioSource:'Protocole sauvegarde'}));
     const patients = readJson(STORAGE.patients, []).map(item => ({...item, bioSource:'Registre patient'}));
-    return dedupeByPatientTreatment([...todaysRdv, ...okValidated, ...saved, ...patients]);
+    return dedupeByPatientTreatment([...todaysRdv, ...okValidated, ...saved, ...patients])
+      .filter(item => !isDeletedRecord(DELETED_BIOLOGIE_KEY, item));
   }
 
   function findBiologieCandidate(code, typedPatient){
@@ -3792,6 +3793,7 @@
     if(!patient) return alert('Selectionner le patient a supprimer dans Biologie.');
     askAdminCode(`supprimer definitivement les bilans biologiques de ${patientName(patient)}`, async () => {
       const removedSigs = new Set();
+      rememberDeletedRecord(DELETED_BIOLOGIE_KEY, patient);
       [STORAGE.biologie, 'biologie'].forEach(key => {
         const list = readJson(key, []);
         if(!Array.isArray(list)) return;
