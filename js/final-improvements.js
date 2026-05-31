@@ -3465,12 +3465,35 @@
     }).join('');
   }
 
+  function selectedBiologiePatient(){
+    const selected = document.getElementById('bio-patient-select')?.value || '';
+    const typedPatient = document.getElementById('bio-patient')?.value || '';
+    return findBiologieCandidate(selected, typedPatient);
+  }
+
+  function injectBiologiePatientActions(){
+    const select = document.getElementById('bio-patient-select');
+    if(!select || document.getElementById('bio-patient-actions')) return;
+    const field = select.closest('.field') || select.parentElement;
+    if(!field) return;
+    field.insertAdjacentHTML('afterend', `
+      <div id="bio-patient-actions" class="field" style="align-self:end">
+        <label>Actions patient</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn-secondary" style="width:auto;padding:9px 12px" onclick="showSelectedBiologiePatient()">Afficher</button>
+          <button type="button" class="btn-secondary" style="width:auto;padding:9px 12px;border-color:#b91c1c;color:#b91c1c" onclick="deleteSelectedBiologiePatient()">Supprimer</button>
+          <button type="button" class="btn-secondary" style="width:auto;padding:9px 12px" onclick="clearBiologiePatientFilter()">Tout afficher</button>
+        </div>
+      </div>`);
+  }
+
   const nativeRenderBiologieFinal = window.renderBiologie;
   window.renderBiologie = function(){
     pruneDeletedRecords(STORAGE.biologie, DELETED_BIOLOGIE_KEY);
     pruneDeletedRecords('biologie', DELETED_BIOLOGIE_KEY);
     const out = typeof nativeRenderBiologieFinal === 'function' ? nativeRenderBiologieFinal.apply(this, arguments) : undefined;
     normalizeBiologiePatientOptions();
+    injectBiologiePatientActions();
     const saveBtn = document.querySelector('#biologie-content .clinical-save');
     if(saveBtn && !document.getElementById('bio-result-date')){
       saveBtn.insertAdjacentHTML('beforebegin', '<div class="field clinical-bio-field" style="max-width:260px;margin-top:10px"><label>Date des resultats</label><input type="date" id="bio-result-date" value="'+todayIso()+'"><span class="bio-msg warn">Obligatoire pour valider le traitement</span></div>');
@@ -3479,6 +3502,9 @@
       saveBtn.insertAdjacentHTML('afterend', '<button id="bio-edit-latest-btn" class="btn-secondary" style="width:auto;margin-left:8px;padding:10px 14px" onclick="loadLatestBiologieForEdit()">Modifier le bilan du jour</button>');
     }
     addBiologieDeleteButtons();
+    if(window.__chimioproBioFilter){
+      filterBiologieTableForPatient(window.__chimioproBioFilter);
+    }
     return out;
   };
 
@@ -3487,6 +3513,61 @@
     const patient = findBiologieCandidate(code, '');
     const input = document.getElementById('bio-patient');
     if(input) input.value = patient ? patientName(patient) : '';
+  };
+
+  function biologieRecordMatchesPatient(item, patient){
+    if(!item || !patient) return false;
+    const itemIds = [
+      val(item.code, item.codegratuite, item.codeGratuite, item.patientCode),
+      val(item.dossier, item.numeroDossier),
+      val(item.idCubix, item.id_cubix),
+      val(item.patient?.code, item.patient?.codegratuite, item.patient?.codeGratuite),
+      val(item.patient?.dossier, item.patient?.numeroDossier)
+    ].map(norm).filter(Boolean);
+    const patientIds = [
+      patientCode(patient),
+      patientShortCode(patient),
+      val(patient.dossier, patient.numeroDossier),
+      val(patient.idCubix, patient.id_cubix)
+    ].map(norm).filter(Boolean);
+    if(itemIds.length && patientIds.length && itemIds.some(id => patientIds.includes(id))) return true;
+    return norm(patientName(item) || item.patient || item.patientName) === norm(patientName(patient));
+  }
+
+  function filterBiologieTableForPatient(patient){
+    const data = pruneDeletedRecords(STORAGE.biologie, DELETED_BIOLOGIE_KEY);
+    let visible = 0;
+    document.querySelectorAll('#biologie-content .dash-table tbody tr').forEach((row, index) => {
+      const item = data[index];
+      const keep = Boolean(item && biologieRecordMatchesPatient(item, patient));
+      row.style.display = keep ? '' : 'none';
+      if(keep) visible++;
+    });
+    let note = document.getElementById('bio-filter-note');
+    const tableWrap = document.querySelector('#biologie-content .dash-table-wrap');
+    if(tableWrap && !note){
+      tableWrap.insertAdjacentHTML('beforebegin', '<div id="bio-filter-note" class="comm-note" style="margin:8px 0"></div>');
+      note = document.getElementById('bio-filter-note');
+    }
+    if(note){
+      note.textContent = `${visible} bilan(s) affiche(s) pour ${patientName(patient)}.`;
+      note.style.display = '';
+    }
+  }
+
+  window.showSelectedBiologiePatient = function(){
+    window.loadBiologiePatient?.();
+    const patient = selectedBiologiePatient();
+    if(!patient) return alert('Selectionner un patient dans la liste.');
+    window.__chimioproBioFilter = patient;
+    filterBiologieTableForPatient(patient);
+  };
+
+  window.clearBiologiePatientFilter = function(){
+    window.__chimioproBioFilter = null;
+    document.querySelectorAll('#biologie-content .dash-table tbody tr').forEach(row => { row.style.display = ''; });
+    const note = document.getElementById('bio-filter-note');
+    if(note) note.style.display = 'none';
   };
 
   function addBiologieDeleteButtons(){
@@ -3704,6 +3785,42 @@
     });
   };
 
+  window.deleteSelectedBiologiePatient = function(){
+    if(!requireCloudForSensitiveWrite('supprimer les bilans biologiques du patient')) return;
+    window.loadBiologiePatient?.();
+    const patient = selectedBiologiePatient();
+    if(!patient) return alert('Selectionner le patient a supprimer dans Biologie.');
+    askAdminCode(`supprimer definitivement les bilans biologiques de ${patientName(patient)}`, async () => {
+      const removedSigs = new Set();
+      [STORAGE.biologie, 'biologie'].forEach(key => {
+        const list = readJson(key, []);
+        if(!Array.isArray(list)) return;
+        const removed = list.filter(item => biologieRecordMatchesPatient(item, patient));
+        removed.forEach(item => rememberDeletedRecord(DELETED_BIOLOGIE_KEY, item));
+        removed.forEach(item => removedSigs.add(deletionSignature(item) || val(item.id, item.dateTs, item.patient)));
+        writeJson(key, list.filter(item => !biologieRecordMatchesPatient(item, patient)));
+      });
+      const removedCount = removedSigs.size;
+      if(!removedCount){
+        rememberDeletedRecord(DELETED_BIOLOGIE_KEY, {
+          patient: patientName(patient),
+          code: patientCode(patient),
+          dossier: val(patient.dossier, patient.numeroDossier),
+          protocole: protocolNameFor(patient)
+        });
+      }
+      window.__chimioproBioFilter = null;
+      logAudit('Suppression biologie patient', patientName(patient), `${removedCount} bilan(s) biologique(s) supprime(s)`);
+      window.renderBiologie?.();
+      try{
+        await window.chimioproCloudPush?.(true);
+        showToastSafe(`${removedCount || 'Aucun'} bilan biologique supprime et synchronise.`, 'success');
+      } catch(e){
+        showToastSafe(`Suppression locale effectuee. Cloud non synchronise: ${e.message}`, 'warning');
+      }
+    });
+  };
+
   window.changeOwnPassword = async function(){
     const next = document.getElementById('profile-new-password')?.value || '';
     const confirmNext = document.getElementById('profile-new-password-confirm')?.value || '';
@@ -3764,9 +3881,7 @@
   }
 
   function sameBiologiePatient(item, patient){
-    return (patientCode(patient) && val(item.code, item.codegratuite) === patientCode(patient)) ||
-      (patient.dossier && val(item.dossier) === patient.dossier) ||
-      norm(item.patient) === norm(patientName(patient));
+    return biologieRecordMatchesPatient(item, patient);
   }
 
   window.loadLatestBiologieForEdit = function(){
