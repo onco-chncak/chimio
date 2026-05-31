@@ -49,6 +49,9 @@
     'chncak_okchimio_refuses',
     'chncak_deleted_saved_protocols',
     'chncak_deleted_medecins',
+    'chncak_deleted_biologie',
+    'chncak_deleted_suivi',
+    'chncak_deleted_rdv',
     'patients',
     'okchimio',
     'sorties',
@@ -81,6 +84,9 @@
     'chncak_okchimio_refuses',
     'chncak_deleted_saved_protocols',
     'chncak_deleted_medecins',
+    'chncak_deleted_biologie',
+    'chncak_deleted_suivi',
+    'chncak_deleted_rdv',
     'patients',
     'okchimio',
     'sorties',
@@ -300,6 +306,30 @@
     return Boolean(patientSig && compatibleProtocolSignature(patientSig, signature));
   }
 
+  function recordDeletionSignature(item){
+    const p = item?.patient || item || {};
+    return [
+      item?.id || p.id,
+      item?.dateTs || item?.createdAt || item?.updatedAt || p.dateTs,
+      item?.dateRdv || item?.treatmentDate || item?.dateEvaluation || item?.resultDate || item?.date || p.dateRdv,
+      item?.dossier || p.dossier || item?.numeroDossier || p.numeroDossier,
+      item?.code || item?.codegratuite || item?.codeGratuite || p.code || p.codegratuite || p.codeGratuite || item?.patientCode,
+      patientName(item) || patientName(p) || item?.patient || item?.patientName,
+      protocolNameFor(item) || protocolNameFor(p)
+    ].map(v => norm(v)).filter(Boolean).join('|');
+  }
+
+  function deletedRecordSignatures(data, key){
+    const fromCloud = readJsonValue(data?.[key], []);
+    const fromLocal = readJsonValue(localStorage.getItem(key), []);
+    return Array.from(new Set([...(Array.isArray(fromCloud) ? fromCloud : []), ...(Array.isArray(fromLocal) ? fromLocal : [])].map(norm).filter(Boolean)));
+  }
+
+  function isDeletedRecordFor(item, deleted){
+    const own = recordDeletionSignature(item);
+    return Boolean(own && deleted.some(sig => own === sig || own.includes(sig) || sig.includes(own)));
+  }
+
   function deletedProtocolSignatures(data){
     const fromCloud = readJsonValue(data?.chncak_deleted_saved_protocols, []);
     const fromLocal = readJsonValue(localStorage.getItem('chncak_deleted_saved_protocols'), []);
@@ -308,14 +338,25 @@
 
   function pruneDeletedProtocolData(data){
     const deleted = deletedProtocolSignatures(data);
-    if(!Array.isArray(deleted) || !deleted.length) return data;
+    const deletedBio = deletedRecordSignatures(data, 'chncak_deleted_biologie');
+    const deletedSuivi = deletedRecordSignatures(data, 'chncak_deleted_suivi');
+    const deletedRdv = deletedRecordSignatures(data, 'chncak_deleted_rdv');
     const keys = ['chncak_historique','historique','chncak_protocols','chncak_okchimio','chncak_okchimio_refuses','chncak_rdv','rdv','chncak_biologie','biologie','chncak_suivi','suivi','chncak_patients','patients'];
     const out = {...data};
-    out.chncak_deleted_saved_protocols = JSON.stringify(deleted);
+    if(Array.isArray(deleted) && deleted.length) out.chncak_deleted_saved_protocols = JSON.stringify(deleted);
+    if(deletedBio.length) out.chncak_deleted_biologie = JSON.stringify(deletedBio);
+    if(deletedSuivi.length) out.chncak_deleted_suivi = JSON.stringify(deletedSuivi);
+    if(deletedRdv.length) out.chncak_deleted_rdv = JSON.stringify(deletedRdv);
     keys.forEach(key => {
       const list = readJsonValue(out[key], null);
       if(!Array.isArray(list)) return;
-      const next = list.filter(item => !deleted.some(sig => sameProtocolRecord(item, sig)));
+      const next = list.filter(item => {
+        if(Array.isArray(deleted) && deleted.some(sig => sameProtocolRecord(item, sig))) return false;
+        if((key === 'chncak_biologie' || key === 'biologie') && isDeletedRecordFor(item, deletedBio)) return false;
+        if((key === 'chncak_suivi' || key === 'suivi') && isDeletedRecordFor(item, deletedSuivi)) return false;
+        if((key === 'chncak_rdv' || key === 'rdv') && isDeletedRecordFor(item, deletedRdv)) return false;
+        return true;
+      });
       out[key] = JSON.stringify(next);
     });
     return out;

@@ -16,6 +16,9 @@
   const ROLE_REQUESTS_KEY = 'chncak_role_change_requests';
   const DELETED_SAVED_PROTOCOLS_KEY = 'chncak_deleted_saved_protocols';
   const DELETED_MEDECINS_KEY = 'chncak_deleted_medecins';
+  const DELETED_BIOLOGIE_KEY = 'chncak_deleted_biologie';
+  const DELETED_SUIVI_KEY = 'chncak_deleted_suivi';
+  const DELETED_RDV_KEY = 'chncak_deleted_rdv';
   const STORAGE = {
     patients: 'chncak_patients',
     rdv: 'chncak_rdv',
@@ -119,6 +122,39 @@
     if(code) return `code:${norm(code)}|${norm(proto)}`;
     if(dossier) return `dossier:${norm(dossier)}|${norm(proto)}`;
     return `name:${norm(patientName(p) || patientName(item))}|${norm(proto)}`;
+  }
+
+  function deletionSignature(item){
+    const p = item?.patient || item || {};
+    return [
+      val(item?.id, p.id),
+      val(item?.dateTs, item?.createdAt, item?.updatedAt, p.dateTs),
+      val(item?.dateRdv, item?.treatmentDate, item?.dateEvaluation, item?.resultDate, item?.date, p.dateRdv),
+      val(item?.dossier, p.dossier, item?.numeroDossier, p.numeroDossier),
+      val(item?.code, item?.codegratuite, item?.codeGratuite, p.code, p.codegratuite, p.codeGratuite, item?.patientCode),
+      norm(patientName(item) || patientName(p) || item?.patient || item?.patientName),
+      norm(protocolNameFor(item) || protocolNameFor(p))
+    ].map(v => norm(v)).filter(Boolean).join('|');
+  }
+
+  function rememberDeletedRecord(key, itemOrId){
+    const signature = typeof itemOrId === 'object' ? deletionSignature(itemOrId) : norm(itemOrId);
+    if(!signature) return;
+    writeJson(key, Array.from(new Set([...readJson(key, []), signature])));
+  }
+
+  function isDeletedRecord(key, item){
+    const own = deletionSignature(item);
+    if(!own) return false;
+    return readJson(key, []).some(sig => own === norm(sig) || own.includes(norm(sig)) || norm(sig).includes(own));
+  }
+
+  function pruneDeletedRecords(storageKey, deletedKey){
+    const list = readJson(storageKey, []);
+    if(!Array.isArray(list)) return [];
+    const next = list.filter(item => !isDeletedRecord(deletedKey, item));
+    if(next.length !== list.length) writeJson(storageKey, next);
+    return next;
   }
 
   function dedupeByPatientTreatment(list){
@@ -805,9 +841,11 @@
         <label>Specialite<input id="profile-specialite" value="${esc(val(approvedMatch.specialite, user.specialite, ''))}"></label>
         <label>Type de compte actuel<input value="${esc(val(user.role, approvedMatch.role, 'medecin'))}" disabled></label>
         <label>Demander un changement de type<select id="profile-role-request"><option value="">Aucun changement</option>${roles.map(r => `<option value="${r}">${r}</option>`).join('')}</select></label>
+        <label>Nouveau mot de passe<input id="profile-new-password" type="password" autocomplete="new-password" placeholder="8 caracteres minimum"></label>
+        <label>Confirmer mot de passe<input id="profile-new-password-confirm" type="password" autocomplete="new-password" placeholder="Retaper le nouveau mot de passe"></label>
       </div>
-      <p class="comm-note">Le nom, contact, email et specialite peuvent etre modifies ici. Le type de compte necessite l'aval admin dans Maintenance.</p>
-      <div class="secure-code-actions"><button onclick="saveOwnProfile()">Enregistrer profil</button><button onclick="requestOwnRoleChange()">Demander changement de type</button></div>`;
+      <p class="comm-note">Le nom, contact, email et specialite peuvent etre modifies ici. Le type de compte necessite l'aval admin dans Maintenance. Le mot de passe est modifie directement dans Supabase pour le compte connecte.</p>
+      <div class="secure-code-actions"><button onclick="saveOwnProfile()">Enregistrer profil</button><button onclick="changeOwnPassword()">Changer mot de passe</button><button onclick="requestOwnRoleChange()">Demander changement de type</button></div>`;
   }
 
   window.saveOwnProfile = function(){
@@ -3234,6 +3272,8 @@
   window.renderClinicalFollowupAlerts = renderClinicalFollowupAlerts;
 
   function renderSuiviFinal(){
+    pruneDeletedRecords(STORAGE.suivi, DELETED_SUIVI_KEY);
+    pruneDeletedRecords('suivi', DELETED_SUIVI_KEY);
     if(typeof nativeRenderSuiviFinal === 'function') nativeRenderSuiviFinal();
     renderClinicalFollowupAlerts();
     const saveBtn = document.querySelector('#suivi-content .clinical-save');
@@ -3269,7 +3309,7 @@
   window.renderSuivi = renderSuiviFinal;
 
   function addSuiviDeleteButtons(){
-    const data = readJson(STORAGE.suivi, readJson('suivi', []));
+    const data = pruneDeletedRecords(STORAGE.suivi, DELETED_SUIVI_KEY);
     const tables = Array.from(document.querySelectorAll('#suivi-content .dash-table'));
     const table = tables.find(t => (t.textContent || '').toLowerCase().includes('reponse')) || tables[tables.length - 1];
     if(!table || !data.length) return;
@@ -3293,7 +3333,12 @@
     askAdminCode('supprimer cette ligne de suivi', async () => {
       [STORAGE.suivi, 'suivi'].forEach(key => {
         const list = readJson(key, []);
-        if(Array.isArray(list)) writeJson(key, list.filter(item => String(val(item.id, item.dateTs)) !== String(id)));
+        if(Array.isArray(list)){
+          const removed = list.filter(item => String(val(item.id, item.dateTs)) === String(id));
+          removed.forEach(item => rememberDeletedRecord(DELETED_SUIVI_KEY, item));
+          if(!removed.length) rememberDeletedRecord(DELETED_SUIVI_KEY, id);
+          writeJson(key, list.filter(item => String(val(item.id, item.dateTs)) !== String(id)));
+        }
       });
       logAudit('Suppression suivi', id, 'Ligne de suivi patient supprimee');
       window.renderSuivi?.();
@@ -3422,6 +3467,8 @@
 
   const nativeRenderBiologieFinal = window.renderBiologie;
   window.renderBiologie = function(){
+    pruneDeletedRecords(STORAGE.biologie, DELETED_BIOLOGIE_KEY);
+    pruneDeletedRecords('biologie', DELETED_BIOLOGIE_KEY);
     const out = typeof nativeRenderBiologieFinal === 'function' ? nativeRenderBiologieFinal.apply(this, arguments) : undefined;
     normalizeBiologiePatientOptions();
     const saveBtn = document.querySelector('#biologie-content .clinical-save');
@@ -3443,7 +3490,7 @@
   };
 
   function addBiologieDeleteButtons(){
-    const data = readJson(STORAGE.biologie, readJson('biologie', []));
+    const data = pruneDeletedRecords(STORAGE.biologie, DELETED_BIOLOGIE_KEY);
     const headRow = document.querySelector('#biologie-content .dash-table thead tr');
     if(headRow && !headRow.querySelector('.bio-action-head')){
       const th = document.createElement('th');
@@ -3625,7 +3672,12 @@
     askAdminCode('supprimer ce bilan biologique', async () => {
       [STORAGE.biologie, 'biologie'].forEach(key => {
         const list = readJson(key, []);
-        if(Array.isArray(list)) writeJson(key, list.filter(item => String(val(item.id, item.dateTs)) !== String(id)));
+        if(Array.isArray(list)){
+          const removed = list.filter(item => String(val(item.id, item.dateTs)) === String(id));
+          removed.forEach(item => rememberDeletedRecord(DELETED_BIOLOGIE_KEY, item));
+          if(!removed.length) rememberDeletedRecord(DELETED_BIOLOGIE_KEY, id);
+          writeJson(key, list.filter(item => String(val(item.id, item.dateTs)) !== String(id)));
+        }
       });
       logAudit('Suppression biologie', id, 'Bilan biologique supprime');
       window.renderBiologie?.();
@@ -3641,6 +3693,9 @@
   window.deletePreparationRdv = function(id){
     askAdminCode('supprimer ce rendez-vous de preparation', () => {
       const list = readJson(STORAGE.rdv, []);
+      const removed = list.filter(item => String(item.id) === String(id));
+      removed.forEach(item => rememberDeletedRecord(DELETED_RDV_KEY, item));
+      if(!removed.length) rememberDeletedRecord(DELETED_RDV_KEY, id);
       writeJson(STORAGE.rdv, list.filter(item => String(item.id) !== String(id)));
       logAudit('Suppression preparation RDV', id, 'Rendez-vous retire de la liste preparation');
       renderPreparationTodayList();
@@ -3648,6 +3703,65 @@
       showToastSafe('Ligne preparation supprimee.', 'success');
     });
   };
+
+  window.changeOwnPassword = async function(){
+    const next = document.getElementById('profile-new-password')?.value || '';
+    const confirmNext = document.getElementById('profile-new-password-confirm')?.value || '';
+    if(next.length < 8) return alert('Le nouveau mot de passe doit contenir au moins 8 caracteres.');
+    if(next !== confirmNext) return alert('Les deux mots de passe ne sont pas identiques.');
+    const sb = window.chimioproSupabaseClient;
+    if(!sb?.auth?.updateUser) return alert('Session Supabase indisponible. Deconnectez-vous puis reconnectez-vous.');
+    try{
+      const { error } = await sb.auth.updateUser({ password: next });
+      if(error) throw error;
+      document.getElementById('profile-new-password').value = '';
+      document.getElementById('profile-new-password-confirm').value = '';
+      logAudit('Mot de passe modifie', actorLabel(), 'Changement effectue depuis le profil');
+      showToastSafe('Mot de passe modifie avec succes.', 'success');
+    } catch(e){
+      alert('Changement du mot de passe impossible : ' + e.message);
+    }
+  };
+
+  function pruneRdvBeforeRender(){
+    pruneDeletedRecords(STORAGE.rdv, DELETED_RDV_KEY);
+    pruneDeletedRecords('rdv', DELETED_RDV_KEY);
+  }
+
+  const nativeDrawRdvRowsFinal = window.drawRdvRows;
+  if(typeof nativeDrawRdvRowsFinal === 'function'){
+    window.drawRdvRows = function(){
+      pruneRdvBeforeRender();
+      return nativeDrawRdvRowsFinal.apply(this, arguments);
+    };
+  }
+
+  const nativeRenderRdvPageFinal = window.renderRdvPage;
+  if(typeof nativeRenderRdvPageFinal === 'function'){
+    window.renderRdvPage = function(){
+      pruneRdvBeforeRender();
+      return nativeRenderRdvPageFinal.apply(this, arguments);
+    };
+  }
+
+  const nativeDeleteRdvStandaloneFinal = window.deleteRdvStandalone;
+  if(typeof nativeDeleteRdvStandaloneFinal === 'function'){
+    window.deleteRdvStandalone = function(id){
+      if(!requireCloudForSensitiveWrite('supprimer un rendez-vous')) return;
+      const list = readJson(STORAGE.rdv, []);
+      const removed = list.filter(item => String(item.id) === String(id));
+      const proceed = confirm('Supprimer definitivement ce rendez-vous ?');
+      if(!proceed) return;
+      removed.forEach(item => rememberDeletedRecord(DELETED_RDV_KEY, item));
+      if(!removed.length) rememberDeletedRecord(DELETED_RDV_KEY, id);
+      writeJson(STORAGE.rdv, list.filter(item => String(item.id) !== String(id)));
+      writeJson('rdv', readJson('rdv', []).filter(item => String(item.id) !== String(id)));
+      logAudit('Suppression RDV', id, 'Rendez-vous supprime definitivement');
+      window.drawRdvRows?.();
+      window.renderDashboard?.();
+      window.chimioproCloudPush?.(true).then(() => showToastSafe('Rendez-vous supprime et synchronise.', 'success')).catch(e => showToastSafe(`RDV supprime localement. Cloud non synchronise: ${e.message}`, 'warning'));
+    };
+  }
 
   function sameBiologiePatient(item, patient){
     return (patientCode(patient) && val(item.code, item.codegratuite) === patientCode(patient)) ||
