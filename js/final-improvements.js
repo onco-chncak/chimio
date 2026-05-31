@@ -114,9 +114,9 @@
   function patientTreatmentKey(item){
     const p = item?.patient || item || {};
     const code = val(p.codegratuite, p.codeGratuite, p.code, item?.codegratuite, item?.codeGratuite, item?.code);
-    if(code) return `code:${norm(code)}`;
     const dossier = val(p.dossier, p.numeroDossier, item?.dossier, item?.numeroDossier);
     const proto = val(item?.protoId, p.protoId, item?.protocole, item?.protocolName, p.protocole, p.proto);
+    if(code) return `code:${norm(code)}|${norm(proto)}`;
     if(dossier) return `dossier:${norm(dossier)}|${norm(proto)}`;
     return `name:${norm(patientName(p) || patientName(item))}|${norm(proto)}`;
   }
@@ -1498,11 +1498,41 @@
 
   function compactPrintableProtocol(html){
     const group = esc(formOrLastPatientValue('groupe-sanguin', ['groupeSanguin', 'groupe']));
+    const proto = protocolsList().find(p => p.id === (typeof selId !== 'undefined' ? selId : ''));
     let out = enhancePrintableProtocolPatientLine(String(html || ''));
+    out = separateXeloxPrintableBlocks(out, proto);
     if(group && !/Groupe sanguin\s*:/i.test(out)){
       out = out.replace(/(<div style="font-size:10px">Antécédents médicaux\s*:\s*<b>[\s\S]*?<\/b><\/div>)/, `$1<div style="font-size:10px;margin-top:2px">Groupe sanguin : <b>${group}</b></div>`);
     }
     return out;
+  }
+
+  function protocolBarcodeGraphic(code){
+    const text = String(code || '').trim();
+    if(!text) return '';
+    const bars = text.split('').map((ch, i) => {
+      const seed = ch.charCodeAt(0) + i;
+      const width = seed % 4 === 0 ? 4 : seed % 3 === 0 ? 3 : 2;
+      return `<i style="display:inline-block;width:${width}px;height:23px;background:#111;margin-right:1px"></i>`;
+    }).join('');
+    return `<span style="display:inline-block;text-align:center;margin-top:2px;line-height:1">
+      <span style="display:flex;align-items:flex-end;justify-content:flex-end;height:24px">${bars}</span>
+      <span style="display:block;font-family:Arial,Helvetica,sans-serif;font-size:7.5px;letter-spacing:.08em;margin-top:1px">${esc(text)}</span>
+    </span>`;
+  }
+
+  function separateXeloxPrintableBlocks(html, proto){
+    if(!proto || !(proto.hasCape || norm(proto.name).includes('xelox') || norm(proto.detail).includes('capecitab'))) return html;
+    if(!/Cap[ée]citabine/i.test(html)) return html;
+    const med = esc(formOrLastPatientValue('medecin-select', ['medecin']) || 'DR ________________');
+    const separator = `<div class="xelox-doctor-separator" style="margin:12mm 0 6mm;text-align:right;page-break-inside:avoid;break-inside:avoid">
+      <div style="display:inline-block;text-align:center;font-size:9.5px;min-width:150px">
+        <div style="font-style:italic">Medecin traitant</div>
+        <div style="font-weight:bold;font-size:11px;margin-top:2px">${med}</div>
+        <div style="border-bottom:1px solid #000;margin-top:16px;width:150px"></div>
+      </div>
+    </div>`;
+    return html.replace(/<div style="margin-top:7px">(\s*<div[^>]*>\s*Cap[ée]citabine)/i, `${separator}<div class="xelox-cape-block" style="margin-top:8mm">$1`);
   }
 
   function formOrLastPatientValue(id, keys){
@@ -1544,7 +1574,7 @@
         <span style="font-size:8.5px">Date : <b>${dateTxt}</b></span><br>
         ${cubix ? `<span style="font-size:8.5px">ID Cubix : <b>${cubix}</b></span><br>` : ''}
         ${code ? `<span style="font-size:8.5px">Code Gratuite : <b>${code}</b></span><br>` : ''}
-        ${barcode ? `<span style="font-size:8.5px">Code barre : <b style="font-family:'Libre Barcode 39','Courier New',monospace;font-size:18px;letter-spacing:.08em">*${barcode}*</b></span>` : ''}`;
+        ${barcode ? `<span style="font-size:8.5px">Code barre :</span><br>${protocolBarcodeGraphic(barcode)}` : ''}`;
     return html
       .replace(/<b>CHNCAK[\s\S]*?<\/td>/, `${headerInfo}</td>`)
       .replace(/Localisation\s*:/g, 'Localisations :')
@@ -4259,15 +4289,24 @@
       id: Date.now(),
       date: new Date().toLocaleDateString('fr-FR'),
       dateTs: Date.now(),
+      updatedAt: new Date().toISOString(),
+      _syncUpdatedAt: new Date().toISOString(),
       sc: typeof sc !== 'undefined' && Number(sc) ? Number(sc).toFixed(2) : '',
       protoId: patient.protoId,
       protoName: patient.protocole
     };
     history.unshift(historyEntry);
-    writeJson(STORAGE.historique, dedupeByPatientTreatment(history));
+    const savedHistory = dedupeByPatientTreatment(history);
+    writeJson(STORAGE.historique, savedHistory);
+    const savedHistoryCheck = readJson(STORAGE.historique, []);
+    if(!savedHistoryCheck.some(item => patientTreatmentKey(item) === patientTreatmentKey(historyEntry))){
+      finish();
+      alert('Sauvegarde non confirmee par le navigateur. Verifiez le stockage local puis reessayez.');
+      return;
+    }
     const list = readJson(STORAGE.patients, []);
     const idx = list.findIndex(p => (patient.dossier && p.dossier === patient.dossier) || (norm(patientName(p)) === norm(`${patient.prenom} ${patient.nom}`)));
-    const entry = {...patient, proto: patient.protocole, updatedAt:new Date().toISOString(), statut:'actif', createdBy:actorLabel(), createdByUser:currentUserKey()};
+    const entry = {...patient, proto: patient.protocole, updatedAt:new Date().toISOString(), _syncUpdatedAt:new Date().toISOString(), statut:'actif', createdBy:actorLabel(), createdByUser:currentUserKey()};
     if(idx >= 0) list[idx] = {...list[idx], ...entry, id:list[idx].id || Date.now().toString()};
     else list.push({...entry, id:Date.now().toString()});
     writeJson(STORAGE.patients, dedupeByPatientTreatment(list));
