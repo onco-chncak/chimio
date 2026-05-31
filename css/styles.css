@@ -427,8 +427,8 @@ body.dark-mode .med-item{background:#1E2530;border-color:#2E3A4A}
 
 /* RESTAURATION-INSPIRED VISUAL REFRESH */
 :root{
-  --app-navy:#081827;
-  --app-navy-2:#102236;
+  --app-navy:#0A3D7A;
+  --app-navy-2:#EAF4FF;
   --app-emerald:#059669;
   --app-emerald-2:#10B981;
   --app-slate:#64748B;
@@ -443,11 +443,13 @@ body{
   color:#17233A;
 }
 .nav.no-print{
-  background:linear-gradient(180deg,var(--app-navy) 0%,#08243B 54%,#06351F 100%);
-  border-right:1px solid rgba(255,255,255,0.08);
+  background:linear-gradient(180deg,#FFFFFF 0%,#F4FAFF 52%,#EEF8F4 100%);
+  border-right:1px solid #D6E4F2;
+  color:#102A43;
 }
 .nav-top{
-  background:rgba(255,255,255,0.035);
+  background:linear-gradient(135deg,#FFFFFF,#F0FAF6);
+  border-bottom:1px solid #D8E8F1;
   backdrop-filter:blur(12px);
 }
 .nav-logo{
@@ -459,38 +461,39 @@ body{
   letter-spacing:-0.01em;
 }
 .nav-title p{
-  color:rgba(226,232,240,0.76);
+  color:#64748B;
 }
 .data-tools-btn{
-  background:rgba(15,23,42,0.35);
-  border-color:rgba(148,163,184,0.38);
-  color:#E5F3EE;
+  background:#FFFFFF;
+  border-color:#C9D8E8;
+  color:#0B3558;
   border-radius:10px;
 }
 .data-tools-btn:hover{
-  background:rgba(5,150,105,0.28);
-  border-color:rgba(16,185,129,0.62);
+  background:#EAF8F2;
+  border-color:#10B981;
 }
 .tab-btn{
   border-radius:10px;
-  border-color:rgba(148,163,184,0.22);
-  background:rgba(15,23,42,0.30);
-  color:#CBD5E1;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,0.05);
+  border-color:#D5E1EE;
+  background:#FFFFFF;
+  color:#24415F;
+  box-shadow:0 4px 12px rgba(15,23,42,0.04);
 }
 .tab-btn:hover{
-  background:rgba(16,185,129,0.18);
-  border-color:rgba(16,185,129,0.45);
-  color:#FFFFFF;
+  background:#EAF8F2;
+  border-color:#10B981;
+  color:#065F46;
 }
 .tab-btn.active{
-  background:linear-gradient(135deg,#FFFFFF,#F1F9F6);
-  color:#0B3558;
-  border-color:#FFFFFF;
-  box-shadow:0 14px 28px rgba(0,0,0,0.22);
+  background:linear-gradient(135deg,#0A3D7A,#138754);
+  color:#FFFFFF;
+  border-color:transparent;
+  box-shadow:0 14px 28px rgba(10,61,122,0.18);
 }
 .page{
   max-width:1320px;
+  animation:softPageIn .22s ease both;
 }
 .card,
 .dash-card,
@@ -545,10 +548,18 @@ body{
   background:linear-gradient(135deg,#064E3B,var(--app-emerald));
   border-radius:10px;
   box-shadow:0 12px 22px rgba(5,150,105,0.18);
+  transition:transform .15s ease,box-shadow .15s ease,background .15s ease;
 }
 .btn-primary:hover{
   background:linear-gradient(135deg,#053B2D,#047857);
   transform:translateY(-1px);
+  box-shadow:0 16px 28px rgba(5,150,105,0.24);
+}
+.btn-primary:active,
+.btn-secondary:active,
+.tab-btn:active,
+.btn-sm:active{
+  transform:translateY(1px) scale(.99);
 }
 .btn-secondary,
 .btn-sm,
@@ -556,6 +567,7 @@ body{
   border-color:#B8C7DA;
   color:#0B3558;
   border-radius:10px;
+  transition:transform .15s ease,box-shadow .15s ease,background .15s ease,border-color .15s ease,color .15s ease;
 }
 .btn-secondary:hover,
 .btn-sm:hover,
@@ -563,10 +575,20 @@ body{
   background:#EEF8F4;
   border-color:var(--app-emerald);
   color:#065F46;
+  box-shadow:0 10px 20px rgba(15,23,42,0.08);
 }
 .dash-card{
   border-radius:14px;
   border-top:3px solid #D8E2EE;
+  transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;
+}
+.dash-card:hover,
+.card:hover,
+.stat-card:hover,
+.enhance-kpi:hover{
+  transform:translateY(-2px);
+  box-shadow:0 18px 36px rgba(15,23,42,0.12);
+  border-color:#BBD0E5;
 }
 .dash-card:nth-child(3n+1){border-top-color:var(--app-emerald)}
 .dash-card:nth-child(3n+2){border-top-color:#0A3D7A}
@@ -577,6 +599,11 @@ body{
 .enhance-kpi strong{
   color:#0B3558;
   letter-spacing:-0.02em;
+}
+.dash-value,
+.stat-val,
+.stats-box p{
+  animation:metricPulseIn .34s ease both;
 }
 .dashboard-hero-copy{
   background:linear-gradient(135deg,#FFFFFF 0%,#F1FAF7 100%);
@@ -646,4 +673,12 @@ body.dark-mode .stat-card,
 body.dark-mode .dashboard-service-head,
 body.dark-mode .dashboard-hero-copy{
   box-shadow:0 16px 36px rgba(0,0,0,0.22);
+}
+@keyframes softPageIn{
+  from{opacity:0;transform:translateY(5px)}
+  to{opacity:1;transform:none}
+}
+@keyframes metricPulseIn{
+  from{opacity:0;transform:translateY(4px) scale(.98)}
+  to{opacity:1;transform:none}
 }
